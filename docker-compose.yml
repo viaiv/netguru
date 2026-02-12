@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: netguru-postgres
+    environment:
+      POSTGRES_DB: netguru
+      POSTGRES_USER: netguru
+      POSTGRES_PASSWORD: netguru_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netguru"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - netguru-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: netguru-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - netguru-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: netguru-backend
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://netguru:netguru_dev_password@postgres:5432/netguru
+      - REDIS_URL=redis://redis:6379/0
+      - UVICORN_PORT=8000
+    ports:
+      - "${UVICORN_PORT}:8000"
+    volumes:
+      - ./backend:/app
+      - /app/venv  # Prevent mounting venv from host
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port ${UVICORN_PORT} --reload
+    networks:
+      - netguru-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: netguru-frontend
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # Prevent mounting node_modules from host
+    depends_on:
+      - backend
+    command: npm run dev -- --host 0.0.0.0
+    networks:
+      - netguru-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  netguru-network:
+    driver: bridge

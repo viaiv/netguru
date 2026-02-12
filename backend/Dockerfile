@@ -1,0 +1,29 @@
+# Development Dockerfile for NetGuru Backend
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    postgresql-client \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first (leverage Docker cache)
+COPY requirements.txt .
+
+# Create virtual environment and install dependencies
+RUN python -m venv venv
+RUN . venv/bin/activate && pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Expose port
+EXPOSE 8000
+
+# Activate venv and run uvicorn
+CMD ["/bin/bash", "-c", "source venv/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port ${UVICORN_PORT} --reload"]

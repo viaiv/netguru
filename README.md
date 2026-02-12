@@ -17,6 +17,7 @@ NetGuru é uma plataforma de IA agentic especializada em operações de rede, pe
   - **RAG Global**: Documentação curada de vendors (Cisco, Juniper, Arista)
   - **RAG Local**: Conhecimento específico do cliente (configs, topologias, tickets)
 - 🔐 **BYO-LLM**: Cliente usa sua própria API key (privacidade total, compliance-ready)
+- 🛡️ **RBAC Nativo**: Roles (`owner`, `admin`, `member`, `viewer`) com permissões por endpoint
 
 ---
 
@@ -182,8 +183,13 @@ celery -A app.workers.celery_app worker --loglevel=info
 ```bash
 cd frontend
 npm install
+# opcional: sobrescreva API em dev/prod
+cp .env.example .env
 npm run dev
 ```
+
+No ambiente de desenvolvimento, se `VITE_API_URL` estiver vazio, o frontend usa automaticamente a porta `UVICORN_PORT` do `backend/.env`.  
+Em produção/staging, defina `VITE_API_URL` explicitamente no ambiente de deploy.
 
 ### Testes
 

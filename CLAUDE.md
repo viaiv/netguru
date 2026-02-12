@@ -7,6 +7,10 @@
 
 > **⚠️ Manutenção**: Se qualquer procedimento documentado aqui estiver desatualizado, sugira correções e atualize este arquivo.
 
+> **📝 CHECKPOINT TEMPORÁRIO (REMOVER NA PRÓXIMA SESSÃO):**
+> Paramos após fechar UUID em PK/FK + endpoints `/files` (upload/list/detail/download/delete) no backend.
+> Próximo passo planejado: WebSocket de chat com streaming + integração inicial de ChatService/RAG local.
+
 ---
 
 ## ⚙️ Configurações Globais
@@ -32,6 +36,11 @@
 - **JavaScript/TypeScript**: `camelCase` para funções/variáveis, `PascalCase` para componentes
 - **Type hints sempre** (Python e TypeScript)
 - **Docstrings obrigatórias** para funções públicas
+
+### Modelagem de Dados (Regra de Ouro)
+- **NUNCA usar IDs previsíveis/sequenciais** (ex.: auto incremento) em tabelas de domínio
+- **SEMPRE usar UUID** para chaves primárias e estrangeiras relacionadas
+- Novas migrations e novos modelos devem seguir esse padrão por padrão (secure-by-default)
 
 ### Pattern Discovery (CRÍTICO)
 - **SEMPRE buscar padrões existentes** no código antes de implementar algo novo

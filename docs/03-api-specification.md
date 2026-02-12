@@ -140,12 +140,17 @@ Retorna perfil do usuário autenticado.
 **Response:** `200 OK`
 ```json
 {
-  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "id": 1,
   "email": "engineer@example.com",
   "full_name": "João Silva",
   "plan_tier": "solo",
+  "role": "member",
+  "llm_provider": "openai",
+  "has_api_key": true,
   "is_active": true,
-  "created_at": "2026-02-12T10:30:00Z"
+  "is_verified": false,
+  "created_at": "2026-02-12T10:30:00Z",
+  "last_login_at": "2026-02-12T10:35:00Z"
 }
 ```
 
@@ -165,11 +170,17 @@ Atualiza perfil do usuário.
 **Response:** `200 OK`
 ```json
 {
-  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "id": 1,
   "email": "engineer@example.com",
   "full_name": "João Pedro Silva",
   "plan_tier": "solo",
-  "updated_at": "2026-02-12T11:00:00Z"
+  "role": "member",
+  "llm_provider": "openai",
+  "has_api_key": true,
+  "is_active": true,
+  "is_verified": false,
+  "created_at": "2026-02-12T10:30:00Z",
+  "last_login_at": "2026-02-12T10:35:00Z"
 }
 ```
 
@@ -182,28 +193,77 @@ Lista API keys de LLM providers do usuário.
 **Response:** `200 OK`
 ```json
 {
-  "api_keys": [
-    {
-      "id": "key-uuid-1",
-      "provider": "openai",
-      "key_name": "Minha Chave OpenAI",
-      "is_active": true,
-      "last_used_at": "2026-02-12T09:00:00Z",
-      "created_at": "2026-02-10T14:00:00Z"
-    },
-    {
-      "id": "key-uuid-2",
-      "provider": "anthropic",
-      "key_name": "Claude Key",
-      "is_active": true,
-      "last_used_at": null,
-      "created_at": "2026-02-11T16:30:00Z"
-    }
-  ]
+  "llm_provider": "openai",
+  "has_api_key": true,
+  "masked_key": "***abcd"
 }
 ```
 
 **Nota:** Chaves **nunca** são retornadas plaintext.
+
+---
+
+#### GET `/users`
+
+Lista usuários (somente `owner` e `admin`).
+
+**Response:** `200 OK`
+```json
+[
+  {
+    "id": 1,
+    "email": "owner@example.com",
+    "full_name": "Owner",
+    "plan_tier": "solo",
+    "role": "owner",
+    "llm_provider": null,
+    "has_api_key": false,
+    "is_active": true,
+    "is_verified": false,
+    "created_at": "2026-02-12T10:30:00Z",
+    "last_login_at": "2026-02-12T10:35:00Z"
+  }
+]
+```
+
+**Erros:**
+- `403`: Sem permissão (`users:list`)
+
+---
+
+#### PATCH `/users/{user_id}/role`
+
+Atualiza role de um usuário (RBAC).
+
+**Request:**
+```json
+{
+  "role": "viewer"
+}
+```
+
+**Erros:**
+- `400`: Tentativa de alterar própria role
+- `403`: Sem permissão ou atribuição não permitida
+- `404`: Usuário não encontrado
+
+---
+
+#### PATCH `/users/{user_id}/status`
+
+Ativa/desativa conta de usuário.
+
+**Request:**
+```json
+{
+  "is_active": false
+}
+```
+
+**Erros:**
+- `400`: Tentativa de desativar própria conta
+- `403`: Sem permissão
+- `404`: Usuário não encontrado
 
 ---
 

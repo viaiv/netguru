@@ -182,7 +182,26 @@ async def get_me(current_user: User = Depends(get_current_user)):
 
 ## 🛡️ Autorização (RBAC)
 
-### Plan Tiers e Permissões
+### Roles e Permissoes
+
+| Role | Permissoes Principais |
+|------|------------------------|
+| `owner` | Acesso total, incluindo gestao de roles/status |
+| `admin` | Gestao de usuarios (sem promover para `owner`) |
+| `member` | Operacoes do proprio perfil (`/users/me`) |
+| `viewer` | Leitura do proprio perfil |
+
+**Permissoes implementadas (backend):**
+- `users:read_self`
+- `users:update_self`
+- `api_keys:read_self`
+- `api_keys:update_self`
+- `users:list`
+- `users:read`
+- `users:update_role`
+- `users:update_status`
+
+### Plan Tiers e Entitlements
 
 | Feature | Solo | Team | Enterprise |
 |---------|------|------|------------|
@@ -194,6 +213,9 @@ async def get_me(current_user: User = Depends(get_current_user)):
 | Team Collaboration | ❌ | ✅ | ✅ |
 | API Access | ❌ | ❌ | ✅ |
 | Self-Hosted | ❌ | ❌ | ✅ |
+
+> `plan_tier` controla acesso a features pagas (entitlements).  
+> `role` controla autorizacao de operacoes (RBAC).
 
 ---
 
