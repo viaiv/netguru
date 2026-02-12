@@ -420,13 +420,21 @@ interface IAgentResponse {
 
 ### Git Workflow
 
+**⚠️ Fase Inicial (até MVP rodando):**
+- Trabalhar **direto na `main`** (sem branches)
+- Commits frequentes e descritivos
+- Quando tivermos primeira versão funcional → criar `develop` branch
+
+**Pós-MVP (quando tiver versão rodando):**
 ```bash
 # Branch naming
 feature/add-pcap-analyzer-tool
 fix/agent-infinite-loop
 docs/update-agent-architecture
+```
 
-# Commits (Conventional - em português)
+**Commits (Conventional - em português):**
+```bash
 feat(agent): adicionar tool de análise PCAP
 fix(agent): corrigir loop infinito no reasoning
 docs: atualizar diagrama de arquitetura
