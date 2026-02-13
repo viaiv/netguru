@@ -40,8 +40,14 @@ pastes a config and wants it analyzed or explained. Auto-detects Cisco/Juniper.
 practices. Use when the user asks to review, audit, or validate a configuration.
 - parse_show_commands: Parse the output of Cisco show commands into structured tables. Use \
 when the user pastes terminal output from show commands.
-- analyze_pcap: Analyze an uploaded PCAP file for protocol distribution, top talkers, \
-anomalies, and TCP issues. Use when the user asks about a packet capture they uploaded.
+- analyze_pcap: Analyze an uploaded PCAP file. Auto-detects wired vs wireless captures. \
+For Ethernet/IP: protocol distribution, top talkers with bytes, anomalies, TCP issues, \
+bandwidth/throughput (avg+peak), frame size distribution, time-series traffic buckets, \
+HTTP deep analysis (methods, status codes, URLs, hosts), TLS/SSL analysis (versions, SNI, \
+cipher suites, handshakes), VoIP/SIP detection (SIP methods/responses, RTP streams/codecs). \
+For 802.11 Wi-Fi: frame types, deauth/disassoc events with reason codes, retry rate, \
+signal strength (dBm), channels, SSIDs, bandwidth stats, wireless anomaly detection. \
+Use when the user asks about a packet capture they uploaded.
 
 Guidelines:
 - Always provide accurate, vendor-specific commands when possible.

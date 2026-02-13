@@ -66,6 +66,41 @@ def analyze_pcap(storage_path: str, max_packets: int) -> dict:
                 "dns_queries": summary.dns_queries,
                 "tcp_issues": summary.tcp_issues,
                 "network_protocols": summary.network_protocols,
+                # Bandwidth & time-series
+                "total_bytes": summary.total_bytes,
+                "avg_throughput_bps": summary.avg_throughput_bps,
+                "peak_throughput_bps": summary.peak_throughput_bps,
+                "frame_size_stats": summary.frame_size_stats,
+                "frame_size_distribution": summary.frame_size_distribution,
+                "time_buckets": summary.time_buckets,
+                "bucket_width_seconds": summary.bucket_width_seconds,
+                # HTTP
+                "http_methods": summary.http_methods,
+                "http_status_codes": summary.http_status_codes,
+                "http_urls": summary.http_urls,
+                "http_hosts": summary.http_hosts,
+                "http_request_count": summary.http_request_count,
+                "http_response_count": summary.http_response_count,
+                # TLS
+                "tls_versions": summary.tls_versions,
+                "tls_sni_hosts": summary.tls_sni_hosts,
+                "tls_cipher_suites": summary.tls_cipher_suites,
+                "tls_handshakes": summary.tls_handshakes,
+                # VoIP/SIP
+                "voip_sip_methods": summary.voip_sip_methods,
+                "voip_sip_responses": summary.voip_sip_responses,
+                "voip_rtp_streams": summary.voip_rtp_streams,
+                "voip_rtp_codecs": summary.voip_rtp_codecs,
+                # Campos wireless (802.11)
+                "is_wireless": summary.is_wireless,
+                "wireless_frame_types": summary.wireless_frame_types,
+                "deauth_events": summary.deauth_events,
+                "disassoc_events": summary.disassoc_events,
+                "retry_stats": summary.retry_stats,
+                "signal_stats": summary.signal_stats,
+                "channels": {str(k): v for k, v in summary.channels.items()},
+                "ssids": summary.ssids,
+                "wireless_devices": summary.wireless_devices,
             },
         }
     finally:

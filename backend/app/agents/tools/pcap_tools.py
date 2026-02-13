@@ -80,9 +80,16 @@ def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
         coroutine=_analyze_pcap,
         name="analyze_pcap",
         description=(
-            "Analyze a PCAP/PCAPNG packet capture file uploaded by the user. "
-            "Extracts protocol distribution, top talkers, conversations, DNS queries, "
-            "TCP issues (retransmissions, resets), and detects network protocols (OSPF, BGP, etc.). "
+            "Analyze a PCAP/PCAPNG packet capture file. Auto-detects wired (Ethernet/IP) "
+            "vs wireless (802.11) captures. "
+            "For wired: protocol distribution, top talkers with bytes, conversations, "
+            "DNS queries, TCP issues, routing protocols, bandwidth/throughput stats, "
+            "frame size distribution, time-series traffic buckets, HTTP methods/status codes/"
+            "URLs/hosts, TLS versions/SNI/cipher suites, VoIP SIP methods/responses, "
+            "RTP stream count/codecs. "
+            "For wireless (Wi-Fi): frame type distribution, deauth/disassoc events with "
+            "reason codes, retry rate, signal strength (dBm), channels, SSIDs, bandwidth "
+            "stats, and wireless anomaly detection (deauth floods, high retries). "
             "Use when the user asks about a packet capture or PCAP analysis. "
             "Input: the document_id (UUID) of the uploaded PCAP file."
         ),

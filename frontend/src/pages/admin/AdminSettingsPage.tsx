@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { getErrorMessage } from '../../services/api';
-import { testEmail, testR2, upsertSetting } from '../../services/adminApi';
+import { testEmail, testR2, testStripe, upsertSetting } from '../../services/adminApi';
 import { useAdminStore } from '../../stores/adminStore';
 
 // ---------------------------------------------------------------------------
@@ -22,6 +22,7 @@ type SettingDef = {
 const TABS = [
   { id: 'email', label: 'Email' },
   { id: 'cloudflare', label: 'Cloudflare R2' },
+  { id: 'stripe', label: 'Stripe' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -80,6 +81,33 @@ const R2_SETTINGS_KEYS: SettingDef[] = [
   },
 ];
 
+const STRIPE_SETTINGS_KEYS: SettingDef[] = [
+  {
+    key: 'stripe_enabled',
+    label: 'Stripe habilitado',
+    description: 'Ativar integracao com Stripe para pagamentos',
+    type: 'toggle',
+  },
+  {
+    key: 'stripe_secret_key',
+    label: 'Secret Key',
+    description: 'Chave secreta da API Stripe (criptografada)',
+    type: 'password',
+  },
+  {
+    key: 'stripe_publishable_key',
+    label: 'Publishable Key',
+    description: 'Chave publica da API Stripe (visivel no frontend)',
+    type: 'text',
+  },
+  {
+    key: 'stripe_webhook_secret',
+    label: 'Webhook Secret',
+    description: 'Segredo para validacao de webhooks Stripe (criptografado)',
+    type: 'password',
+  },
+];
+
 // ---------------------------------------------------------------------------
 //  Component
 // ---------------------------------------------------------------------------
@@ -95,6 +123,7 @@ function AdminSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testingR2, setTestingR2] = useState(false);
+  const [testingStripe, setTestingStripe] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -129,7 +158,9 @@ function AdminSettingsPage() {
   }
 
   function currentKeys(): SettingDef[] {
-    return activeTab === 'email' ? EMAIL_SETTINGS_KEYS : R2_SETTINGS_KEYS;
+    if (activeTab === 'email') return EMAIL_SETTINGS_KEYS;
+    if (activeTab === 'stripe') return STRIPE_SETTINGS_KEYS;
+    return R2_SETTINGS_KEYS;
   }
 
   async function handleSave(event: FormEvent): Promise<void> {
@@ -180,6 +211,20 @@ function AdminSettingsPage() {
       setError(getErrorMessage(err));
     } finally {
       setTestingR2(false);
+    }
+  }
+
+  async function handleTestStripe(): Promise<void> {
+    setTestingStripe(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await testStripe();
+      setMessage(result.message);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setTestingStripe(false);
     }
   }
 
@@ -299,6 +344,27 @@ function AdminSettingsPage() {
                 onClick={handleTestR2}
               >
                 {testingR2 ? 'Testando...' : 'Testar Conexao'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Stripe tab */}
+        {activeTab === 'stripe' && (
+          <div className="admin-card">
+            <h3 className="admin-card__title">Pagamentos (Stripe)</h3>
+            {STRIPE_SETTINGS_KEYS.map(renderField)}
+            <div className="button-row" style={{ gap: 12 }}>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Salvando...' : 'Salvar'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={testingStripe}
+                onClick={handleTestStripe}
+              >
+                {testingStripe ? 'Testando...' : 'Testar Conexao'}
               </button>
             </div>
           </div>
