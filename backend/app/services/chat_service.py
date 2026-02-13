@@ -15,6 +15,7 @@ from app.core.security import decrypt_api_key
 from app.models.conversation import Conversation, Message
 from app.models.user import User
 from app.services.llm_client import LLMProviderError
+from app.services.usage_tracking_service import UsageTrackingService
 
 
 class ChatServiceError(Exception):
@@ -183,6 +184,13 @@ class ChatService:
                 "detail": f"Erro ao salvar resposta: {exc}",
             }
             return
+
+        # 9. Track usage metrics
+        try:
+            await UsageTrackingService.increment_messages(self._db, user.id)
+            await self._db.commit()
+        except Exception:
+            pass  # Non-critical — don't fail the response
 
         yield {
             "type": "stream_end",

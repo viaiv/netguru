@@ -37,6 +37,15 @@ class Settings(BaseSettings):
     # Celery
     CELERY_BROKER_URL: str
     CELERY_RESULT_BACKEND: str
+    CELERY_TASK_SOFT_TIME_LIMIT: int = 270   # 4.5 min
+    CELERY_TASK_TIME_LIMIT: int = 300        # 5 min
+
+    # Celery Beat — intervalos das tarefas agendadas
+    CLEANUP_ORPHAN_UPLOADS_HOURS: int = 24
+    CLEANUP_EXPIRED_TOKENS_HOURS: int = 6
+    HEALTH_CHECK_MINUTES: int = 5
+    STALE_EMBEDDINGS_HOURS: int = 12
+    ORPHAN_UPLOAD_AGE_HOURS: int = 72
     
     # File Upload
     MAX_FILE_SIZE_MB: int = 100
@@ -90,6 +99,11 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS: int = 4096
     LLM_TEMPERATURE: float = 0.7
 
+    # Stripe
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_PUBLISHABLE_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+
     # Monitoring
     PROMETHEUS_ENABLED: bool = False
     SENTRY_DSN: str = ""
@@ -109,6 +123,13 @@ class Settings(BaseSettings):
     def allowed_file_extensions_list(self) -> List[str]:
         """Parse allowed file extensions from comma-separated string"""
         return [ext.strip() for ext in self.ALLOWED_FILE_EXTENSIONS.split(",")]
+
+    @property
+    def database_url_sync(self) -> str:
+        """URL sincrona derivada da async para uso no Celery worker."""
+        return self.DATABASE_URL.replace(
+            "postgresql+asyncpg://", "postgresql+psycopg2://"
+        )
 
 
 # Singleton instance

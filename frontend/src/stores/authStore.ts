@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 
-import type { ITokenResponse } from '../services/api';
+import type { ITokenResponse, IUserResponse } from '../services/api';
 import {
+  api,
   clearStoredTokens,
   getStoredAccessToken,
   getStoredRefreshToken,
@@ -17,6 +18,7 @@ interface IAuthState {
   isAuthenticated: boolean;
   refreshStatus: TRefreshStatus;
   lastRefreshAt: number | null;
+  user: IUserResponse | null;
   syncFromStorage: () => void;
   setTokens: (tokens: ITokenResponse) => void;
   setAccessToken: (accessToken: string) => void;
@@ -25,13 +27,15 @@ interface IAuthState {
   markRefreshSuccess: () => void;
   markRefreshFailure: () => void;
   clearAuth: () => void;
+  fetchUser: () => Promise<void>;
 }
 
 function buildAuthSnapshot(
   accessToken: string | null,
   refreshToken: string | null,
   refreshStatus: TRefreshStatus = 'idle',
-  lastRefreshAt: number | null = null
+  lastRefreshAt: number | null = null,
+  user: IUserResponse | null = null
 ) {
   return {
     accessToken,
@@ -39,6 +43,7 @@ function buildAuthSnapshot(
     isAuthenticated: Boolean(accessToken),
     refreshStatus,
     lastRefreshAt,
+    user,
   };
 }
 
@@ -85,5 +90,13 @@ export const useAuthStore = create<IAuthState>((set) => ({
   clearAuth: () => {
     clearStoredTokens();
     set(buildAuthSnapshot(null, null, 'expired', null));
+  },
+  fetchUser: async () => {
+    try {
+      const response = await api.get<IUserResponse>('/users/me');
+      set({ user: response.data });
+    } catch {
+      // Non-critical — user data is optional for route guards
+    }
   },
 }));

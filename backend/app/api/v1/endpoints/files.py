@@ -3,7 +3,6 @@ File upload and management endpoints.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from uuid import UUID
 
@@ -14,7 +13,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.database import AsyncSessionLocal, get_db
+from app.core.database import get_db
 from app.core.dependencies import require_permissions
 from app.core.rbac import Permission
 from app.models.document import Document
@@ -34,30 +33,13 @@ from app.services.file_storage import (
     persist_uploaded_file,
     resolve_storage_path,
 )
+from app.services.usage_tracking_service import UsageTrackingService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 PROCESSABLE_EXTENSIONS = {"txt", "conf", "cfg", "log", "md", "pdf"}
-
-
-async def _process_document_background(document_id: UUID) -> None:
-    """Processa documento em background (nova session, mesmo event loop)."""
-    from app.services.document_processor import DocumentProcessor
-
-    async with AsyncSessionLocal() as db:
-        try:
-            stmt = select(Document).where(Document.id == document_id)
-            result = await db.execute(stmt)
-            document = result.scalar_one_or_none()
-            if document is None or document.status != "uploaded":
-                return
-            processor = DocumentProcessor(db)
-            chunks = await processor.process_document(document)
-            logger.info("Background processing: %s -> %d chunks", document.original_filename, chunks)
-        except Exception:
-            logger.exception("Background processing failed for document %s", document_id)
 
 
 SUPPORTED_FILE_TYPES = {
@@ -206,10 +188,16 @@ async def upload_file(
         delete_stored_file(stored_file.storage_path)
         raise
 
-    # Trigger background document processing for text-based files
+    # Track usage
+    await UsageTrackingService.increment_uploads(db, current_user.id)
+    await db.commit()
+
+    # Despacha processamento para Celery worker
     ext = extension.lower()
     if ext in PROCESSABLE_EXTENSIONS:
-        asyncio.create_task(_process_document_background(document.id))
+        from app.workers.tasks.document_tasks import process_document
+
+        process_document.delay(str(document.id))
 
     return FileUploadResponse(
         id=document.id,

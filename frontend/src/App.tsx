@@ -6,6 +6,8 @@ import LoginPage from './pages/LoginPage';
 import MePage from './pages/MePage';
 import RegisterPage from './pages/RegisterPage';
 import ProtectedRoute from './components/ProtectedRoute';
+import AdminRoute from './components/admin/AdminRoute';
+import AdminLayout from './components/admin/AdminLayout';
 import { AUTH_LOGOUT_EVENT, dispatchAuthLogout, type IAuthLogoutEventDetail } from './services/authEvents';
 import { useAuthStore } from './stores/authStore';
 
@@ -13,11 +15,15 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const user = useAuthStore((state) => state.user);
+  const isAdmin = user?.role === 'owner' || user?.role === 'admin';
   const hasRefreshToken = Boolean(useAuthStore((state) => state.refreshToken));
   const refreshStatus = useAuthStore((state) => state.refreshStatus);
   const lastRefreshAt = useAuthStore((state) => state.lastRefreshAt);
   const clearAuth = useAuthStore((state) => state.clearAuth);
   const resetRefreshStatus = useAuthStore((state) => state.resetRefreshStatus);
+
+  const isAdminRoute = location.pathname.startsWith('/admin');
 
   const [railCollapsed, setRailCollapsed] = useState(false);
 
@@ -70,6 +76,27 @@ function App() {
       window.removeEventListener(AUTH_LOGOUT_EVENT, handleAuthLogout);
     };
   }, [clearAuth, navigate]);
+
+  // Admin area — layout proprio, sem header/sidebar do app
+  if (isAdminRoute) {
+    return (
+      <div className="app-shell app-shell--admin">
+        <div className="bg-grid" />
+        <div className="bg-glow bg-glow-a" />
+        <div className="bg-glow bg-glow-b" />
+        <Routes>
+          <Route
+            path="/admin/*"
+            element={
+              <AdminRoute>
+                <AdminLayout />
+              </AdminRoute>
+            }
+          />
+        </Routes>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -133,6 +160,15 @@ function App() {
             >
               {railCollapsed ? '\uD83D\uDC64' : 'Perfil'}
             </NavLink>
+            {isAdmin && (
+              <NavLink
+                to="/admin"
+                className={({ isActive }) => `nav-link nav-link--admin ${isActive ? 'active' : ''}`}
+                title="Admin"
+              >
+                {railCollapsed ? '\u2699' : 'Admin'}
+              </NavLink>
+            )}
           </nav>
 
           {!railCollapsed && (

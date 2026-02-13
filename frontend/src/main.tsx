@@ -9,6 +9,7 @@ import { useAuthStore } from './stores/authStore';
 import './styles.css';
 
 useAuthStore.getState().syncFromStorage();
+
 configureApiInterceptors({
   getAccessToken: () => useAuthStore.getState().accessToken,
   getRefreshToken: () => useAuthStore.getState().refreshToken,
@@ -18,6 +19,11 @@ configureApiInterceptors({
   onRefreshFailed: () => useAuthStore.getState().markRefreshFailure(),
   onAuthFailure: () => dispatchAuthLogout('session_expired'),
 });
+
+// Fetch user profile AFTER interceptors are configured
+if (useAuthStore.getState().isAuthenticated) {
+  useAuthStore.getState().fetchUser();
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

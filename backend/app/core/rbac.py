@@ -30,6 +30,12 @@ class Permission(str, Enum):
     USERS_READ = "users:read"
     USERS_UPDATE_ROLE = "users:update_role"
     USERS_UPDATE_STATUS = "users:update_status"
+    ADMIN_DASHBOARD = "admin:dashboard"
+    ADMIN_USERS_MANAGE = "admin:users_manage"
+    ADMIN_AUDIT_LOG = "admin:audit_log"
+    ADMIN_PLANS_READ = "admin:plans_read"
+    ADMIN_PLANS_MANAGE = "admin:plans_manage"
+    ADMIN_SYSTEM_HEALTH = "admin:system_health"
 
 
 ROLE_PERMISSIONS: dict[UserRole, frozenset[Permission]] = {
@@ -44,6 +50,11 @@ ROLE_PERMISSIONS: dict[UserRole, frozenset[Permission]] = {
             Permission.USERS_READ,
             Permission.USERS_UPDATE_ROLE,
             Permission.USERS_UPDATE_STATUS,
+            Permission.ADMIN_DASHBOARD,
+            Permission.ADMIN_USERS_MANAGE,
+            Permission.ADMIN_AUDIT_LOG,
+            Permission.ADMIN_PLANS_READ,
+            Permission.ADMIN_SYSTEM_HEALTH,
         }
     ),
     UserRole.MEMBER: frozenset(
