@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { api, getErrorMessage, type ITokenResponse } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
@@ -51,10 +51,10 @@ function LoginPage() {
   return (
     <section className="view">
       <div className="view-head">
-        <p className="eyebrow">Authentication</p>
-        <h2 className="view-title">Acessar console</h2>
+        <p className="eyebrow">Bem-vindo</p>
+        <h2 className="view-title">Entrar na plataforma</h2>
         <p className="view-subtitle">
-          Login em <code>POST /api/v1/auth/login</code> com credenciais JSON.
+          Informe suas credenciais para acessar o NetGuru.
         </p>
       </div>
 
@@ -90,6 +90,10 @@ function LoginPage() {
 
         {error ? <div className="error-banner">{error}</div> : null}
       </form>
+
+      <p className="auth-link">
+        Nao tem conta? <Link to="/register">Criar conta</Link>
+      </p>
     </section>
   );
 }

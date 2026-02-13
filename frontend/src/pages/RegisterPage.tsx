@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { api, getErrorMessage } from '../services/api';
 
@@ -35,10 +35,10 @@ function RegisterPage() {
   return (
     <section className="view">
       <div className="view-head">
-        <p className="eyebrow">Onboarding</p>
-        <h2 className="view-title">Criar operador</h2>
+        <p className="eyebrow">Criar conta</p>
+        <h2 className="view-title">Criar sua conta</h2>
         <p className="view-subtitle">
-          Registro em <code>POST /api/v1/auth/register</code> para liberar o fluxo JWT.
+          Preencha os dados abaixo para comecar a usar o NetGuru.
         </p>
       </div>
 
@@ -84,6 +84,10 @@ function RegisterPage() {
 
         {error ? <div className="error-banner">{error}</div> : null}
       </form>
+
+      <p className="auth-link">
+        Ja tem conta? <Link to="/login">Entrar</Link>
+      </p>
     </section>
   );
 }

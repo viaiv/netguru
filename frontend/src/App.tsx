@@ -17,47 +17,15 @@ function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const user = useAuthStore((state) => state.user);
   const isAdmin = user?.role === 'owner' || user?.role === 'admin';
-  const hasRefreshToken = Boolean(useAuthStore((state) => state.refreshToken));
-  const refreshStatus = useAuthStore((state) => state.refreshStatus);
-  const lastRefreshAt = useAuthStore((state) => state.lastRefreshAt);
   const clearAuth = useAuthStore((state) => state.clearAuth);
-  const resetRefreshStatus = useAuthStore((state) => state.resetRefreshStatus);
 
   const isAdminRoute = location.pathname.startsWith('/admin');
 
   const [railCollapsed, setRailCollapsed] = useState(false);
 
-  const refreshStatusLabel = {
-    idle: 'refresh idle',
-    refreshing: 'renovando',
-    refreshed: 'renovado',
-    expired: 'expirado',
-  }[refreshStatus];
-
-  const lastRefreshLabel = lastRefreshAt
-    ? new Date(lastRefreshAt).toLocaleTimeString('pt-BR', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : '--:--';
-
   function handleLogout(): void {
     dispatchAuthLogout('manual');
   }
-
-  useEffect(() => {
-    if (refreshStatus !== 'refreshed') {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      resetRefreshStatus();
-    }, 3000);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [refreshStatus, resetRefreshStatus]);
 
   useEffect(() => {
     function handleAuthLogout(event: Event): void {
@@ -112,11 +80,10 @@ function App() {
 
         <div className="status-strip">
           <span className={isAuthenticated ? 'status-dot online' : 'status-dot offline'} />
-          <span>{isAuthenticated ? 'Session Active' : 'Session Locked'}</span>
-          <span className={hasRefreshToken ? 'chip chip-live' : 'chip'}>refresh</span>
-          <span className={`chip chip-refresh-${refreshStatus}`}>{refreshStatusLabel}</span>
-          <span className="chip chip-muted">{lastRefreshLabel}</span>
-          <span className="chip">phase 1</span>
+          <span>{isAuthenticated ? 'Conectado' : 'Desconectado'}</span>
+          {isAuthenticated && user && (
+            <span className="chip chip-live">{user.full_name || user.email}</span>
+          )}
         </div>
       </header>
 
@@ -132,57 +99,58 @@ function App() {
           </button>
 
           <nav className="nav">
-            <NavLink
-              to="/login"
-              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-              title="Login"
-            >
-              {railCollapsed ? '\uD83D\uDD12' : 'Login'}
-            </NavLink>
-            <NavLink
-              to="/register"
-              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-              title="Cadastro"
-            >
-              {railCollapsed ? '\uD83D\uDCDD' : 'Cadastro'}
-            </NavLink>
-            <NavLink
-              to="/chat"
-              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-              title="Chat"
-            >
-              {railCollapsed ? '\uD83D\uDCAC' : 'Chat'}
-            </NavLink>
-            <NavLink
-              to="/me"
-              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-              title="Perfil"
-            >
-              {railCollapsed ? '\uD83D\uDC64' : 'Perfil'}
-            </NavLink>
-            {isAdmin && (
-              <NavLink
-                to="/admin"
-                className={({ isActive }) => `nav-link nav-link--admin ${isActive ? 'active' : ''}`}
-                title="Admin"
-              >
-                {railCollapsed ? '\u2699' : 'Admin'}
-              </NavLink>
+            {!isAuthenticated && (
+              <>
+                <NavLink
+                  to="/login"
+                  className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                  title="Login"
+                >
+                  {railCollapsed ? '\uD83D\uDD12' : 'Login'}
+                </NavLink>
+                <NavLink
+                  to="/register"
+                  className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                  title="Cadastro"
+                >
+                  {railCollapsed ? '\uD83D\uDCDD' : 'Cadastro'}
+                </NavLink>
+              </>
+            )}
+            {isAuthenticated && (
+              <>
+                <NavLink
+                  to="/chat"
+                  className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                  title="Chat"
+                >
+                  {railCollapsed ? '\uD83D\uDCAC' : 'Chat'}
+                </NavLink>
+                <NavLink
+                  to="/me"
+                  className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                  title="Perfil"
+                >
+                  {railCollapsed ? '\uD83D\uDC64' : 'Perfil'}
+                </NavLink>
+                {isAdmin && (
+                  <NavLink
+                    to="/admin"
+                    className={({ isActive }) => `nav-link nav-link--admin ${isActive ? 'active' : ''}`}
+                    title="Admin"
+                  >
+                    {railCollapsed ? '\u2699' : 'Admin'}
+                  </NavLink>
+                )}
+              </>
             )}
           </nav>
 
-          {!railCollapsed && (
+          {!railCollapsed && isAuthenticated && (
             <div className="rail-card">
-              <p className="rail-label">current route</p>
-              <p className="rail-value">{location.pathname}</p>
-              <p className="rail-help">
-                Fluxo: <code>/register</code> → <code>/login</code> → <code>/chat</code>.
-              </p>
-              {isAuthenticated ? (
-                <button type="button" className="ghost-btn" onClick={handleLogout}>
-                  Encerrar sessão
-                </button>
-              ) : null}
+              <button type="button" className="ghost-btn" onClick={handleLogout}>
+                Encerrar sessão
+              </button>
             </div>
           )}
         </aside>

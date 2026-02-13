@@ -562,6 +562,28 @@ select:focus {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/*  Auth Cross-Links                                                   */
+/* ------------------------------------------------------------------ */
+
+.auth-link {
+  margin: 0;
+  text-align: center;
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+}
+
+.auth-link a {
+  color: var(--accent-deep);
+  text-decoration: underline;
+  font-weight: 700;
+  transition: color 160ms ease;
+}
+
+.auth-link a:hover {
+  color: var(--accent);
+}
+
 @media (max-width: 960px) {
   .chrome {
     align-items: flex-start;

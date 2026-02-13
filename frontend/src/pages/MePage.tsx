@@ -1,14 +1,11 @@
-import axios from 'axios';
 import { useEffect, useState } from 'react';
 
 import {
   api,
   getErrorMessage,
-  type IRefreshResponse,
   type IUserResponse,
 } from '../services/api';
 import { dispatchAuthLogout } from '../services/authEvents';
-import { useAuthStore } from '../stores/authStore';
 
 const LLM_PROVIDERS = [
   { value: 'openai', label: 'OpenAI' },
@@ -17,8 +14,6 @@ const LLM_PROVIDERS = [
 ] as const;
 
 function MePage() {
-  const refreshToken = useAuthStore((state) => state.refreshToken);
-  const setAccessToken = useAuthStore((state) => state.setAccessToken);
   const [user, setUser] = useState<IUserResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -73,27 +68,6 @@ function MePage() {
     }
   }
 
-  async function refreshAccessToken(): Promise<void> {
-    if (!refreshToken) {
-      setError('Refresh token ausente. Faça login novamente.');
-      dispatchAuthLogout('missing_refresh_token');
-      return;
-    }
-
-    try {
-      const response = await api.post<IRefreshResponse>('/auth/refresh', {
-        refresh_token: refreshToken,
-      });
-      setAccessToken(response.data.access_token);
-      await loadProfile();
-    } catch (requestError) {
-      setError(getErrorMessage(requestError));
-      if (axios.isAxiosError(requestError) && requestError.response?.status === 401) {
-        dispatchAuthLogout('invalid_refresh');
-      }
-    }
-  }
-
   function logout(): void {
     dispatchAuthLogout('manual');
   }
@@ -105,19 +79,16 @@ function MePage() {
   return (
     <section className="view">
       <div className="view-head">
-        <p className="eyebrow">Profile</p>
-        <h2 className="view-title">Estado da sessão</h2>
+        <p className="eyebrow">Minha conta</p>
+        <h2 className="view-title">Meu perfil</h2>
         <p className="view-subtitle">
-          Leitura de <code>GET /api/v1/users/me</code> e renovação por <code>/auth/refresh</code>.
+          Gerencie suas informacoes e configuracoes de conta.
         </p>
       </div>
 
       <div className="button-row">
         <button type="button" className="btn btn-primary" onClick={() => void loadProfile()}>
           Recarregar
-        </button>
-        <button type="button" className="btn btn-secondary" onClick={() => void refreshAccessToken()}>
-          Renovar access token
         </button>
         <button type="button" className="btn btn-danger" onClick={logout}>
           Sair
