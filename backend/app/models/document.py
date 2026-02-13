@@ -32,7 +32,8 @@ class Document(Base):
     user_id = Column(
         SQLAlchemyUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
+        comment="NULL for global vendor docs",
     )
     filename = Column(String(255), nullable=False)
     original_filename = Column(String(255), nullable=False)

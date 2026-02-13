@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     
     # File Upload
     MAX_FILE_SIZE_MB: int = 100
-    ALLOWED_FILE_EXTENSIONS: str = "pcap,pcapng,txt,conf,cfg,log"
+    ALLOWED_FILE_EXTENSIONS: str = "pcap,pcapng,txt,conf,cfg,log,pdf,md"
     UPLOAD_DIR: str = "/app/uploads"
     
     # CORS
@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     USE_QDRANT: bool = False
     QDRANT_URL: str = "http://localhost:6333"
     
+    # Agent
+    AGENT_MAX_ITERATIONS: int = 5
+    RAG_TOP_K_GLOBAL: int = 3
+    RAG_TOP_K_LOCAL: int = 2
+    RAG_MIN_SIMILARITY: float = 0.3
+
     # Chat / Agent
     CHAT_HISTORY_LIMIT: int = 20
     CHAT_MAX_MESSAGE_LENGTH: int = 10000

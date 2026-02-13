@@ -56,6 +56,23 @@ class WsError(BaseModel):
     detail: str
 
 
+class WsToolCallStart(BaseModel):
+    """Signals the start of a tool call by the agent."""
+
+    type: str = "tool_call_start"
+    tool_name: str
+    tool_input: str
+
+
+class WsToolCallEnd(BaseModel):
+    """Signals the completion of a tool call."""
+
+    type: str = "tool_call_end"
+    tool_name: str
+    result_preview: str
+    duration_ms: int
+
+
 class WsPong(BaseModel):
     """Keep-alive pong response."""
 

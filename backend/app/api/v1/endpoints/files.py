@@ -3,6 +3,8 @@ File upload and management endpoints.
 """
 from __future__ import annotations
 
+import asyncio
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, status
@@ -12,7 +14,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.core.dependencies import require_permissions
 from app.core.rbac import Permission
 from app.models.document import Document
@@ -33,7 +35,30 @@ from app.services.file_storage import (
     resolve_storage_path,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+PROCESSABLE_EXTENSIONS = {"txt", "conf", "cfg", "log", "md", "pdf"}
+
+
+async def _process_document_background(document_id: UUID) -> None:
+    """Processa documento em background (nova session, mesmo event loop)."""
+    from app.services.document_processor import DocumentProcessor
+
+    async with AsyncSessionLocal() as db:
+        try:
+            stmt = select(Document).where(Document.id == document_id)
+            result = await db.execute(stmt)
+            document = result.scalar_one_or_none()
+            if document is None or document.status != "uploaded":
+                return
+            processor = DocumentProcessor(db)
+            chunks = await processor.process_document(document)
+            logger.info("Background processing: %s -> %d chunks", document.original_filename, chunks)
+        except Exception:
+            logger.exception("Background processing failed for document %s", document_id)
+
 
 SUPPORTED_FILE_TYPES = {
     "config",
@@ -44,6 +69,7 @@ SUPPORTED_FILE_TYPES = {
     "conf",
     "cfg",
     "pdf",
+    "md",
 }
 
 EXTENSION_DEFAULT_FILE_TYPE = {
@@ -55,6 +81,7 @@ EXTENSION_DEFAULT_FILE_TYPE = {
     "pcapng": "pcap",
     "cap": "pcap",
     "pdf": "pdf",
+    "md": "md",
 }
 
 
@@ -178,6 +205,11 @@ async def upload_file(
         await db.rollback()
         delete_stored_file(stored_file.storage_path)
         raise
+
+    # Trigger background document processing for text-based files
+    ext = extension.lower()
+    if ext in PROCESSABLE_EXTENSIONS:
+        asyncio.create_task(_process_document_background(document.id))
 
     return FileUploadResponse(
         id=document.id,

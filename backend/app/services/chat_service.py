@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.network_engineer_agent import NetworkEngineerAgent
+from app.agents.tools import get_agent_tools
 from app.core.config import settings
 from app.core.security import decrypt_api_key
 from app.models.conversation import Conversation, Message
@@ -31,7 +32,7 @@ class ChatService:
     1. Validate conversation ownership
     2. Save user message (flush)
     3. Load recent history
-    4. Invoke agent with streaming
+    4. Invoke agent with streaming (tools + text)
     5. Accumulate full response, save assistant message
     6. Commit
     """
@@ -50,6 +51,8 @@ class ChatService:
 
         Yields dicts matching the WS protocol:
             {"type": "stream_start", "message_id": "..."}
+            {"type": "tool_call_start", "tool_name": "...", "tool_input": "..."}
+            {"type": "tool_call_end", "tool_name": "...", "result_preview": "...", "duration_ms": ...}
             {"type": "stream_chunk", "content": "..."}
             {"type": "stream_end",   "message_id": "...", "tokens_used": ...}
 
@@ -85,13 +88,15 @@ class ChatService:
         # 5. Load conversation history
         history = await self._load_history(conversation_id)
 
-        # 6. Build agent
+        # 6. Build agent with tools
         try:
             api_key = decrypt_api_key(user.encrypted_api_key)
+            tools = get_agent_tools(db=self._db, user_id=user.id)
             agent = NetworkEngineerAgent(
                 provider_name=user.llm_provider,
                 api_key=api_key,
                 model=conversation.model_used,
+                tools=tools,
             )
         except Exception as exc:
             await self._db.rollback()
@@ -112,10 +117,40 @@ class ChatService:
         yield {"type": "stream_start", "message_id": str(assistant_msg.id)}
 
         accumulated = ""
+        tool_calls_log: list[dict] = []
         try:
-            async for chunk in agent.stream_response(history):
-                accumulated += chunk
-                yield {"type": "stream_chunk", "content": chunk}
+            async for event in agent.stream_response(history):
+                event_type = event.get("type")
+
+                if event_type == "text":
+                    accumulated += event["content"]
+                    yield {"type": "stream_chunk", "content": event["content"]}
+
+                elif event_type == "tool_call_start":
+                    tool_calls_log.append({
+                        "tool": event["tool_name"],
+                        "input": event["tool_input"],
+                    })
+                    yield {
+                        "type": "tool_call_start",
+                        "tool_name": event["tool_name"],
+                        "tool_input": event["tool_input"],
+                    }
+
+                elif event_type == "tool_call_end":
+                    # Atualiza log com resultado
+                    for tc in reversed(tool_calls_log):
+                        if tc["tool"] == event["tool_name"] and "result_preview" not in tc:
+                            tc["result_preview"] = event["result_preview"]
+                            tc["duration_ms"] = event["duration_ms"]
+                            break
+                    yield {
+                        "type": "tool_call_end",
+                        "tool_name": event["tool_name"],
+                        "result_preview": event["result_preview"],
+                        "duration_ms": event["duration_ms"],
+                    }
+
         except LLMProviderError as exc:
             await self._db.rollback()
             yield {
@@ -135,6 +170,7 @@ class ChatService:
 
         # 8. Persist assistant message
         assistant_msg.content = accumulated
+        assistant_msg.message_metadata = {"tool_calls": tool_calls_log} if tool_calls_log else None
         conversation.updated_at = datetime.utcnow()
 
         try:

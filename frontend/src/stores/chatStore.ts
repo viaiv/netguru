@@ -23,6 +23,14 @@ export interface IMessage {
   created_at: string;
 }
 
+export interface IToolCall {
+  toolName: string;
+  toolInput: string;
+  resultPreview?: string;
+  durationMs?: number;
+  status: 'running' | 'completed';
+}
+
 interface IChatState {
   // Data
   conversations: IConversation[];
@@ -33,6 +41,9 @@ interface IChatState {
   isStreaming: boolean;
   streamingContent: string;
   streamingMessageId: string | null;
+
+  // Tool calls
+  activeToolCalls: IToolCall[];
 
   // Connection
   isConnected: boolean;
@@ -51,6 +62,8 @@ interface IChatState {
   handleStreamStart: (messageId: string) => void;
   handleStreamChunk: (content: string) => void;
   handleStreamEnd: (messageId: string, tokensUsed: number | null) => void;
+  handleToolCallStart: (toolName: string, toolInput: string) => void;
+  handleToolCallEnd: (toolName: string, resultPreview: string, durationMs: number) => void;
   handleWsError: (detail: string) => void;
   setConnected: (connected: boolean) => void;
   clearError: () => void;
@@ -63,6 +76,7 @@ export const useChatStore = create<IChatState>((set, get) => ({
   isStreaming: false,
   streamingContent: '',
   streamingMessageId: null,
+  activeToolCalls: [],
   isConnected: false,
   error: null,
 
@@ -101,6 +115,7 @@ export const useChatStore = create<IChatState>((set, get) => ({
       streamingContent: '',
       streamingMessageId: null,
       isStreaming: false,
+      activeToolCalls: [],
       error: null,
     });
   },
@@ -137,6 +152,7 @@ export const useChatStore = create<IChatState>((set, get) => ({
       isStreaming: true,
       streamingContent: '',
       streamingMessageId: messageId,
+      activeToolCalls: [],
     });
   },
 
@@ -163,6 +179,28 @@ export const useChatStore = create<IChatState>((set, get) => ({
       isStreaming: false,
       streamingContent: '',
       streamingMessageId: null,
+      activeToolCalls: [],
+    }));
+  },
+
+  handleToolCallStart: (toolName: string, toolInput: string) => {
+    const newToolCall: IToolCall = {
+      toolName,
+      toolInput,
+      status: 'running',
+    };
+    set((state) => ({
+      activeToolCalls: [...state.activeToolCalls, newToolCall],
+    }));
+  },
+
+  handleToolCallEnd: (toolName: string, resultPreview: string, durationMs: number) => {
+    set((state) => ({
+      activeToolCalls: state.activeToolCalls.map((tc) =>
+        tc.toolName === toolName && tc.status === 'running'
+          ? { ...tc, resultPreview, durationMs, status: 'completed' as const }
+          : tc,
+      ),
     }));
   },
 
@@ -172,6 +210,7 @@ export const useChatStore = create<IChatState>((set, get) => ({
       isStreaming: false,
       streamingContent: '',
       streamingMessageId: null,
+      activeToolCalls: [],
     });
   },
 

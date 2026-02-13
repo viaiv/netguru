@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import ToolCallDisplay from '../components/chat/ToolCallDisplay';
 import { ChatWebSocket, type IWebSocketEvent } from '../services/websocket';
 import { useChatStore, type IMessage } from '../stores/chatStore';
 
@@ -14,6 +15,7 @@ function ChatPage() {
     messages,
     isStreaming,
     streamingContent,
+    activeToolCalls,
     isConnected,
     error,
     fetchConversations,
@@ -24,6 +26,8 @@ function ChatPage() {
     handleStreamStart,
     handleStreamChunk,
     handleStreamEnd,
+    handleToolCallStart,
+    handleToolCallEnd,
     handleWsError,
     setConnected,
     clearError,
@@ -47,6 +51,12 @@ function ChatPage() {
         case 'stream_end':
           handleStreamEnd(event.message_id!, event.tokens_used ?? null);
           break;
+        case 'tool_call_start':
+          handleToolCallStart(event.tool_name!, event.tool_input!);
+          break;
+        case 'tool_call_end':
+          handleToolCallEnd(event.tool_name!, event.result_preview!, event.duration_ms!);
+          break;
         case 'error':
           handleWsError(event.detail ?? 'Erro desconhecido');
           break;
@@ -54,7 +64,7 @@ function ChatPage() {
           break;
       }
     },
-    [handleStreamStart, handleStreamChunk, handleStreamEnd, handleWsError],
+    [handleStreamStart, handleStreamChunk, handleStreamEnd, handleToolCallStart, handleToolCallEnd, handleWsError],
   );
 
   // ---- Load conversations on mount ----
@@ -99,7 +109,7 @@ function ChatPage() {
     requestAnimationFrame(() => {
       el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     });
-  }, [messages, streamingContent]);
+  }, [messages, streamingContent, activeToolCalls]);
 
   // ---- Send message ----
 
@@ -190,12 +200,27 @@ function ChatPage() {
             <div className="chat-window" ref={chatWindowRef}>
               {messages.map(renderMessage)}
 
+              {/* Tool calls display */}
+              {isStreaming && activeToolCalls.length > 0 && (
+                <ToolCallDisplay toolCalls={activeToolCalls} />
+              )}
+
               {/* Streaming bubble */}
-              {isStreaming && (
+              {isStreaming && streamingContent && (
                 <div className="message-bubble message-bubble--assistant">
                   <p className="message-role">NetGuru</p>
                   <div className="message-content">
                     {streamingContent}
+                    <span className="typing-cursor" />
+                  </div>
+                </div>
+              )}
+
+              {/* Waiting indicator (streaming started but no text yet) */}
+              {isStreaming && !streamingContent && activeToolCalls.length === 0 && (
+                <div className="message-bubble message-bubble--assistant">
+                  <p className="message-role">NetGuru</p>
+                  <div className="message-content">
                     <span className="typing-cursor" />
                   </div>
                 </div>
