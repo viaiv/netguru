@@ -50,7 +50,6 @@ out/
 .DS_Store
 
 # Docker
-.dockerignore
 
 # Database
 *.db
