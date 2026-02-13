@@ -587,6 +587,7 @@ select:focus {
 @media (max-width: 960px) {
   .app-shell {
     padding: 0;
+    overflow: hidden;
   }
 
   .chrome {
@@ -595,42 +596,13 @@ select:focus {
 
   .layout,
   .layout--collapsed {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 0;
   }
 
   .rail {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 50;
-    background: var(--panel-strong);
-    border-top: 1px solid rgba(var(--ink-rgb), 0.14);
-    padding: 4px 8px;
-    gap: 0;
-  }
-
-  .rail-toggle {
     display: none;
-  }
-
-  .rail-card {
-    display: none;
-  }
-
-  .rail--collapsed .nav-link,
-  .nav-link {
-    text-align: center;
-    padding: 8px 6px;
-    font-size: 0.68rem;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-  }
-
-  .nav {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 4px;
   }
 
   .kv-grid {
@@ -641,8 +613,8 @@ select:focus {
     border-radius: 0;
     border: none;
     box-shadow: none;
-    /* Espaço para a bottom nav fixa */
-    padding-bottom: 48px;
+    flex: 1;
+    min-height: 0;
   }
 
   .panel-inner {
