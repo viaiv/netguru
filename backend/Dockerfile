@@ -17,6 +17,7 @@ COPY requirements.txt .
 # Create virtual environment and install dependencies
 RUN python -m venv venv
 RUN . venv/bin/activate && pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
