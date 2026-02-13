@@ -1,7 +1,7 @@
 /**
  * AdminHealthPage — system health status + Celery task event log.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import HealthStatusCard from '../../components/admin/HealthStatusCard';
 import {
@@ -46,13 +46,63 @@ function statusBadgeClass(status: string): string {
   }
 }
 
+/** Format a UTC datetime string for display. */
+function formatDatetime(iso: string | null): string {
+  if (!iso) return '-';
+  return new Date(iso).toLocaleString();
+}
+
 const AUTO_REFRESH_MS = 10_000;
+
+function CeleryTaskDetail({ event }: { event: ICeleryTaskEvent }) {
+  return (
+    <tr className="celery-detail-row">
+      <td colSpan={5}>
+        <div className="celery-detail">
+          <dl className="celery-detail__grid">
+            <dt>Task ID</dt>
+            <dd className="celery-detail__mono">{event.task_id}</dd>
+
+            <dt>Nome completo</dt>
+            <dd className="celery-detail__mono">{event.task_name}</dd>
+
+            <dt>Worker</dt>
+            <dd>{event.worker ?? '-'}</dd>
+
+            <dt>Inicio</dt>
+            <dd>{formatDatetime(event.started_at)}</dd>
+
+            <dt>Fim</dt>
+            <dd>{formatDatetime(event.finished_at)}</dd>
+
+            <dt>Duracao</dt>
+            <dd>{formatDuration(event.duration_ms)}</dd>
+
+            <dt>Argumentos</dt>
+            <dd className="celery-detail__pre">{event.args_summary ?? '-'}</dd>
+
+            <dt>Resultado</dt>
+            <dd className="celery-detail__pre">{event.result_summary ?? '-'}</dd>
+
+            {event.error && (
+              <>
+                <dt>Erro</dt>
+                <dd className="celery-detail__pre celery-detail__error">{event.error}</dd>
+              </>
+            )}
+          </dl>
+        </div>
+      </td>
+    </tr>
+  );
+}
 
 function CeleryTaskLog() {
   const [events, setEvents] = useState<ICeleryTaskEvent[]>([]);
   const [pagination, setPagination] = useState<IPaginationMeta | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async (p: number) => {
@@ -109,21 +159,27 @@ function CeleryTaskLog() {
               </tr>
             )}
             {events.map((ev) => (
-              <tr key={ev.id}>
-                <td title={ev.task_name}>{shortTaskName(ev.task_name)}</td>
-                <td>
-                  <span className={`celery-badge ${statusBadgeClass(ev.status)}`}>
-                    {ev.status}
-                  </span>
-                </td>
-                <td>{new Date(ev.started_at).toLocaleString()}</td>
-                <td>{formatDuration(ev.duration_ms)}</td>
-                <td className="celery-task-log__result">
-                  {ev.status === 'FAILURE'
-                    ? (ev.error ?? 'Erro desconhecido').slice(0, 120)
-                    : (ev.result_summary ?? '-').slice(0, 120)}
-                </td>
-              </tr>
+              <React.Fragment key={ev.id}>
+                <tr
+                  className={`celery-task-row${expandedId === ev.id ? ' celery-task-row--active' : ''}`}
+                  onClick={() => setExpandedId(expandedId === ev.id ? null : ev.id)}
+                >
+                  <td title={ev.task_name}>{shortTaskName(ev.task_name)}</td>
+                  <td>
+                    <span className={`celery-badge ${statusBadgeClass(ev.status)}`}>
+                      {ev.status}
+                    </span>
+                  </td>
+                  <td>{new Date(ev.started_at).toLocaleString()}</td>
+                  <td>{formatDuration(ev.duration_ms)}</td>
+                  <td className="celery-task-log__result">
+                    {ev.status === 'FAILURE'
+                      ? (ev.error ?? 'Erro desconhecido').slice(0, 120)
+                      : (ev.result_summary ?? '-').slice(0, 120)}
+                  </td>
+                </tr>
+                {expandedId === ev.id && <CeleryTaskDetail event={ev} />}
+              </React.Fragment>
             ))}
           </tbody>
         </table>
