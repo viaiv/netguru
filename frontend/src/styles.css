@@ -3638,3 +3638,319 @@ select:focus {
 .celery-detail__error {
   color: var(--danger);
 }
+
+/* ====================================================================
+   PCAP Dashboard
+   ==================================================================== */
+
+.pcap-dashboard {
+  min-height: 100vh;
+  padding: 24px clamp(16px, 4vw, 48px);
+  background:
+    radial-gradient(circle at 6% 9%, rgba(var(--accent-rgb), 0.12), transparent 44%),
+    radial-gradient(circle at 94% 12%, rgba(var(--signal-rgb), 0.08), transparent 37%),
+    linear-gradient(145deg, #f8fbf4 0%, #edf3e7 46%, #e7eee0 100%);
+  font-family: 'Lato', 'Segoe UI', sans-serif;
+  color: var(--ink);
+}
+
+.pcap-dashboard__loading,
+.pcap-dashboard__error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  gap: 16px;
+  text-align: center;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.pcap-dashboard__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.pcap-dashboard__title {
+  font-family: 'Oswald', sans-serif;
+  font-size: clamp(1.4rem, 2.5vw, 2rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
+.pcap-dashboard__subtitle {
+  margin: 4px 0 0;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+/* Tabs */
+.pcap-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--edge);
+  padding-bottom: 0;
+}
+
+.pcap-tabs__item {
+  padding: 10px 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease;
+  font-family: inherit;
+}
+
+.pcap-tabs__item:hover {
+  color: var(--ink);
+}
+
+.pcap-tabs__item--active {
+  color: var(--accent-deep);
+  border-bottom-color: var(--accent);
+}
+
+/* Content area */
+.pcap-dashboard__content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Stats grid */
+.pcap-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.pcap-stat-card {
+  text-align: center;
+  padding: 16px;
+  border: 1px solid rgba(var(--ink-rgb), 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.pcap-stat-card__label {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+}
+
+.pcap-stat-card__value {
+  margin: 6px 0 0;
+  font-family: 'Oswald', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* Charts row */
+.pcap-charts-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 16px;
+}
+
+/* Card */
+.pcap-card {
+  border: 1px solid rgba(var(--ink-rgb), 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 20px;
+}
+
+.pcap-card__title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 14px;
+}
+
+.pcap-card__subtitle {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  margin: 16px 0 8px;
+}
+
+.pcap-card__detail {
+  margin: 12px 0 0;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+/* Table */
+.pcap-table-wrapper {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid rgba(var(--ink-rgb), 0.1);
+}
+
+.pcap-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.pcap-table th {
+  text-align: left;
+  padding: 8px 12px;
+  background: rgba(var(--ink-rgb), 0.05);
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  border-bottom: 1px solid rgba(var(--ink-rgb), 0.1);
+}
+
+.pcap-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(var(--ink-rgb), 0.06);
+}
+
+.pcap-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.pcap-table__mono {
+  font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.8rem;
+}
+
+.pcap-table--compact {
+  font-size: 0.82rem;
+}
+
+.pcap-table--compact th,
+.pcap-table--compact td {
+  padding: 5px 10px;
+}
+
+/* Security grid (side by side tables) */
+.pcap-security-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+/* Anomaly badges */
+.pcap-anomaly-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pcap-anomaly-badge--info {
+  background: rgba(var(--signal-rgb), 0.14);
+  color: var(--signal);
+}
+
+.pcap-anomaly-badge--warning {
+  background: rgba(230, 168, 23, 0.18);
+  color: #8a6400;
+}
+
+.pcap-anomaly-badge--critical {
+  background: rgba(var(--danger-rgb), 0.14);
+  color: var(--danger);
+}
+
+/* SSID chips */
+.pcap-ssid-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pcap-ssid-chip {
+  display: inline-block;
+  padding: 4px 12px;
+  border: 1px solid rgba(var(--accent-rgb), 0.36);
+  background: rgba(var(--accent-rgb), 0.08);
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+/* Tool call dashboard link */
+.tool-call-dashboard-link {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 4px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--signal);
+  border: 1px solid rgba(var(--signal-rgb), 0.3);
+  border-radius: 8px;
+  text-decoration: none;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.tool-call-dashboard-link:hover {
+  background: rgba(var(--signal-rgb), 0.1);
+  color: #0d4799;
+}
+
+/* PCAP Dashboard responsive */
+@media (max-width: 768px) {
+  .pcap-dashboard {
+    padding: 16px 12px;
+  }
+
+  .pcap-dashboard__header {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .pcap-charts-row {
+    grid-template-columns: 1fr;
+  }
+
+  .pcap-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .pcap-security-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pcap-tabs__item {
+    padding: 8px 14px;
+    font-size: 0.82rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .pcap-stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pcap-card {
+    padding: 14px;
+  }
+}

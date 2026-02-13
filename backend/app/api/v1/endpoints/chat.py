@@ -3,6 +3,8 @@ Chat endpoints for conversation and message persistence.
 """
 from __future__ import annotations
 
+import json
+import re
 from datetime import datetime
 from uuid import UUID
 
@@ -205,3 +207,54 @@ async def create_message(
     await db.commit()
     await db.refresh(message)
     return _build_message_response(message)
+
+
+_PCAP_DATA_RE = re.compile(r"<!-- PCAP_DATA:(.*?) -->", re.DOTALL)
+
+
+@router.get("/messages/{message_id}/pcap-data")
+async def get_pcap_data(
+    message_id: UUID,
+    current_user: User = Depends(require_permissions(Permission.USERS_READ_SELF)),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Extract structured PCAP analysis data from a message's tool call metadata.
+    """
+    stmt = select(Message).where(Message.id == message_id)
+    result = await db.execute(stmt)
+    message = result.scalar_one_or_none()
+    if message is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Message not found",
+        )
+
+    # Validate ownership via conversation (raises 404 if not owned)
+    await _get_owned_conversation(
+        conversation_id=message.conversation_id,
+        user_id=current_user.id,
+        db=db,
+    )
+
+    metadata = message.message_metadata or {}
+    tool_calls = metadata.get("tool_calls", [])
+
+    for tc in tool_calls:
+        if tc.get("tool") != "analyze_pcap":
+            continue
+        full_result = tc.get("full_result", "")
+        match = _PCAP_DATA_RE.search(full_result)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to parse PCAP data",
+                )
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="No PCAP analysis data found in this message",
+    )

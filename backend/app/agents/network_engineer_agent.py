@@ -242,4 +242,5 @@ class NetworkEngineerAgent:
                     "tool_name": tool_name,
                     "result_preview": result_str[:300],
                     "duration_ms": duration_ms,
+                    "full_result": result_str,
                 }

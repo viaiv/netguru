@@ -6,6 +6,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import MePage from './pages/MePage';
+import PcapDashboardPage from './pages/PcapDashboardPage';
 import RegisterPage from './pages/RegisterPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
@@ -54,6 +55,23 @@ function App() {
   }, [clearAuth, navigate]);
 
   const isHomePage = location.pathname === '/home';
+  const isPcapRoute = location.pathname.startsWith('/pcap/');
+
+  // PCAP dashboard — layout fullscreen, sem chrome/rail/panel
+  if (isPcapRoute) {
+    return (
+      <Routes>
+        <Route
+          path="/pcap/:messageId"
+          element={
+            <ProtectedRoute>
+              <PcapDashboardPage />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    );
+  }
 
   // Landing page — layout proprio, sem chrome/rail/panel
   if (isHomePage) {

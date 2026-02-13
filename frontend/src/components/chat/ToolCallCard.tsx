@@ -15,12 +15,14 @@ const TOOL_LABELS: Record<string, string> = {
 
 interface ToolCallCardProps {
   toolCall: IToolCall;
+  messageId?: string;
 }
 
-function ToolCallCard({ toolCall }: ToolCallCardProps) {
+function ToolCallCard({ toolCall, messageId }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false);
   const isCompleted = toolCall.status === 'completed';
   const canExpand = isCompleted && (toolCall.toolInput || toolCall.resultPreview);
+  const showDashboardLink = toolCall.toolName === 'analyze_pcap' && isCompleted && messageId;
 
   function handleToggle(): void {
     if (canExpand) {
@@ -51,6 +53,18 @@ function ToolCallCard({ toolCall }: ToolCallCardProps) {
           </span>
         )}
       </div>
+
+      {showDashboardLink && (
+        <a
+          href={`/pcap/${messageId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="tool-call-dashboard-link"
+          onClick={(e) => e.stopPropagation()}
+        >
+          Abrir Dashboard
+        </a>
+      )}
 
       {!expanded && isCompleted && toolCall.resultPreview && (
         <p className="tool-call-preview">{toolCall.resultPreview}</p>

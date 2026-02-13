@@ -7,6 +7,7 @@ Despacha analise para Celery worker.
 from __future__ import annotations
 
 import asyncio
+import json
 from uuid import UUID
 
 from langchain_core.tools import StructuredTool
@@ -72,7 +73,9 @@ def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
                 task_result.get, timeout=settings.PCAP_ANALYSIS_TIMEOUT
             )
 
-            return result_data["formatted"]
+            formatted = result_data["formatted"]
+            pcap_data = json.dumps(result_data.get("data", {}), default=str)
+            return f"{formatted}\n<!-- PCAP_DATA:{pcap_data} -->"
         except Exception as e:
             return f"Error analyzing PCAP: {e}"
 

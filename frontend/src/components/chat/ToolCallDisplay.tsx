@@ -7,15 +7,16 @@ import ToolCallCard from './ToolCallCard';
 
 interface ToolCallDisplayProps {
   toolCalls: IToolCall[];
+  messageId?: string;
 }
 
-function ToolCallDisplay({ toolCalls }: ToolCallDisplayProps) {
+function ToolCallDisplay({ toolCalls, messageId }: ToolCallDisplayProps) {
   if (toolCalls.length === 0) return null;
 
   return (
     <div className="tool-calls-container">
       {toolCalls.map((tc) => (
-        <ToolCallCard key={tc.id} toolCall={tc} />
+        <ToolCallCard key={tc.id} toolCall={tc} messageId={messageId} />
       ))}
     </div>
   );

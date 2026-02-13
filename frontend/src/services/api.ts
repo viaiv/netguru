@@ -191,6 +191,11 @@ export function resetApiInterceptorsForTests(): void {
   interceptorsConfigured = false;
 }
 
+export async function fetchPcapData(messageId: string): Promise<Record<string, unknown>> {
+  const res = await api.get(`/chat/messages/${messageId}/pcap-data`);
+  return res.data;
+}
+
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<{ detail?: string }>;

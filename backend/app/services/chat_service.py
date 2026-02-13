@@ -144,6 +144,8 @@ class ChatService:
                         if tc["tool"] == event["tool_name"] and "result_preview" not in tc:
                             tc["result_preview"] = event["result_preview"]
                             tc["duration_ms"] = event["duration_ms"]
+                            if event.get("full_result"):
+                                tc["full_result"] = event["full_result"]
                             break
                     yield {
                         "type": "tool_call_end",

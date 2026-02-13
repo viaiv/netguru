@@ -23,6 +23,7 @@ function ChatPage() {
     messages,
     isStreaming,
     streamingContent,
+    streamingMessageId,
     activeToolCalls,
     error,
     fetchConversations,
@@ -247,14 +248,38 @@ function ChatPage() {
 
   function renderMessage(msg: IMessage) {
     const isUser = msg.role === 'user';
+    const metaToolCalls = (msg.metadata as Record<string, unknown>)?.tool_calls as Array<{
+      tool: string;
+      input?: string;
+      result_preview?: string;
+      duration_ms?: number;
+    }> | undefined;
+    const hasPcapTool = metaToolCalls?.some((tc) => tc.tool === 'analyze_pcap');
+
     return (
-      <div key={msg.id} className={`message-bubble ${isUser ? 'message-bubble--user' : 'message-bubble--assistant'}`}>
-        <p className="message-role">{isUser ? 'Voce' : 'NetGuru'}</p>
-        {isUser ? (
-          <div className="message-content">{msg.content}</div>
-        ) : (
-          <MarkdownContent content={msg.content} />
+      <div key={msg.id}>
+        {/* Tool calls from historical messages */}
+        {!isUser && metaToolCalls && metaToolCalls.length > 0 && (
+          <ToolCallDisplay
+            toolCalls={metaToolCalls.map((tc, i) => ({
+              id: `hist-${msg.id}-${i}`,
+              toolName: tc.tool,
+              toolInput: tc.input ?? '',
+              resultPreview: tc.result_preview,
+              durationMs: tc.duration_ms,
+              status: 'completed' as const,
+            }))}
+            messageId={hasPcapTool ? msg.id : undefined}
+          />
         )}
+        <div className={`message-bubble ${isUser ? 'message-bubble--user' : 'message-bubble--assistant'}`}>
+          <p className="message-role">{isUser ? 'Voce' : 'NetGuru'}</p>
+          {isUser ? (
+            <div className="message-content">{msg.content}</div>
+          ) : (
+            <MarkdownContent content={msg.content} />
+          )}
+        </div>
       </div>
     );
   }
@@ -348,7 +373,7 @@ function ChatPage() {
 
               {/* Tool calls display */}
               {isStreaming && activeToolCalls.length > 0 && (
-                <ToolCallDisplay toolCalls={activeToolCalls} />
+                <ToolCallDisplay toolCalls={activeToolCalls} messageId={streamingMessageId ?? undefined} />
               )}
 
               {/* Streaming bubble */}
