@@ -8,18 +8,17 @@
 > **⚠️ Manutenção**: Se qualquer procedimento documentado aqui estiver desatualizado, sugira correções e atualize este arquivo.
 
 > **📝 CHECKPOINT TEMPORÁRIO (REMOVER NA PRÓXIMA SESSÃO):**
-> RAG Dual + Agent Tools implementado (Phase 3-4):
-> - EmbeddingService singleton (sentence-transformers/all-MiniLM-L6-v2)
-> - RAGService com pgvector cosine similarity (global + local)
-> - DocumentProcessor com chunking + embedding automático
-> - Agent ReAct graph: agent → should_continue → tools → agent loop
-> - Tools: search_rag_global, search_rag_local (StructuredTool)
-> - WS protocol: tool_call_start/end events + frontend ToolCallDisplay
-> - Seed script: `python -m scripts.seed_global_rag --source-dir ./data/vendor_docs/cisco --vendor cisco`
-> - Document.user_id agora nullable (NULL = global docs)
-> - Upload de arquivos texto dispara processamento em background
-> Próximo: instalar deps (`pip install sentence-transformers pymupdf langchain-text-splitters`),
-> rodar migration (Document.user_id nullable), seed RAG, testar end-to-end.
+> Phase 5-6 (Advanced Agent Tools) implementada:
+> - **ConfigParserService**: parse Cisco (ciscoconfparse) + Juniper (regex), extrai interfaces/routing/ACLs/VLANs
+> - **ConfigValidatorService**: 15 regras rule-based (security, reliability, performance)
+> - **ShowCommandParserService**: textfsm inline para 6 show commands com auto-detecção
+> - **PcapAnalyzerService**: análise scapy via asyncio.to_thread(), protocolo/top-talkers/anomalias
+> - Tools registradas: parse_config, validate_config, parse_show_commands, analyze_pcap
+> - System prompt do agent atualizado com descrição das 6 tools
+> - Frontend ToolCallDisplay com labels das 4 novas tools
+> - Settings: PCAP_MAX_PACKETS=10000, PCAP_ANALYSIS_TIMEOUT=30
+> - Todas as deps já instaladas: ciscoconfparse, textfsm, scapy
+> Próximo: testes end-to-end via WebSocket (config→parse→validate, show output→parse, PCAP→analyze).
 
 ---
 
@@ -286,8 +285,9 @@ Response JSON:
 │   │   │   └── tools/
 │   │   │       ├── __init__.py
 │   │   │       ├── rag_tools.py
-│   │   │       ├── pcap_tools.py
-│   │   │       ├── config_tools.py
+│   │   │       ├── config_tools.py          # parse_config, validate_config
+│   │   │       ├── show_command_tools.py     # parse_show_commands
+│   │   │       ├── pcap_tools.py            # analyze_pcap
 │   │   │       └── topology_tools.py
 │   │   │
 │   │   ├── api/v1/endpoints/
@@ -669,18 +669,27 @@ GET  /api/v1/agent/tools
 
 ## 🎯 Objetivos Atuais
 
-### Sprint 1-2 (Foundation) - 🚧 Em Progresso
-- [ ] Setup backend (FastAPI + PostgreSQL + Redis)
-- [ ] Setup frontend (React + Vite)
-- [ ] Auth system (JWT)
-- [ ] Basic agent setup
-- [ ] Docker Compose
+### Sprint 1-2 (Foundation) - ✅ Completo
+- [x] Setup backend (FastAPI + PostgreSQL + Redis)
+- [x] Setup frontend (React + Vite)
+- [x] Auth system (JWT)
+- [x] Basic agent setup
+- [x] Docker Compose
 
-### Sprint 3-4 (Core) - 🔜 Próximo
-- [ ] RAG Global/Local
-- [ ] Agent com RAG tools
-- [ ] Chat interface
-- [ ] WebSocket streaming
+### Sprint 3-4 (Core) - ✅ Completo
+- [x] RAG Global/Local
+- [x] Agent com RAG tools
+- [x] Chat interface
+- [x] WebSocket streaming
+
+### Sprint 5-6 (Advanced Tools) - ✅ Completo
+- [x] ConfigParserService (Cisco/Juniper)
+- [x] ConfigValidatorService (15 regras best practices)
+- [x] ShowCommandParserService (textfsm inline)
+- [x] PcapAnalyzerService (scapy + asyncio.to_thread)
+- [x] Tools registradas no agent (parse_config, validate_config, parse_show_commands, analyze_pcap)
+- [x] System prompt e frontend labels atualizados
+- [ ] Testes end-to-end via WebSocket
 
 ---
 
@@ -712,7 +721,7 @@ Você tem contexto completo do NetGuru. Use para:
 
 ---
 
-**Versão:** 1.0  
-**Última atualização:** 12 de Fevereiro de 2026  
+**Versão:** 1.0
+**Última atualização:** 13 de Fevereiro de 2026
 
 **Boa construção! 🚀🤖**

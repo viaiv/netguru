@@ -20,6 +20,7 @@ function ChatPage() {
     error,
     fetchConversations,
     createConversation,
+    deleteConversation,
     selectConversation,
     fetchMessages,
     addUserMessage,
@@ -138,6 +139,13 @@ function ChatPage() {
     }
   }
 
+  // ---- Delete conversation ----
+
+  async function handleDeleteConversation(e: React.MouseEvent, convId: string): Promise<void> {
+    e.stopPropagation();
+    await deleteConversation(convId);
+  }
+
   // ---- Render helpers ----
 
   function renderMessage(msg: IMessage) {
@@ -160,17 +168,29 @@ function ChatPage() {
 
         <div className="conversation-list">
           {conversations.map((conv) => (
-            <button
+            <div
               key={conv.id}
-              type="button"
               className={`conversation-item ${conv.id === currentConversationId ? 'conversation-item--active' : ''}`}
-              onClick={() => selectConversation(conv.id)}
             >
-              <span className="conversation-title">{conv.title}</span>
-              <span className="conversation-date">
-                {new Date(conv.updated_at).toLocaleDateString('pt-BR')}
-              </span>
-            </button>
+              <button
+                type="button"
+                className="conversation-item-body"
+                onClick={() => selectConversation(conv.id)}
+              >
+                <span className="conversation-title">{conv.title}</span>
+                <span className="conversation-date">
+                  {new Date(conv.updated_at).toLocaleDateString('pt-BR')}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="conversation-delete-btn"
+                title="Excluir conversa"
+                onClick={(e) => handleDeleteConversation(e, conv.id)}
+              >
+                &times;
+              </button>
+            </div>
           ))}
           {conversations.length === 0 && (
             <p className="chat-empty-hint">Nenhuma conversa ainda. Crie uma para comecar!</p>

@@ -54,6 +54,7 @@ interface IChatState {
   // REST actions
   fetchConversations: () => Promise<void>;
   createConversation: (title?: string) => Promise<IConversation | null>;
+  deleteConversation: (id: string) => Promise<boolean>;
   selectConversation: (id: string) => void;
   fetchMessages: (conversationId: string) => Promise<void>;
 
@@ -105,6 +106,31 @@ export const useChatStore = create<IChatState>((set, get) => ({
     } catch (err) {
       set({ error: getErrorMessage(err) });
       return null;
+    }
+  },
+
+  deleteConversation: async (id: string) => {
+    try {
+      await api.delete(`/chat/conversations/${id}`);
+      const wasCurrent = get().currentConversationId === id;
+      set((state) => ({
+        conversations: state.conversations.filter((c) => c.id !== id),
+        ...(wasCurrent
+          ? {
+              currentConversationId: null,
+              messages: [],
+              streamingContent: '',
+              streamingMessageId: null,
+              isStreaming: false,
+              activeToolCalls: [],
+            }
+          : {}),
+        error: null,
+      }));
+      return true;
+    } catch (err) {
+      set({ error: getErrorMessage(err) });
+      return false;
     }
   },
 

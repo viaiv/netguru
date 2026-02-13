@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -125,6 +125,26 @@ async def list_conversations(
     result = await db.execute(stmt)
     conversations = result.scalars().all()
     return [_build_conversation_response(conversation) for conversation in conversations]
+
+
+@router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_conversation(
+    conversation_id: UUID,
+    current_user: User = Depends(require_permissions(Permission.USERS_UPDATE_SELF)),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """
+    Delete a conversation and all its messages (cascade).
+    """
+
+    conversation = await _get_owned_conversation(
+        conversation_id=conversation_id,
+        user_id=current_user.id,
+        db=db,
+    )
+    await db.delete(conversation)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/conversations/{conversation_id}/messages", response_model=list[MessageResponse])
