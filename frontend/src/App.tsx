@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 
 import ChatPage from './pages/ChatPage';
@@ -18,6 +18,8 @@ function App() {
   const lastRefreshAt = useAuthStore((state) => state.lastRefreshAt);
   const clearAuth = useAuthStore((state) => state.clearAuth);
   const resetRefreshStatus = useAuthStore((state) => state.resetRefreshStatus);
+
+  const [railCollapsed, setRailCollapsed] = useState(false);
 
   const refreshStatusLabel = {
     idle: 'refresh idle',
@@ -91,47 +93,62 @@ function App() {
         </div>
       </header>
 
-      <div className="layout">
-        <aside className="rail">
+      <div className={`layout ${railCollapsed ? 'layout--collapsed' : ''}`}>
+        <aside className={`rail ${railCollapsed ? 'rail--collapsed' : ''}`}>
+          <button
+            type="button"
+            className="rail-toggle"
+            onClick={() => setRailCollapsed((prev) => !prev)}
+            title={railCollapsed ? 'Expandir menu' : 'Recolher menu'}
+          >
+            {railCollapsed ? '\u25B6' : '\u25C0'}
+          </button>
+
           <nav className="nav">
             <NavLink
               to="/login"
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+              title="Login"
             >
-              Login
+              {railCollapsed ? '\uD83D\uDD12' : 'Login'}
             </NavLink>
             <NavLink
               to="/register"
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+              title="Cadastro"
             >
-              Cadastro
+              {railCollapsed ? '\uD83D\uDCDD' : 'Cadastro'}
             </NavLink>
             <NavLink
               to="/chat"
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+              title="Chat"
             >
-              Chat
+              {railCollapsed ? '\uD83D\uDCAC' : 'Chat'}
             </NavLink>
             <NavLink
               to="/me"
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+              title="Perfil"
             >
-              Perfil
+              {railCollapsed ? '\uD83D\uDC64' : 'Perfil'}
             </NavLink>
           </nav>
 
-          <div className="rail-card">
-            <p className="rail-label">current route</p>
-            <p className="rail-value">{location.pathname}</p>
-            <p className="rail-help">
-              Fluxo: <code>/register</code> → <code>/login</code> → <code>/chat</code>.
-            </p>
-            {isAuthenticated ? (
-              <button type="button" className="ghost-btn" onClick={handleLogout}>
-                Encerrar sessão
-              </button>
-            ) : null}
-          </div>
+          {!railCollapsed && (
+            <div className="rail-card">
+              <p className="rail-label">current route</p>
+              <p className="rail-value">{location.pathname}</p>
+              <p className="rail-help">
+                Fluxo: <code>/register</code> → <code>/login</code> → <code>/chat</code>.
+              </p>
+              {isAuthenticated ? (
+                <button type="button" className="ghost-btn" onClick={handleLogout}>
+                  Encerrar sessão
+                </button>
+              ) : null}
+            </div>
+          )}
         </aside>
 
         <main className="panel">
