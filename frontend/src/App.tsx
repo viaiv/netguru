@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 
 import ChatPage from './pages/ChatPage';
+import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import MePage from './pages/MePage';
 import RegisterPage from './pages/RegisterPage';
@@ -48,6 +49,13 @@ function App() {
       window.removeEventListener(AUTH_LOGOUT_EVENT, handleAuthLogout);
     };
   }, [clearAuth, navigate]);
+
+  const isHomePage = location.pathname === '/home';
+
+  // Landing page — layout proprio, sem chrome/rail/panel
+  if (isHomePage) {
+    return <HomePage />;
+  }
 
   // Admin area — layout proprio, sem header/sidebar do app
   if (isAdminRoute) {
@@ -162,7 +170,7 @@ function App() {
               />
               <Route
                 path="*"
-                element={<Navigate to={isAuthenticated ? '/chat' : '/login'} replace />}
+                element={<Navigate to="/home" replace />}
               />
             </Routes>
           </div>
