@@ -601,8 +601,52 @@ select:focus {
     gap: 0;
   }
 
-  .rail {
+  .rail,
+  .rail--collapsed {
+    position: static;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--panel-strong);
+    border-bottom: 1px solid rgba(var(--ink-rgb), 0.12);
+    flex-shrink: 0;
+  }
+
+  .rail-toggle {
     display: none;
+  }
+
+  .rail-card {
+    display: none;
+  }
+
+  .nav {
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+    flex: 1;
+  }
+
+  .nav-link {
+    padding: 6px 12px;
+    font-size: 0.72rem;
+    border-radius: 8px;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .nav-link:hover {
+    transform: none;
+  }
+
+  .rail--collapsed .nav-link {
+    padding: 6px 12px;
+    font-size: 0.72rem;
+    text-align: center;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
   }
 
   .kv-grid {
@@ -995,18 +1039,62 @@ select:focus {
 @media (max-width: 960px) {
   .chat-page {
     grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
   }
 
   .chat-sidebar {
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: none;
+    border-bottom: 1px solid rgba(var(--ink-rgb), 0.10);
+    padding: 4px 8px;
+    gap: 6px;
+    max-height: none;
+  }
+
+  .chat-new-btn {
+    white-space: nowrap;
+    width: auto;
+    flex-shrink: 0;
+    padding: 5px 10px;
+    font-size: 0.74rem;
+  }
+
+  .conversation-list {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 4px;
+  }
+
+  .conversation-item {
+    min-width: 100px;
+    flex-shrink: 0;
+    padding: 4px 8px;
+    border-radius: 8px;
+  }
+
+  .conversation-title {
+    font-size: 0.72rem;
+  }
+
+  .conversation-date {
     display: none;
+  }
+
+  .conversation-delete-btn {
+    display: none !important;
   }
 
   .chat-main {
     height: 100%;
+    min-height: 0;
   }
 
   .chat-toolbar {
-    padding: 4px 12px;
+    padding: 3px 10px;
   }
 
   .chat-window {
