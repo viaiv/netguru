@@ -585,9 +585,18 @@ select:focus {
 }
 
 @media (max-width: 960px) {
+  .app-shell {
+    padding: 12px clamp(8px, 2vw, 18px);
+  }
+
   .chrome {
     align-items: flex-start;
     flex-direction: column;
+    margin-bottom: 10px;
+  }
+
+  .brand-title {
+    font-size: clamp(1.2rem, 3vw, 1.75rem);
   }
 
   .layout,
@@ -623,6 +632,14 @@ select:focus {
 
   .kv-grid {
     grid-template-columns: 1fr;
+  }
+
+  .panel {
+    border-radius: 16px;
+  }
+
+  .panel-inner {
+    padding: 8px;
   }
 }
 
@@ -1006,14 +1023,16 @@ select:focus {
     overflow-x: auto;
     border-right: none;
     border-bottom: 1px solid rgba(var(--ink-rgb), 0.14);
-    padding: 10px;
-    max-height: 120px;
+    padding: 6px 10px;
+    max-height: 54px;
   }
 
   .chat-new-btn {
     white-space: nowrap;
     width: auto;
     flex-shrink: 0;
+    padding: 6px 12px;
+    font-size: 0.78rem;
   }
 
   .conversation-list {
@@ -1023,12 +1042,50 @@ select:focus {
   }
 
   .conversation-item {
-    min-width: 140px;
+    min-width: 120px;
     flex-shrink: 0;
+  }
+
+  .conversation-title {
+    font-size: 0.78rem;
+  }
+
+  .conversation-date {
+    display: none;
   }
 
   .message-bubble {
     max-width: 92%;
+    padding: 10px 12px;
+  }
+
+  .chat-toolbar {
+    padding: 4px 12px;
+  }
+
+  .chat-window {
+    padding: 12px 10px;
+    gap: 10px;
+  }
+
+  .chat-input-area {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .chat-textarea {
+    padding: 8px 10px;
+    font-size: 0.9rem;
+  }
+
+  .chat-textarea--auto {
+    min-height: 38px;
+    max-height: 120px;
+  }
+
+  .chat-send-btn {
+    padding: 8px 14px;
+    font-size: 0.78rem;
   }
 
   .nav {
