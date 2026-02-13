@@ -111,15 +111,16 @@ class RAGService:
                 "top_k": top_k,
             }
 
+        # Usa CAST() em vez de ::vector para evitar conflito com bind params do asyncpg
         sql = text(f"""
             SELECT
                 e.chunk_text,
-                1 - (e.embedding <=> :vec::vector) AS similarity,
+                1 - (e.embedding <=> CAST(:vec AS vector)) AS similarity,
                 e.metadata
             FROM embeddings e
             WHERE {where_clause}
               AND e.embedding IS NOT NULL
-              AND 1 - (e.embedding <=> :vec::vector) >= :min_sim
+              AND 1 - (e.embedding <=> CAST(:vec AS vector)) >= :min_sim
             ORDER BY similarity DESC
             LIMIT :top_k
         """)
