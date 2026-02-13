@@ -20,8 +20,6 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
-from dotenv import load_dotenv
-
 REQUIRED_ENV_VARS: tuple[str, ...] = (
     "SECRET_KEY",
     "FERNET_KEY",
@@ -52,7 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-install",
         action="store_true",
-        help="Não reinstala requirements",
+        help="Pula atualização do pip e instalação de requirements",
     )
     parser.add_argument(
         "--skip-migrations",
@@ -67,13 +65,19 @@ def quote_command(command: Iterable[str]) -> str:
     return " ".join(shlex.quote(part) for part in command)
 
 
-def run_step(command: list[str], description: str, env: dict[str, str]) -> None:
+def run_step(
+    command: list[str],
+    description: str,
+    env: dict[str, str],
+    cwd: Path | None = None,
+) -> None:
     """Execute a command and stop the bootstrap flow on failure.
 
     Args:
         command: Command and args to execute.
         description: Human-readable description of the step.
         env: Environment variables for subprocess.
+        cwd: Working directory for the subprocess.
 
     Raises:
         SystemExit: If command execution fails.
@@ -82,7 +86,7 @@ def run_step(command: list[str], description: str, env: dict[str, str]) -> None:
     print(f"$ {quote_command(command)}")
 
     try:
-        subprocess.run(command, check=True, env=env)
+        subprocess.run(command, check=True, env=env, cwd=cwd)
     except subprocess.CalledProcessError as exc:
         raise SystemExit(
             f"\nErro ao executar '{description}' (exit code: {exc.returncode})."
@@ -133,6 +137,14 @@ def load_and_validate_env(env_file: Path) -> None:
             "Arquivo .env não encontrado em backend/. Crie a partir de .env.example antes de rodar."
         )
 
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        raise SystemExit(
+            "Pacote 'python-dotenv' não encontrado. "
+            "Instale com: pip install python-dotenv"
+        )
+
     load_dotenv(dotenv_path=env_file, override=False)
 
     missing = [key for key in REQUIRED_ENV_VARS if not os.getenv(key)]
@@ -141,7 +153,12 @@ def load_and_validate_env(env_file: Path) -> None:
         raise SystemExit(f"Variáveis obrigatórias ausentes no .env: {missing_str}")
 
 
-def validate_requirements(python_executable: Path, env: dict[str, str], requirements_file: Path) -> None:
+def validate_requirements(
+    python_executable: Path,
+    env: dict[str, str],
+    requirements_file: Path,
+    cwd: Path | None = None,
+) -> None:
     """Install and validate Python requirements."""
     if not requirements_file.exists():
         raise SystemExit("requirements.txt não encontrado em backend/.")
@@ -150,40 +167,65 @@ def validate_requirements(python_executable: Path, env: dict[str, str], requirem
         [str(python_executable), "-m", "pip", "install", "--upgrade", "pip"],
         "Atualizando pip",
         env,
+        cwd=cwd,
     )
     run_step(
         [str(python_executable), "-m", "pip", "install", "-r", str(requirements_file)],
         "Instalando requirements",
         env,
+        cwd=cwd,
     )
     run_step(
         [str(python_executable), "-m", "pip", "check"],
         "Validando compatibilidade das dependências (pip check)",
         env,
+        cwd=cwd,
     )
 
 
-def validate_and_apply_migrations(python_executable: Path, env: dict[str, str]) -> None:
+def validate_and_apply_migrations(
+    python_executable: Path,
+    env: dict[str, str],
+    cwd: Path | None = None,
+) -> None:
     """Validate migration chain and apply pending migrations."""
-    run_step(
-        [str(python_executable), "-m", "alembic", "heads"],
-        "Validando chain de migrations (heads)",
-        env,
+    # Verificar se há múltiplos heads (branch divergente)
+    heads_cmd = [str(python_executable), "-m", "alembic", "heads"]
+    print(f"\n==> Validando chain de migrations (heads)")
+    print(f"$ {quote_command(heads_cmd)}")
+    result = subprocess.run(
+        heads_cmd, capture_output=True, text=True, env=env, cwd=cwd,
     )
+    if result.returncode != 0:
+        raise SystemExit(
+            f"\nErro ao verificar alembic heads (exit code: {result.returncode}).\n"
+            f"{result.stderr.strip()}"
+        )
+    head_lines = [line for line in result.stdout.strip().splitlines() if line.strip()]
+    if len(head_lines) > 1:
+        raise SystemExit(
+            f"\nMigrations divergentes detectadas ({len(head_lines)} heads).\n"
+            f"Execute 'alembic merge heads' para resolver antes de continuar.\n"
+            f"Heads encontrados:\n{result.stdout.strip()}"
+        )
+
     run_step(
         [str(python_executable), "-m", "alembic", "current"],
         "Validando conexão e estado atual de migrations",
         env,
+        cwd=cwd,
     )
     run_step(
         [str(python_executable), "-m", "alembic", "upgrade", "head"],
         "Aplicando migrations pendentes",
         env,
+        cwd=cwd,
     )
     run_step(
         [str(python_executable), "-m", "alembic", "current"],
         "Confirmando versão após upgrade",
         env,
+        cwd=cwd,
     )
 
 
@@ -193,6 +235,7 @@ def start_dev_server(
     host: str,
     port: int,
     reload_enabled: bool,
+    cwd: Path | None = None,
 ) -> None:
     """Start Uvicorn development server."""
     uvicorn_cmd = [
@@ -212,13 +255,45 @@ def start_dev_server(
     print(f"$ {quote_command(uvicorn_cmd)}")
 
     try:
-        subprocess.run(uvicorn_cmd, check=True, env=env)
+        subprocess.run(uvicorn_cmd, check=True, env=env, cwd=cwd)
     except KeyboardInterrupt:
         print("\nServidor interrompido pelo usuário.")
     except subprocess.CalledProcessError as exc:
         raise SystemExit(
             f"Falha ao iniciar servidor de desenvolvimento (exit code: {exc.returncode})."
         ) from exc
+
+
+def resolve_port(cli_port: int | None, env_default: str = "8000") -> int:
+    """Resolve server port from CLI arg or UVICORN_PORT env var.
+
+    Args:
+        cli_port: Port passed via --port flag (takes precedence).
+        env_default: Fallback if UVICORN_PORT is not set.
+
+    Returns:
+        Validated port number.
+
+    Raises:
+        SystemExit: If port is not a valid integer or out of range.
+    """
+    if cli_port is not None:
+        port = cli_port
+    else:
+        raw = os.getenv("UVICORN_PORT", env_default)
+        try:
+            port = int(raw)
+        except ValueError:
+            raise SystemExit(
+                f"UVICORN_PORT='{raw}' não é um número válido. "
+                "Defina um inteiro entre 1 e 65535."
+            )
+
+    if not 1 <= port <= 65535:
+        raise SystemExit(
+            f"Porta {port} fora do intervalo válido (1-65535)."
+        )
+    return port
 
 
 def main() -> None:
@@ -230,21 +305,23 @@ def main() -> None:
     env_file = backend_dir / ".env"
     load_and_validate_env(env_file)
 
+    # load_dotenv() injeta variáveis do .env em os.environ.
+    # O copy() isola o env para subprocessos sem afetar o processo pai.
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
 
     requirements_file = backend_dir / "requirements.txt"
     if not args.skip_install:
-        validate_requirements(python_executable, env, requirements_file)
+        validate_requirements(python_executable, env, requirements_file, cwd=backend_dir)
     else:
         print("\n==> Pulando instalação de requirements (--skip-install)")
 
     if not args.skip_migrations:
-        validate_and_apply_migrations(python_executable, env)
+        validate_and_apply_migrations(python_executable, env, cwd=backend_dir)
     else:
         print("\n==> Pulando validação/aplicação de migrations (--skip-migrations)")
 
-    port = args.port or int(os.getenv("UVICORN_PORT", "8000"))
+    port = resolve_port(args.port)
     reload_enabled = not args.no_reload
 
     start_dev_server(
@@ -253,6 +330,7 @@ def main() -> None:
         host=args.host,
         port=port,
         reload_enabled=reload_enabled,
+        cwd=backend_dir,
     )
 
 
