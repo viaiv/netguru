@@ -24,6 +24,7 @@ export interface IMessage {
 }
 
 export interface IToolCall {
+  id: string;
   toolName: string;
   toolInput: string;
   resultPreview?: string;
@@ -211,6 +212,7 @@ export const useChatStore = create<IChatState>((set, get) => ({
 
   handleToolCallStart: (toolName: string, toolInput: string) => {
     const newToolCall: IToolCall = {
+      id: `tc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       toolName,
       toolInput,
       status: 'running',

@@ -1014,6 +1014,382 @@ select:focus {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/*  Markdown Content                                                   */
+/* ------------------------------------------------------------------ */
+
+.markdown-content {
+  font-size: 0.94rem;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4 {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  margin: 0.8em 0 0.3em;
+  line-height: 1.2;
+}
+
+.markdown-content h1 { font-size: 1.35rem; }
+.markdown-content h2 { font-size: 1.15rem; }
+.markdown-content h3 { font-size: 1.02rem; }
+.markdown-content h4 { font-size: 0.94rem; }
+
+.markdown-content p {
+  margin: 0.4em 0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin: 0.4em 0;
+  padding-left: 1.4em;
+}
+
+.markdown-content li {
+  margin: 0.15em 0;
+}
+
+.markdown-content blockquote {
+  margin: 0.6em 0;
+  padding: 0.4em 0.8em;
+  border-left: 3px solid var(--accent);
+  background: rgba(var(--accent-rgb), 0.06);
+  border-radius: 0 8px 8px 0;
+}
+
+.markdown-content blockquote p {
+  margin: 0;
+}
+
+.markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  font-size: 0.85rem;
+}
+
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid rgba(var(--ink-rgb), 0.18);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.markdown-content th {
+  background: rgba(var(--ink-rgb), 0.06);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.78rem;
+}
+
+.markdown-content a {
+  color: var(--signal);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.markdown-content a:hover {
+  text-decoration: underline;
+}
+
+.markdown-content hr {
+  border: none;
+  border-top: 1px dashed rgba(var(--ink-rgb), 0.22);
+  margin: 0.8em 0;
+}
+
+.markdown-content code {
+  font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.84em;
+  background: rgba(var(--ink-rgb), 0.08);
+  border-radius: 5px;
+  padding: 0.15em 0.35em;
+}
+
+.markdown-content > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-content > *:last-child {
+  margin-bottom: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Code Block                                                         */
+/* ------------------------------------------------------------------ */
+
+.code-block {
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 0.6em 0;
+  border: 1px solid rgba(var(--ink-rgb), 0.18);
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: #2d2d2d;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #aaa;
+}
+
+.code-block-copy {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: #aaa;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.code-block-copy:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ddd;
+}
+
+.code-block-copy--copied {
+  color: var(--accent) !important;
+}
+
+.code-block-body {
+  background: #1e1e1e;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: #d4d4d4;
+}
+
+.code-block-body code {
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* highlight.js token colors */
+.code-block-body .hljs-keyword,
+.code-block-body .hljs-selector-tag,
+.code-block-body .hljs-built_in { color: var(--accent); }
+
+.code-block-body .hljs-string,
+.code-block-body .hljs-attr { color: #a8e06c; }
+
+.code-block-body .hljs-comment,
+.code-block-body .hljs-quote { color: #6a9955; font-style: italic; }
+
+.code-block-body .hljs-number,
+.code-block-body .hljs-literal { color: var(--signal); }
+
+.code-block-body .hljs-title,
+.code-block-body .hljs-section { color: #dcdcaa; }
+
+.code-block-body .hljs-type,
+.code-block-body .hljs-name { color: #4ec9b0; }
+
+.code-block-body .hljs-variable,
+.code-block-body .hljs-params { color: #9cdcfe; }
+
+.code-block-body .hljs-meta { color: #c586c0; }
+
+/* ------------------------------------------------------------------ */
+/*  Tool Call Card (expandable)                                        */
+/* ------------------------------------------------------------------ */
+
+.tool-call-card--expandable {
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+
+.tool-call-card--expandable:hover {
+  background: rgba(var(--signal-rgb), 0.1);
+}
+
+.tool-call-chevron {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  transition: transform 200ms ease;
+  user-select: none;
+}
+
+.tool-call-chevron--open {
+  transform: rotate(90deg);
+}
+
+.tool-call-details {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(var(--signal-rgb), 0.18);
+}
+
+.tool-call-detail-label {
+  margin: 0 0 4px;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.tool-call-detail-pre {
+  margin: 0 0 10px;
+  font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  background: rgba(var(--ink-rgb), 0.06);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.tool-call-detail-pre:last-child {
+  margin-bottom: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Auto-resize Textarea                                               */
+/* ------------------------------------------------------------------ */
+
+.chat-textarea--auto {
+  min-height: 42px;
+  max-height: 200px;
+  overflow-y: auto;
+  transition: height 80ms ease;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Empty State                                                        */
+/* ------------------------------------------------------------------ */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  gap: 16px;
+  padding: 40px 24px;
+  animation: rise-in 0.5s ease both;
+}
+
+.empty-state-title {
+  margin: 0;
+  font-family: 'Oswald', sans-serif;
+  font-size: clamp(1.6rem, 2.5vw, 2.4rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.empty-state-subtitle {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  max-width: 420px;
+  line-height: 1.5;
+}
+
+.empty-state-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 8px;
+  max-width: 520px;
+}
+
+.empty-state-chip {
+  border: 1px solid rgba(var(--accent-rgb), 0.36);
+  background: rgba(var(--accent-rgb), 0.08);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background-color 140ms ease, transform 140ms ease;
+}
+
+.empty-state-chip:hover {
+  background: rgba(var(--accent-rgb), 0.18);
+  transform: translateY(-1px);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Connection Status (reconnecting)                                   */
+/* ------------------------------------------------------------------ */
+
+.ws-status--reconnecting::before {
+  background: #e6a817;
+  animation: pulse-warning 1.2s infinite;
+}
+
+.ws-status-retry {
+  border: none;
+  background: transparent;
+  color: var(--signal);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background-color 140ms ease;
+}
+
+.ws-status-retry:hover {
+  background: rgba(var(--signal-rgb), 0.1);
+}
+
+.ws-status-attempt {
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+
+@keyframes pulse-warning {
+  0% {
+    box-shadow: 0 0 0 0 rgba(230, 168, 23, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(230, 168, 23, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(230, 168, 23, 0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

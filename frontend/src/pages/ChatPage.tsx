@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import AutoResizeTextarea from '../components/chat/AutoResizeTextarea';
+import ConnectionStatus from '../components/chat/ConnectionStatus';
+import EmptyState from '../components/chat/EmptyState';
+import MarkdownContent from '../components/chat/MarkdownContent';
 import ToolCallDisplay from '../components/chat/ToolCallDisplay';
-import { ChatWebSocket, type IWebSocketEvent } from '../services/websocket';
+import { useWebSocketReconnect } from '../hooks/useWebSocketReconnect';
+import type { IWebSocketEvent } from '../services/websocket';
 import { useChatStore, type IMessage } from '../stores/chatStore';
 
 /* ------------------------------------------------------------------ */
@@ -16,7 +21,6 @@ function ChatPage() {
     isStreaming,
     streamingContent,
     activeToolCalls,
-    isConnected,
     error,
     fetchConversations,
     createConversation,
@@ -34,7 +38,6 @@ function ChatPage() {
     clearError,
   } = useChatStore();
 
-  const wsRef = useRef<ChatWebSocket | null>(null);
   const chatWindowRef = useRef<HTMLDivElement>(null);
   const [inputValue, setInputValue] = useState('');
 
@@ -68,45 +71,38 @@ function ChatPage() {
     [handleStreamStart, handleStreamChunk, handleStreamEnd, handleToolCallStart, handleToolCallEnd, handleWsError],
   );
 
+  // ---- WebSocket with auto-reconnect ----
+
+  const { isConnected, isReconnecting, reconnectAttempt, sendMessage, manualRetry } =
+    useWebSocketReconnect({
+      conversationId: currentConversationId,
+      onEvent: onWsEvent,
+    });
+
+  // Sync connection state to store
+  useEffect(() => {
+    setConnected(isConnected);
+  }, [isConnected, setConnected]);
+
   // ---- Load conversations on mount ----
 
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
 
-  // ---- Connect/disconnect WS when conversation changes ----
+  // ---- Fetch messages when conversation changes ----
 
   useEffect(() => {
-    if (!currentConversationId) {
-      wsRef.current?.disconnect();
-      setConnected(false);
-      return;
+    if (currentConversationId) {
+      fetchMessages(currentConversationId);
     }
+  }, [currentConversationId, fetchMessages]);
 
-    // Fetch history
-    fetchMessages(currentConversationId);
-
-    // Connect WS
-    const ws = new ChatWebSocket(onWsEvent);
-    ws.connect(
-      currentConversationId,
-      () => setConnected(true),
-      () => setConnected(false),
-    );
-    wsRef.current = ws;
-
-    return () => {
-      ws.disconnect();
-      setConnected(false);
-    };
-  }, [currentConversationId, fetchMessages, onWsEvent, setConnected]);
-
-  // ---- Auto-scroll (dentro do container, sem mover a página) ----
+  // ---- Auto-scroll (dentro do container, sem mover a pagina) ----
 
   useEffect(() => {
     const el = chatWindowRef.current;
     if (!el) return;
-    // Aguarda o DOM renderizar antes de scrollar
     requestAnimationFrame(() => {
       el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     });
@@ -119,7 +115,7 @@ function ChatPage() {
     if (!text || isStreaming || !isConnected) return;
 
     addUserMessage(text);
-    wsRef.current?.sendMessage(text);
+    sendMessage(text);
     setInputValue('');
   }
 
@@ -139,6 +135,19 @@ function ChatPage() {
     }
   }
 
+  // ---- Suggestion from EmptyState ----
+
+  async function handleSuggestion(text: string): Promise<void> {
+    const conv = await createConversation();
+    if (conv) {
+      selectConversation(conv.id);
+      // Aguardar proximo tick para que o WS conecte
+      setTimeout(() => {
+        setInputValue(text);
+      }, 100);
+    }
+  }
+
   // ---- Delete conversation ----
 
   async function handleDeleteConversation(e: React.MouseEvent, convId: string): Promise<void> {
@@ -153,7 +162,11 @@ function ChatPage() {
     return (
       <div key={msg.id} className={`message-bubble ${isUser ? 'message-bubble--user' : 'message-bubble--assistant'}`}>
         <p className="message-role">{isUser ? 'Voce' : 'NetGuru'}</p>
-        <div className="message-content">{msg.content}</div>
+        {isUser ? (
+          <div className="message-content">{msg.content}</div>
+        ) : (
+          <MarkdownContent content={msg.content} />
+        )}
       </div>
     );
   }
@@ -201,19 +214,17 @@ function ChatPage() {
       {/* ---- Main chat area ---- */}
       <section className="chat-main">
         {!currentConversationId ? (
-          <div className="chat-placeholder">
-            <h2 className="view-title">NetGuru Chat</h2>
-            <p className="view-subtitle">
-              Selecione ou crie uma conversa para comecar.
-            </p>
-          </div>
+          <EmptyState onSuggestion={handleSuggestion} />
         ) : (
           <>
             {/* Connection status */}
             <div className="chat-toolbar">
-              <span className={`ws-status ${isConnected ? 'ws-status--online' : 'ws-status--offline'}`}>
-                {isConnected ? 'Conectado' : 'Desconectado'}
-              </span>
+              <ConnectionStatus
+                isConnected={isConnected}
+                isReconnecting={isReconnecting}
+                reconnectAttempt={reconnectAttempt}
+                onRetry={manualRetry}
+              />
             </div>
 
             {/* Messages */}
@@ -229,10 +240,8 @@ function ChatPage() {
               {isStreaming && streamingContent && (
                 <div className="message-bubble message-bubble--assistant">
                   <p className="message-role">NetGuru</p>
-                  <div className="message-content">
-                    {streamingContent}
-                    <span className="typing-cursor" />
-                  </div>
+                  <MarkdownContent content={streamingContent} isStreaming />
+                  <span className="typing-cursor" />
                 </div>
               )}
 
@@ -261,14 +270,13 @@ function ChatPage() {
 
             {/* Input area */}
             <div className="chat-input-area">
-              <textarea
-                className="chat-textarea"
-                rows={2}
+              <AutoResizeTextarea
                 placeholder={isConnected ? 'Digite sua mensagem...' : 'Aguardando conexao...'}
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 disabled={!isConnected || isStreaming}
+                maxRows={8}
               />
               <button
                 type="button"
