@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.workers.celery_app import celery_app
@@ -16,6 +17,18 @@ logger = logging.getLogger(__name__)
 
 # Extensoes que podem ser lidas como texto puro
 TEXT_EXTENSIONS = {"txt", "conf", "cfg", "log", "md"}
+
+
+def _is_r2_path(storage_path: str) -> bool:
+    """Verifica se o caminho aponta para objeto no R2 (Cloudflare).
+
+    Args:
+        storage_path: Caminho de armazenamento do documento.
+
+    Returns:
+        True se for caminho relativo com prefixo 'uploads/' (padrao R2).
+    """
+    return storage_path.startswith("uploads/") and not Path(storage_path).is_absolute()
 
 
 @celery_app.task(
@@ -62,7 +75,7 @@ def process_document(document_id: str) -> dict:
         db.flush()
 
         try:
-            raw_text = _read_file(document.storage_path, document.file_type)
+            raw_text = _read_file(document.storage_path, document.file_type, db=db)
             chunks = _chunk_text(raw_text)
 
             if not chunks:
@@ -106,8 +119,41 @@ def process_document(document_id: str) -> dict:
             raise
 
 
-def _read_file(storage_path: str, file_type: str) -> str:
-    """Le conteudo do arquivo como texto."""
+def _read_file(storage_path: str, file_type: str, db: Session | None = None) -> str:
+    """Le conteudo do arquivo como texto (disco local ou R2).
+
+    Args:
+        storage_path: Caminho do arquivo (local absoluto ou chave R2 relativa).
+        file_type: Tipo do arquivo (ex: 'pdf', 'txt', 'conf').
+        db: Sessao sync do banco, obrigatoria para arquivos no R2.
+
+    Returns:
+        Conteudo textual do arquivo.
+
+    Raises:
+        RuntimeError: Se arquivo estiver no R2 e db nao for fornecido.
+    """
+    if _is_r2_path(storage_path):
+        from app.services.r2_storage_service import R2StorageService
+
+        if db is None:
+            raise RuntimeError("db session required for R2 storage")
+
+        r2 = R2StorageService.from_settings_sync(db)
+
+        suffix = f".{file_type}" if file_type else Path(storage_path).suffix
+        if suffix and not suffix.startswith("."):
+            suffix = f".{suffix}"
+
+        tmp_path = r2.download_to_tempfile(storage_path, suffix)
+        try:
+            if file_type == "pdf" or tmp_path.suffix.lower() == ".pdf":
+                return _read_pdf(tmp_path)
+            return tmp_path.read_text(encoding="utf-8", errors="replace")
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    # Arquivo local — logica original
     path = Path(storage_path)
 
     if file_type == "pdf" or path.suffix.lower() == ".pdf":

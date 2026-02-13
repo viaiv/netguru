@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import redis
 from sqlalchemy import select, delete
@@ -20,21 +21,60 @@ from app.workers.celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 
+def _is_r2_path(storage_path: str) -> bool:
+    """Verifica se o caminho corresponde a um objeto no R2 (relativo, prefixo uploads/)."""
+    return storage_path.startswith("uploads/") and not Path(storage_path).is_absolute()
+
+
 @celery_app.task(name="app.workers.tasks.maintenance_tasks.cleanup_orphan_uploads")
 def cleanup_orphan_uploads() -> dict:
     """
-    Remove documentos com status 'uploaded' ha mais de ORPHAN_UPLOAD_AGE_HOURS.
+    Remove documentos orfaos e pendentes de upload.
 
-    Deleta o arquivo do disco e o registro do banco.
+    1. Documentos com status 'pending_upload' ha mais de 1 hora.
+    2. Documentos com status 'uploaded' ha mais de ORPHAN_UPLOAD_AGE_HOURS.
+
+    Suporta exclusao tanto de arquivos locais quanto de objetos no R2.
     """
     from app.core.database_sync import get_sync_db
     from app.models.document import Document
     from app.services.file_storage import delete_stored_file
+    from app.services.r2_storage_service import R2NotConfiguredError, R2StorageService
 
-    cutoff = datetime.utcnow() - timedelta(hours=settings.ORPHAN_UPLOAD_AGE_HOURS)
     removed = 0
+    pending_removed = 0
+    r2: R2StorageService | None = None
 
     with get_sync_db() as db:
+        # --- 1) pending_upload docs (1 hour cutoff) ---
+        pending_cutoff = datetime.utcnow() - timedelta(hours=1)
+        pending_stmt = select(Document).where(
+            Document.status == "pending_upload",
+            Document.created_at < pending_cutoff,
+        )
+        pending_docs = db.execute(pending_stmt).scalars().all()
+
+        for doc in pending_docs:
+            if doc.storage_path and _is_r2_path(doc.storage_path):
+                try:
+                    if r2 is None:
+                        r2 = R2StorageService.from_settings_sync(db)
+                    r2.delete_object(doc.storage_path)
+                except R2NotConfiguredError:
+                    logger.warning(
+                        "R2 nao configurado, pulando exclusao do objeto: %s",
+                        doc.storage_path,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Falha ao deletar objeto R2 (pending): %s", doc.storage_path
+                    )
+
+            db.delete(doc)
+            pending_removed += 1
+
+        # --- 2) uploaded orphan docs (existing logic, with R2 support) ---
+        cutoff = datetime.utcnow() - timedelta(hours=settings.ORPHAN_UPLOAD_AGE_HOURS)
         stmt = select(Document).where(
             Document.status == "uploaded",
             Document.created_at < cutoff,
@@ -43,15 +83,29 @@ def cleanup_orphan_uploads() -> dict:
 
         for doc in orphans:
             try:
-                delete_stored_file(doc.storage_path)
+                if _is_r2_path(doc.storage_path):
+                    if r2 is None:
+                        r2 = R2StorageService.from_settings_sync(db)
+                    r2.delete_object(doc.storage_path)
+                else:
+                    delete_stored_file(doc.storage_path)
+            except R2NotConfiguredError:
+                logger.warning(
+                    "R2 nao configurado, pulando exclusao do objeto: %s",
+                    doc.storage_path,
+                )
             except Exception:
                 logger.warning("Falha ao deletar arquivo: %s", doc.storage_path)
 
             db.delete(doc)
             removed += 1
 
-    logger.info("cleanup_orphan_uploads: %d documentos removidos", removed)
-    return {"removed": removed}
+    logger.info(
+        "cleanup_orphan_uploads: %d orfaos removidos, %d pending removidos",
+        removed,
+        pending_removed,
+    )
+    return {"removed": removed, "pending_removed": pending_removed}
 
 
 @celery_app.task(name="app.workers.tasks.maintenance_tasks.cleanup_expired_tokens")

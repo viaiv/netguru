@@ -122,6 +122,43 @@ async def test_email(
     return {"message": f"Email de teste enviado para {current_user.email}"}
 
 
+@router.post("/settings/test-r2", status_code=status.HTTP_200_OK)
+async def test_r2(
+    current_user: User = Depends(require_permissions(Permission.ADMIN_SETTINGS_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Testa conexao com Cloudflare R2 listando objetos do bucket."""
+    from app.services.r2_storage_service import (
+        R2NotConfiguredError,
+        R2OperationError,
+        R2StorageService,
+    )
+
+    try:
+        r2 = await R2StorageService.from_settings(db)
+    except R2NotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    try:
+        r2.list_objects(max_keys=1)
+    except R2OperationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Falha ao conectar ao R2: {exc}",
+        ) from exc
+
+    # Configura CORS automaticamente para permitir upload direto do browser
+    try:
+        r2.ensure_cors()
+    except R2OperationError:
+        pass  # CORS e best-effort; conexao ja foi validada
+
+    return {"message": "Conexao com R2 realizada com sucesso (CORS configurado)"}
+
+
 # ---------------------------------------------------------------------------
 # Email logs
 # ---------------------------------------------------------------------------

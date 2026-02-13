@@ -17,7 +17,7 @@ from app.core.security import decrypt_api_key, encrypt_api_key
 from app.models.system_setting import SystemSetting
 
 # Keys that must always be stored encrypted
-ENCRYPTED_KEYS = frozenset({"mailtrap_api_key"})
+ENCRYPTED_KEYS = frozenset({"mailtrap_api_key", "r2_access_key_id", "r2_secret_access_key"})
 
 
 class SystemSettingsService:

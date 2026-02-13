@@ -264,6 +264,11 @@ export async function testEmail(): Promise<{ message: string }> {
   return r.data;
 }
 
+export async function testR2(): Promise<{ message: string }> {
+  const r = await api.post<{ message: string }>('/admin/settings/test-r2');
+  return r.data;
+}
+
 // ---------------------------------------------------------------------------
 // Email Logs
 // ---------------------------------------------------------------------------

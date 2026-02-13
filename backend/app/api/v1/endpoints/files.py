@@ -4,11 +4,12 @@ File upload and management endpoints.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, status
 from fastapi import UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,11 +20,14 @@ from app.core.rbac import Permission
 from app.models.document import Document
 from app.models.user import User
 from app.schemas.document import (
+    ConfirmUploadRequest,
     FileDetailResponse,
     FileItemResponse,
     FileListResponse,
     FilePagination,
     FileUploadResponse,
+    PresignUploadRequest,
+    PresignUploadResponse,
 )
 from app.services.file_storage import (
     FileStorageError,
@@ -32,6 +36,11 @@ from app.services.file_storage import (
     ensure_extension_allowed,
     persist_uploaded_file,
     resolve_storage_path,
+)
+from app.services.r2_storage_service import (
+    R2NotConfiguredError,
+    R2OperationError,
+    R2StorageService,
 )
 from app.services.usage_tracking_service import UsageTrackingService
 
@@ -65,6 +74,11 @@ EXTENSION_DEFAULT_FILE_TYPE = {
     "pdf": "pdf",
     "md": "md",
 }
+
+
+def _is_r2_path(storage_path: str) -> bool:
+    """Retorna True se o storage_path e uma chave R2 (nao caminho absoluto)."""
+    return storage_path.startswith("uploads/") and not Path(storage_path).is_absolute()
 
 
 def _build_file_item(document: Document) -> FileItemResponse:
@@ -120,6 +134,155 @@ async def _get_owned_document(
             detail="File not found",
         )
     return document
+
+
+# ---------------------------------------------------------------------------
+# Presigned upload (R2)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/presign", response_model=PresignUploadResponse, status_code=status.HTTP_201_CREATED)
+async def presign_upload(
+    body: PresignUploadRequest,
+    current_user: User = Depends(require_permissions(Permission.USERS_UPDATE_SELF)),
+    db: AsyncSession = Depends(get_db),
+) -> PresignUploadResponse:
+    """
+    Gera URL presigned para upload direto ao R2.
+
+    Cria documento com status 'pending_upload'. O frontend faz PUT na URL
+    retornada e depois chama POST /files/confirm.
+    """
+    try:
+        extension = ensure_extension_allowed(body.filename)
+    except FileStorageError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    max_size_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
+    if body.file_size_bytes > max_size_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File exceeds limit of {settings.MAX_FILE_SIZE_MB} MB",
+        )
+
+    resolved_file_type = _resolve_file_type(body.file_type, extension)
+
+    try:
+        r2 = await R2StorageService.from_settings(db)
+    except R2NotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    object_key = R2StorageService.generate_object_key(current_user.id, extension)
+    expires_in = 600
+
+    try:
+        presigned_url = r2.generate_presigned_upload_url(
+            object_key=object_key,
+            content_type=body.content_type,
+            expires_in=expires_in,
+        )
+    except R2OperationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+    document = Document(
+        user_id=current_user.id,
+        filename=object_key.rsplit("/", 1)[-1],
+        original_filename=body.filename,
+        file_type=resolved_file_type,
+        file_size_bytes=body.file_size_bytes,
+        storage_path=object_key,
+        mime_type=body.content_type,
+        status="pending_upload",
+        document_metadata=None,
+    )
+    db.add(document)
+    await db.commit()
+    await db.refresh(document)
+
+    return PresignUploadResponse(
+        document_id=document.id,
+        presigned_url=presigned_url,
+        object_key=object_key,
+        expires_in=expires_in,
+    )
+
+
+@router.post("/confirm", response_model=FileUploadResponse)
+async def confirm_upload(
+    body: ConfirmUploadRequest,
+    current_user: User = Depends(require_permissions(Permission.USERS_UPDATE_SELF)),
+    db: AsyncSession = Depends(get_db),
+) -> FileUploadResponse:
+    """
+    Confirma que o upload direto ao R2 foi concluido.
+
+    Verifica o objeto no R2 via HEAD, atualiza status para 'uploaded'
+    e despacha processamento Celery se aplicavel.
+    """
+    document = await _get_owned_document(
+        file_id=body.document_id, user_id=current_user.id, db=db,
+    )
+
+    if document.status != "pending_upload":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Document status is '{document.status}', expected 'pending_upload'",
+        )
+
+    try:
+        r2 = await R2StorageService.from_settings(db)
+        metadata = r2.head_object(document.storage_path)
+    except R2NotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except R2OperationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Arquivo nao encontrado no R2: {exc}",
+        ) from exc
+
+    # Atualiza tamanho real do arquivo se diferente
+    actual_size = metadata.get("content_length", document.file_size_bytes)
+    document.file_size_bytes = actual_size
+    document.status = "uploaded"
+    await db.commit()
+    await db.refresh(document)
+
+    # Track usage
+    await UsageTrackingService.increment_uploads(db, current_user.id)
+    await db.commit()
+
+    # Despacha processamento para Celery worker
+    extension = Path(document.original_filename).suffix.lower().lstrip(".")
+    if extension in PROCESSABLE_EXTENSIONS:
+        from app.workers.tasks.document_tasks import process_document
+
+        process_document.delay(str(document.id))
+
+    return FileUploadResponse(
+        id=document.id,
+        filename=document.original_filename,
+        file_type=document.file_type,
+        file_size_bytes=document.file_size_bytes,
+        status=document.status,
+        created_at=document.created_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Legacy upload (local disk — mantido para compatibilidade)
+# ---------------------------------------------------------------------------
 
 
 @router.post("/upload", response_model=FileUploadResponse, status_code=status.HTTP_201_CREATED)
@@ -270,17 +433,36 @@ async def get_file(
     )
 
 
-@router.get("/{file_id}/download")
+@router.get("/{file_id}/download", response_model=None)
 async def download_file(
     file_id: UUID,
     current_user: User = Depends(require_permissions(Permission.USERS_READ_SELF)),
     db: AsyncSession = Depends(get_db),
-) -> FileResponse:
+) -> FileResponse | JSONResponse:
     """
     Download original file content for a user-owned file.
+
+    Para arquivos no R2, retorna JSON com URL presigned de download.
+    Para arquivos locais, retorna FileResponse.
     """
 
     document = await _get_owned_document(file_id=file_id, user_id=current_user.id, db=db)
+
+    if _is_r2_path(document.storage_path):
+        try:
+            r2 = await R2StorageService.from_settings(db)
+            download_url = r2.generate_presigned_download_url(document.storage_path)
+        except R2NotConfiguredError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(exc),
+            ) from exc
+        except R2OperationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=str(exc),
+            ) from exc
+        return JSONResponse({"download_url": download_url})
 
     try:
         path = resolve_storage_path(document.storage_path)
@@ -319,10 +501,16 @@ async def delete_file(
     await db.delete(document)
     await db.commit()
 
-    try:
-        delete_stored_file(storage_path)
-    except FileStorageError:
-        # Record deletion must succeed even if file is already missing on disk.
-        pass
+    if _is_r2_path(storage_path):
+        try:
+            r2 = await R2StorageService.from_settings(db)
+            r2.delete_object(storage_path)
+        except (R2NotConfiguredError, R2OperationError):
+            logger.warning("Falha ao deletar objeto R2: %s", storage_path)
+    else:
+        try:
+            delete_stored_file(storage_path)
+        except FileStorageError:
+            pass
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

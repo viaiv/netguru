@@ -3,10 +3,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import AutoResizeTextarea from '../components/chat/AutoResizeTextarea';
 import ConnectionStatus from '../components/chat/ConnectionStatus';
 import EmptyState from '../components/chat/EmptyState';
+import FileAttachmentChip from '../components/chat/FileAttachmentChip';
 import MarkdownContent from '../components/chat/MarkdownContent';
 import ToolCallDisplay from '../components/chat/ToolCallDisplay';
 import { useMobile } from '../hooks/useMediaQuery';
 import { useWebSocketReconnect } from '../hooks/useWebSocketReconnect';
+import { ALLOWED_EXTENSIONS, uploadFile, validateFile } from '../services/fileApi';
 import type { IWebSocketEvent } from '../services/websocket';
 import { useChatStore, type IMessage } from '../stores/chatStore';
 
@@ -43,6 +45,13 @@ function ChatPage() {
   const [inputValue, setInputValue] = useState('');
   const isMobile = useMobile();
   const [showSidebar, setShowSidebar] = useState(false);
+
+  // ---- File attachment state ----
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // ---- WS event handler ----
 
@@ -111,12 +120,72 @@ function ChatPage() {
     });
   }, [messages, streamingContent, activeToolCalls]);
 
+  // ---- File attachment handlers ----
+
+  function handleAttachClick(): void {
+    fileInputRef.current?.click();
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>): void {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Reset input so the same file can be re-selected
+    e.target.value = '';
+
+    const validationError = validateFile(file);
+    if (validationError) {
+      setAttachedFile(file);
+      setUploadError(validationError);
+      return;
+    }
+
+    setAttachedFile(file);
+    setUploadProgress(null);
+    setUploadError(null);
+  }
+
+  function handleRemoveFile(): void {
+    setAttachedFile(null);
+    setUploadProgress(null);
+    setUploadError(null);
+  }
+
   // ---- Send message ----
 
-  function handleSend(): void {
+  async function handleSend(): Promise<void> {
     const text = inputValue.trim();
-    if (!text || isStreaming || !isConnected) return;
+    const hasFile = attachedFile !== null && uploadError === null;
 
+    if ((!text && !hasFile) || isStreaming || !isConnected) return;
+
+    if (hasFile && attachedFile) {
+      try {
+        setUploadProgress(0);
+        const result = await uploadFile(attachedFile, (progress) => {
+          setUploadProgress(progress.percentage);
+        });
+
+        const fileLabel = `[Arquivo anexado: ${result.filename} (${result.file_type}, ${result.id})]`;
+        const fullMessage = text ? `${fileLabel}\n${text}` : fileLabel;
+
+        addUserMessage(fullMessage);
+        sendMessage(fullMessage);
+
+        // Reset file + input
+        setAttachedFile(null);
+        setUploadProgress(null);
+        setUploadError(null);
+        setInputValue('');
+      } catch (err) {
+        setUploadProgress(null);
+        const msg = err instanceof Error ? err.message : 'Falha no upload';
+        setUploadError(msg);
+      }
+      return;
+    }
+
+    // Text-only message
     addUserMessage(text);
     sendMessage(text);
     setInputValue('');
@@ -164,6 +233,15 @@ function ChatPage() {
     selectConversation(convId);
     if (isMobile) setShowSidebar(false);
   }
+
+  // ---- Derived state ----
+
+  const isUploading = uploadProgress !== null && uploadProgress < 100;
+  const canSend =
+    isConnected &&
+    !isStreaming &&
+    !isUploading &&
+    (!!inputValue.trim() || (attachedFile !== null && uploadError === null));
 
   // ---- Render helpers ----
 
@@ -305,8 +383,40 @@ function ChatPage() {
               <div />
             </div>
 
+            {/* File attachment preview */}
+            {attachedFile && (
+              <div className="chat-input-attachment">
+                <FileAttachmentChip
+                  file={attachedFile}
+                  uploadProgress={uploadProgress}
+                  uploadError={uploadError}
+                  onRemove={handleRemoveFile}
+                />
+              </div>
+            )}
+
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              style={{ display: 'none' }}
+              accept={ALLOWED_EXTENSIONS.join(',')}
+              onChange={handleFileChange}
+            />
+
             {/* Input area */}
             <div className="chat-input-area">
+              <button
+                type="button"
+                className="chat-attach-btn"
+                onClick={handleAttachClick}
+                disabled={!isConnected || isStreaming || attachedFile !== null}
+                title="Anexar arquivo"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                </svg>
+              </button>
               <AutoResizeTextarea
                 placeholder={isConnected ? 'Digite sua mensagem...' : 'Aguardando conexao...'}
                 value={inputValue}
@@ -319,7 +429,7 @@ function ChatPage() {
                 type="button"
                 className="btn btn-primary chat-send-btn"
                 onClick={handleSend}
-                disabled={!isConnected || isStreaming || !inputValue.trim()}
+                disabled={!canSend}
               >
                 Enviar
               </button>

@@ -1,46 +1,100 @@
 /**
- * AdminSettingsPage — gerencia configuracoes do sistema (Mailtrap email).
+ * AdminSettingsPage — gerencia configuracoes do sistema com abas.
  */
 import { FormEvent, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { getErrorMessage } from '../../services/api';
-import { testEmail, upsertSetting } from '../../services/adminApi';
+import { testEmail, testR2, upsertSetting } from '../../services/adminApi';
 import { useAdminStore } from '../../stores/adminStore';
 
-/** As 4 settings de email que gerenciamos. */
-const EMAIL_SETTINGS_KEYS = [
+// ---------------------------------------------------------------------------
+//  Tab definitions
+// ---------------------------------------------------------------------------
+
+type SettingDef = {
+  key: string;
+  label: string;
+  description: string;
+  type: 'text' | 'password' | 'toggle';
+};
+
+const TABS = [
+  { id: 'email', label: 'Email' },
+  { id: 'cloudflare', label: 'Cloudflare R2' },
+] as const;
+
+type TabId = (typeof TABS)[number]['id'];
+
+const EMAIL_SETTINGS_KEYS: SettingDef[] = [
   {
     key: 'email_enabled',
     label: 'Email habilitado',
     description: 'Ativar envio de emails transacionais',
-    type: 'toggle' as const,
+    type: 'toggle',
   },
   {
     key: 'mailtrap_api_key',
     label: 'Mailtrap API Key',
     description: 'Token da API do Mailtrap (Sending)',
-    type: 'password' as const,
+    type: 'password',
   },
   {
     key: 'mailtrap_sender_email',
     label: 'Email do remetente',
     description: 'Endereco de email usado como remetente',
-    type: 'text' as const,
+    type: 'text',
   },
   {
     key: 'mailtrap_sender_name',
     label: 'Nome do remetente',
     description: 'Nome exibido como remetente dos emails',
-    type: 'text' as const,
+    type: 'text',
   },
 ];
 
+const R2_SETTINGS_KEYS: SettingDef[] = [
+  {
+    key: 'r2_account_id',
+    label: 'Account ID',
+    description: 'Account ID da Cloudflare',
+    type: 'text',
+  },
+  {
+    key: 'r2_access_key_id',
+    label: 'Access Key ID',
+    description: 'Chave de acesso R2 (criptografada)',
+    type: 'password',
+  },
+  {
+    key: 'r2_secret_access_key',
+    label: 'Secret Access Key',
+    description: 'Chave secreta R2 (criptografada)',
+    type: 'password',
+  },
+  {
+    key: 'r2_bucket_name',
+    label: 'Bucket Name',
+    description: 'Nome do bucket no Cloudflare R2',
+    type: 'text',
+  },
+];
+
+// ---------------------------------------------------------------------------
+//  Component
+// ---------------------------------------------------------------------------
+
 function AdminSettingsPage() {
   const { settings, settingsLoading, loadSettings } = useAdminStore();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const activeTab: TabId =
+    (searchParams.get('tab') as TabId) || 'email';
 
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testingR2, setTestingR2] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,7 +102,6 @@ function AdminSettingsPage() {
     loadSettings();
   }, [loadSettings]);
 
-  // Sync form values from loaded settings
   useEffect(() => {
     const values: Record<string, string> = {};
     for (const s of settings) {
@@ -56,6 +109,12 @@ function AdminSettingsPage() {
     }
     setFormValues(values);
   }, [settings]);
+
+  function switchTab(tab: TabId): void {
+    setMessage(null);
+    setError(null);
+    setSearchParams({ tab });
+  }
 
   function getValue(key: string): string {
     return formValues[key] ?? '';
@@ -69,6 +128,10 @@ function AdminSettingsPage() {
     return settings.some((s) => s.key === key && s.value !== '');
   }
 
+  function currentKeys(): SettingDef[] {
+    return activeTab === 'email' ? EMAIL_SETTINGS_KEYS : R2_SETTINGS_KEYS;
+  }
+
   async function handleSave(event: FormEvent): Promise<void> {
     event.preventDefault();
     setSaving(true);
@@ -76,14 +139,12 @@ function AdminSettingsPage() {
     setMessage(null);
 
     try {
-      for (const def of EMAIL_SETTINGS_KEYS) {
+      for (const def of currentKeys()) {
         const val = formValues[def.key];
-        // Skip empty password fields (dont overwrite existing encrypted value)
         if (def.type === 'password' && !val && isConfigured(def.key)) {
           continue;
         }
-        const desc = def.description;
-        await upsertSetting(def.key, { value: val ?? '', description: desc });
+        await upsertSetting(def.key, { value: val ?? '', description: def.description });
       }
       setMessage('Configuracoes salvas com sucesso');
       await loadSettings();
@@ -98,7 +159,6 @@ function AdminSettingsPage() {
     setTesting(true);
     setError(null);
     setMessage(null);
-
     try {
       const result = await testEmail();
       setMessage(result.message);
@@ -108,6 +168,69 @@ function AdminSettingsPage() {
       setTesting(false);
     }
   }
+
+  async function handleTestR2(): Promise<void> {
+    setTestingR2(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await testR2();
+      setMessage(result.message);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setTestingR2(false);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  //  Field renderer
+  // ---------------------------------------------------------------------------
+
+  function renderField(def: SettingDef) {
+    return (
+      <div className="field" key={def.key} style={{ marginBottom: 16 }}>
+        <label className="field-label" htmlFor={def.key}>
+          {def.label}
+        </label>
+
+        {def.type === 'toggle' ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              id={def.key}
+              type="checkbox"
+              checked={getValue(def.key) === 'true'}
+              onChange={(e) => setValue(def.key, e.target.checked ? 'true' : 'false')}
+            />
+            <span className="text-muted" style={{ fontSize: 13 }}>
+              {getValue(def.key) === 'true' ? 'Ativado' : 'Desativado'}
+            </span>
+          </div>
+        ) : (
+          <input
+            id={def.key}
+            type={def.type === 'password' ? 'password' : 'text'}
+            value={getValue(def.key)}
+            onChange={(e) => setValue(def.key, e.target.value)}
+            placeholder={
+              def.type === 'password' && isConfigured(def.key)
+                ? '(configurado — deixe vazio para manter)'
+                : ''
+            }
+            autoComplete="off"
+          />
+        )}
+
+        <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+          {def.description}
+        </p>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  //  Render
+  // ---------------------------------------------------------------------------
 
   if (settingsLoading && settings.length === 0) {
     return (
@@ -121,66 +244,65 @@ function AdminSettingsPage() {
     <section className="admin-page">
       <div className="admin-page__header">
         <h2 className="admin-page__title">Configuracoes</h2>
-        <p className="text-muted">Gerencie as configuracoes de email do sistema.</p>
+        <p className="text-muted">Gerencie as configuracoes do sistema.</p>
+      </div>
+
+      {/* Tabs */}
+      <div className="settings-tabs">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={`settings-tabs__item${activeTab === tab.id ? ' settings-tabs__item--active' : ''}`}
+            onClick={() => switchTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       <form className="admin-settings-form" onSubmit={handleSave}>
-        <div className="admin-card">
-          <h3 className="admin-card__title">Email (Mailtrap)</h3>
-
-          {EMAIL_SETTINGS_KEYS.map((def) => (
-            <div className="field" key={def.key} style={{ marginBottom: 16 }}>
-              <label className="field-label" htmlFor={def.key}>
-                {def.label}
-              </label>
-
-              {def.type === 'toggle' ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input
-                    id={def.key}
-                    type="checkbox"
-                    checked={getValue(def.key) === 'true'}
-                    onChange={(e) => setValue(def.key, e.target.checked ? 'true' : 'false')}
-                  />
-                  <span className="text-muted" style={{ fontSize: 13 }}>
-                    {getValue(def.key) === 'true' ? 'Ativado' : 'Desativado'}
-                  </span>
-                </div>
-              ) : (
-                <input
-                  id={def.key}
-                  type={def.type === 'password' ? 'password' : 'text'}
-                  value={getValue(def.key)}
-                  onChange={(e) => setValue(def.key, e.target.value)}
-                  placeholder={
-                    def.type === 'password' && isConfigured(def.key)
-                      ? '(configurado — deixe vazio para manter)'
-                      : ''
-                  }
-                  autoComplete="off"
-                />
-              )}
-
-              <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
-                {def.description}
-              </p>
+        {/* Email tab */}
+        {activeTab === 'email' && (
+          <div className="admin-card">
+            <h3 className="admin-card__title">Email (Mailtrap)</h3>
+            {EMAIL_SETTINGS_KEYS.map(renderField)}
+            <div className="button-row" style={{ gap: 12 }}>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Salvando...' : 'Salvar'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={testing}
+                onClick={handleTestEmail}
+              >
+                {testing ? 'Enviando...' : 'Enviar Email de Teste'}
+              </button>
             </div>
-          ))}
-
-          <div className="button-row" style={{ gap: 12 }}>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Salvando...' : 'Salvar'}
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline"
-              disabled={testing}
-              onClick={handleTestEmail}
-            >
-              {testing ? 'Enviando...' : 'Enviar Email de Teste'}
-            </button>
           </div>
-        </div>
+        )}
+
+        {/* Cloudflare R2 tab */}
+        {activeTab === 'cloudflare' && (
+          <div className="admin-card">
+            <h3 className="admin-card__title">Armazenamento (Cloudflare R2)</h3>
+            {R2_SETTINGS_KEYS.map(renderField)}
+            <div className="button-row" style={{ gap: 12 }}>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Salvando...' : 'Salvar'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={testingR2}
+                onClick={handleTestR2}
+              >
+                {testingR2 ? 'Testando...' : 'Testar Conexao'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {message && <div className="success-banner">{message}</div>}
         {error && <div className="error-banner">{error}</div>}

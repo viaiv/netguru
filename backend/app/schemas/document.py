@@ -72,6 +72,36 @@ class EmbeddingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
+class PresignUploadRequest(BaseModel):
+    """
+    Request para gerar URL presigned de upload (R2).
+    """
+
+    filename: str = Field(max_length=255)
+    content_type: str = Field(max_length=100)
+    file_size_bytes: int = Field(ge=0)
+    file_type: str | None = Field(default=None, max_length=50)
+
+
+class PresignUploadResponse(BaseModel):
+    """
+    Response com URL presigned e ID do documento criado.
+    """
+
+    document_id: UUID
+    presigned_url: str
+    object_key: str
+    expires_in: int
+
+
+class ConfirmUploadRequest(BaseModel):
+    """
+    Request para confirmar que o upload direto ao R2 foi concluido.
+    """
+
+    document_id: UUID
+
+
 class FileUploadResponse(BaseModel):
     """
     API response after file upload creation.
