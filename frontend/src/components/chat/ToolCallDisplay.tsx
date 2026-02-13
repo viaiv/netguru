@@ -6,6 +6,10 @@ import type { IToolCall } from '../../stores/chatStore';
 const TOOL_LABELS: Record<string, string> = {
   search_rag_global: 'Buscando docs de vendors',
   search_rag_local: 'Buscando seus documentos',
+  parse_config: 'Analisando configuração',
+  validate_config: 'Validando configuração',
+  parse_show_commands: 'Analisando saída de comando',
+  analyze_pcap: 'Analisando captura de pacotes',
 };
 
 interface ToolCallDisplayProps {

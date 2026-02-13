@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     RAG_TOP_K_LOCAL: int = 2
     RAG_MIN_SIMILARITY: float = 0.3
 
+    # PCAP Analysis
+    PCAP_MAX_PACKETS: int = 10000
+    PCAP_ANALYSIS_TIMEOUT: int = 30  # seconds
+
     # Chat / Agent
     CHAT_HISTORY_LIMIT: int = 20
     CHAT_MAX_MESSAGE_LENGTH: int = 10000
