@@ -85,7 +85,7 @@ function ChatPage() {
 
   // ---- WebSocket with auto-reconnect ----
 
-  const { isConnected, isReconnecting, reconnectAttempt, sendMessage, manualRetry } =
+  const { isConnected, isReconnecting, reconnectAttempt, sendMessage, sendCancel, manualRetry } =
     useWebSocketReconnect({
       conversationId: currentConversationId,
       onEvent: onWsEvent,
@@ -425,14 +425,24 @@ function ChatPage() {
                 disabled={!isConnected || isStreaming}
                 maxRows={8}
               />
-              <button
-                type="button"
-                className="btn btn-primary chat-send-btn"
-                onClick={handleSend}
-                disabled={!canSend}
-              >
-                Enviar
-              </button>
+              {isStreaming ? (
+                <button
+                  type="button"
+                  className="btn btn-danger chat-send-btn"
+                  onClick={sendCancel}
+                >
+                  Cancelar
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary chat-send-btn"
+                  onClick={handleSend}
+                  disabled={!canSend}
+                >
+                  Enviar
+                </button>
+              )}
             </div>
           </>
         )}

@@ -91,7 +91,7 @@ class Settings(BaseSettings):
 
     # PCAP Analysis
     PCAP_MAX_PACKETS: int = 10000
-    PCAP_ANALYSIS_TIMEOUT: int = 30  # seconds
+    PCAP_ANALYSIS_TIMEOUT: int = 300  # seconds (5 min)
 
     # Chat / Agent
     CHAT_HISTORY_LIMIT: int = 20

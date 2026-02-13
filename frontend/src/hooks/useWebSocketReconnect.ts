@@ -20,6 +20,7 @@ interface UseWebSocketReconnectReturn {
   isReconnecting: boolean;
   reconnectAttempt: number;
   sendMessage: (content: string) => void;
+  sendCancel: () => void;
   manualRetry: () => void;
 }
 
@@ -126,6 +127,10 @@ export function useWebSocketReconnect({
     wsRef.current?.sendMessage(content);
   }, []);
 
+  const sendCancel = useCallback(() => {
+    wsRef.current?.sendCancel();
+  }, []);
+
   const manualRetry = useCallback(() => {
     if (!conversationId) return;
     clearRetryTimeout();
@@ -135,5 +140,5 @@ export function useWebSocketReconnect({
     connect(conversationId);
   }, [conversationId, connect, clearRetryTimeout]);
 
-  return { isConnected, isReconnecting, reconnectAttempt, sendMessage, manualRetry };
+  return { isConnected, isReconnecting, reconnectAttempt, sendMessage, sendCancel, manualRetry };
 }

@@ -469,6 +469,11 @@ select:focus {
   color: #17330d;
 }
 
+.btn-danger {
+  background: linear-gradient(110deg, #e65c5c, #c0392b);
+  color: #fff;
+}
+
 .btn-secondary {
   background: linear-gradient(110deg, #78a6e6, var(--signal));
   color: #eef5ff;

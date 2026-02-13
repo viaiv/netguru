@@ -102,6 +102,11 @@ export class ChatWebSocket {
     this.ws!.send(JSON.stringify({ type: 'message', content }));
   }
 
+  sendCancel(): void {
+    if (!this.isConnected) return;
+    this.ws!.send(JSON.stringify({ type: 'cancel' }));
+  }
+
   disconnect(): void {
     this.stopPing();
     if (this.ws) {
