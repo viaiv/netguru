@@ -3541,6 +3541,11 @@ select:focus {
   color: var(--signal);
 }
 
+.celery-badge--timeout {
+  background: rgba(var(--danger-rgb), 0.10);
+  color: #b45309;
+}
+
 .celery-task-log__result {
   max-width: 280px;
   overflow: hidden;

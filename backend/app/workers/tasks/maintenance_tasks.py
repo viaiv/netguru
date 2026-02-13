@@ -207,3 +207,39 @@ def recalculate_stale_embeddings() -> dict:
 
     logger.info("recalculate_stale_embeddings: %d embeddings atualizados", total_updated)
     return {"updated": total_updated}
+
+
+@celery_app.task(name="app.workers.tasks.maintenance_tasks.mark_stale_tasks_timeout")
+def mark_stale_tasks_timeout() -> dict:
+    """
+    Marca tasks Celery com status STARTED ha mais de 5 minutos como TIMEOUT.
+
+    Isso cobre cenarios onde o worker foi morto/reiniciado e os signals
+    task_postrun/task_failure nunca dispararam.
+    """
+    from app.core.database_sync import get_sync_db
+    from app.models.celery_task_event import CeleryTaskEvent
+
+    cutoff = datetime.utcnow() - timedelta(minutes=5)
+    marked = 0
+
+    with get_sync_db() as db:
+        stmt = select(CeleryTaskEvent).where(
+            CeleryTaskEvent.status == "STARTED",
+            CeleryTaskEvent.started_at < cutoff,
+        )
+        stale_events = db.execute(stmt).scalars().all()
+
+        now = datetime.utcnow()
+        for event in stale_events:
+            event.status = "TIMEOUT"
+            event.finished_at = now
+            if event.started_at:
+                event.duration_ms = round(
+                    (now - event.started_at).total_seconds() * 1000, 2
+                )
+            event.error = "Task marcada como TIMEOUT: sem resposta do worker apos 5 minutos"
+            marked += 1
+
+    logger.info("mark_stale_tasks_timeout: %d tasks marcadas como TIMEOUT", marked)
+    return {"marked": marked}

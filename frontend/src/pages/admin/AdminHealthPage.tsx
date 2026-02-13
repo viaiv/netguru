@@ -41,6 +41,8 @@ function statusBadgeClass(status: string): string {
       return 'celery-badge--started';
     case 'RETRY':
       return 'celery-badge--started';
+    case 'TIMEOUT':
+      return 'celery-badge--timeout';
     default:
       return '';
   }

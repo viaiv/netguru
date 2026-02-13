@@ -61,4 +61,8 @@ celery_app.conf.beat_schedule = {
         "task": "app.workers.tasks.maintenance_tasks.recalculate_stale_embeddings",
         "schedule": settings.STALE_EMBEDDINGS_HOURS * 3600,
     },
+    "mark-stale-tasks-timeout": {
+        "task": "app.workers.tasks.maintenance_tasks.mark_stale_tasks_timeout",
+        "schedule": 5 * 60,  # a cada 5 minutos
+    },
 }
