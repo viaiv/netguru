@@ -289,3 +289,28 @@ class EmailTemplatePreviewRequest(BaseModel):
 class EmailTemplatePreviewResponse(BaseModel):
     subject: str
     html: str
+
+
+# ---------------------------------------------------------------------------
+# Celery Task Events
+# ---------------------------------------------------------------------------
+
+class CeleryTaskEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    task_id: str
+    task_name: str
+    status: str
+    args_summary: Optional[str]
+    result_summary: Optional[str]
+    error: Optional[str]
+    started_at: datetime
+    finished_at: Optional[datetime]
+    duration_ms: Optional[float]
+    worker: Optional[str]
+
+
+class CeleryTaskEventListResponse(BaseModel):
+    items: list[CeleryTaskEventResponse]
+    pagination: PaginationMeta

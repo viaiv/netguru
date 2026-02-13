@@ -13,6 +13,7 @@ from app.models.usage_metric import UsageMetric
 from app.models.system_setting import SystemSetting
 from app.models.email_log import EmailLog
 from app.models.email_template import EmailTemplate
+from app.models.celery_task_event import CeleryTaskEvent
 
 __all__ = [
     "User",
@@ -27,4 +28,5 @@ __all__ = [
     "SystemSetting",
     "EmailLog",
     "EmailTemplate",
+    "CeleryTaskEvent",
 ]

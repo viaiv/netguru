@@ -24,6 +24,8 @@ from app.schemas.admin import (
     AdminUserUpdate,
     AuditLogListResponse,
     AuditLogResponse,
+    CeleryTaskEventListResponse,
+    CeleryTaskEventResponse,
     DashboardStats,
     PaginationMeta,
     PlanCreate,
@@ -445,3 +447,50 @@ async def delete_plan(
     await db.flush()
     await db.refresh(plan)
     return PlanResponse.model_validate(plan)
+
+
+# ---------------------------------------------------------------------------
+# Celery Task Events
+# ---------------------------------------------------------------------------
+
+@router.get("/celery-tasks", response_model=CeleryTaskEventListResponse)
+async def list_celery_tasks(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    status_filter: Optional[str] = Query(default=None, alias="status"),
+    task_name: Optional[str] = Query(default=None),
+    _current_user: User = Depends(require_permissions(Permission.ADMIN_SYSTEM_HEALTH)),
+    db: AsyncSession = Depends(get_db),
+) -> CeleryTaskEventListResponse:
+    """Paginated Celery task execution log."""
+    from app.models.celery_task_event import CeleryTaskEvent
+
+    filters = []
+    if status_filter:
+        filters.append(CeleryTaskEvent.status == status_filter)
+    if task_name:
+        filters.append(CeleryTaskEvent.task_name.ilike(f"%{task_name}%"))
+
+    # Count
+    count_q = select(func.count()).select_from(CeleryTaskEvent)
+    if filters:
+        count_q = count_q.where(*filters)
+    total = int((await db.execute(count_q)).scalar_one())
+
+    # Fetch
+    offset = (page - 1) * limit
+    q = (
+        select(CeleryTaskEvent)
+        .order_by(desc(CeleryTaskEvent.started_at))
+        .offset(offset)
+        .limit(limit)
+    )
+    if filters:
+        q = q.where(*filters)
+    events = (await db.execute(q)).scalars().all()
+
+    pages = (total + limit - 1) // limit if total else 0
+    return CeleryTaskEventListResponse(
+        items=[CeleryTaskEventResponse.model_validate(e) for e in events],
+        pagination=PaginationMeta(total=total, page=page, pages=pages, limit=limit),
+    )

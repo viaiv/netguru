@@ -343,3 +343,31 @@ export async function previewEmailTemplate(
   );
   return r.data;
 }
+
+// ---------------------------------------------------------------------------
+// Celery Task Events
+// ---------------------------------------------------------------------------
+
+export interface ICeleryTaskEvent {
+  id: string;
+  task_id: string;
+  task_name: string;
+  status: string;
+  args_summary: string | null;
+  result_summary: string | null;
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+  worker: string | null;
+}
+
+export async function fetchCeleryTasks(params: {
+  page?: number;
+  limit?: number;
+  status?: string;
+  task_name?: string;
+}): Promise<{ items: ICeleryTaskEvent[]; pagination: IPaginationMeta }> {
+  const r = await api.get('/admin/celery-tasks', { params });
+  return r.data;
+}

@@ -40,6 +40,9 @@ celery_app.conf.include = [
     "app.workers.tasks.email_tasks",
 ]
 
+# Registrar signal handlers para logging de task events
+import app.workers.signals  # noqa: F401, E402
+
 # Beat schedule — tarefas periodicas de manutencao
 celery_app.conf.beat_schedule = {
     "cleanup-orphan-uploads": {
