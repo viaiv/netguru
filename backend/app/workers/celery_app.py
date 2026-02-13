@@ -32,8 +32,12 @@ celery_app.conf.update(
     beat_schedule_filename="/tmp/celerybeat-schedule",
 )
 
-# Autodiscover tasks
-celery_app.autodiscover_tasks(["app.workers.tasks"])
+# Registrar modulos de tasks explicitamente
+celery_app.conf.include = [
+    "app.workers.tasks.document_tasks",
+    "app.workers.tasks.maintenance_tasks",
+    "app.workers.tasks.pcap_tasks",
+]
 
 # Beat schedule — tarefas periodicas de manutencao
 celery_app.conf.beat_schedule = {
