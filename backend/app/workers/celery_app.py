@@ -28,6 +28,8 @@ celery_app.conf.update(
     task_time_limit=settings.CELERY_TASK_TIME_LIMIT,
     # Resultados
     result_expires=3600,
+    # Beat schedule file path (writeable in containers)
+    beat_schedule_filename="/tmp/celerybeat-schedule",
 )
 
 # Autodiscover tasks
