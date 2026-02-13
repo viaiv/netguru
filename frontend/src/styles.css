@@ -586,48 +586,51 @@ select:focus {
 
 @media (max-width: 960px) {
   .app-shell {
-    padding: 12px clamp(8px, 2vw, 18px);
+    padding: 0;
   }
 
   .chrome {
-    align-items: flex-start;
-    flex-direction: column;
-    margin-bottom: 10px;
-  }
-
-  .brand-title {
-    font-size: clamp(1.2rem, 3vw, 1.75rem);
+    display: none;
   }
 
   .layout,
   .layout--collapsed {
     grid-template-columns: 1fr;
+    gap: 0;
   }
 
   .rail {
-    position: static;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: var(--panel-strong);
+    border-top: 1px solid rgba(var(--ink-rgb), 0.14);
+    padding: 4px 8px;
+    gap: 0;
   }
 
   .rail-toggle {
     display: none;
   }
 
-  .rail--collapsed .nav-link {
+  .rail-card {
+    display: none;
+  }
+
+  .rail--collapsed .nav-link,
+  .nav-link {
     text-align: center;
-    padding: 10px 8px;
-    font-size: 0.75rem;
+    padding: 8px 6px;
+    font-size: 0.68rem;
     letter-spacing: 0.09em;
     text-transform: uppercase;
   }
 
   .nav {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .nav-link {
-    text-align: center;
-    font-size: 0.75rem;
-    padding: 10px 8px;
+    gap: 4px;
   }
 
   .kv-grid {
@@ -635,11 +638,15 @@ select:focus {
   }
 
   .panel {
-    border-radius: 16px;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    /* Espaço para a bottom nav fixa */
+    padding-bottom: 48px;
   }
 
   .panel-inner {
-    padding: 8px;
+    padding: 0;
   }
 }
 
@@ -1019,44 +1026,11 @@ select:focus {
   }
 
   .chat-sidebar {
-    flex-direction: row;
-    overflow-x: auto;
-    border-right: none;
-    border-bottom: 1px solid rgba(var(--ink-rgb), 0.14);
-    padding: 6px 10px;
-    max-height: 54px;
-  }
-
-  .chat-new-btn {
-    white-space: nowrap;
-    width: auto;
-    flex-shrink: 0;
-    padding: 6px 12px;
-    font-size: 0.78rem;
-  }
-
-  .conversation-list {
-    flex-direction: row;
-    overflow-x: auto;
-    overflow-y: hidden;
-  }
-
-  .conversation-item {
-    min-width: 120px;
-    flex-shrink: 0;
-  }
-
-  .conversation-title {
-    font-size: 0.78rem;
-  }
-
-  .conversation-date {
     display: none;
   }
 
-  .message-bubble {
-    max-width: 92%;
-    padding: 10px 12px;
+  .chat-main {
+    height: 100%;
   }
 
   .chat-toolbar {
@@ -1064,8 +1038,13 @@ select:focus {
   }
 
   .chat-window {
-    padding: 12px 10px;
+    padding: 10px 10px;
     gap: 10px;
+  }
+
+  .message-bubble {
+    max-width: 94%;
+    padding: 10px 12px;
   }
 
   .chat-input-area {
@@ -1075,7 +1054,8 @@ select:focus {
 
   .chat-textarea {
     padding: 8px 10px;
-    font-size: 0.9rem;
+    font-size: 0.92rem;
+    border-radius: 10px;
   }
 
   .chat-textarea--auto {
@@ -1085,11 +1065,11 @@ select:focus {
 
   .chat-send-btn {
     padding: 8px 14px;
-    font-size: 0.78rem;
+    font-size: 0.8rem;
   }
 
-  .nav {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .tool-calls-container {
+    max-width: 94%;
   }
 }
 
