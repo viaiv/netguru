@@ -46,6 +46,9 @@ ciscoconfparse==1.9.41
 textfsm==1.1.3
 ttp==0.9.4
 
+# Email
+mailtrap>=2.0.0
+
 # Payments
 stripe>=8.0.0
 

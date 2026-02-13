@@ -15,6 +15,8 @@ function AdminSidebar({ isOpen, onNavigate }: AdminSidebarProps) {
     { to: '/admin/plans', label: 'Planos' },
     { to: '/admin/audit-log', label: 'Audit Log' },
     { to: '/admin/health', label: 'System Health' },
+    { to: '/admin/email-logs', label: 'Email Logs' },
+    { to: '/admin/settings', label: 'Configuracoes' },
   ];
 
   return (

@@ -92,6 +92,9 @@ function LoginPage() {
       </form>
 
       <p className="auth-link">
+        <Link to="/forgot-password">Esqueceu a senha?</Link>
+      </p>
+      <p className="auth-link">
         Nao tem conta? <Link to="/register">Criar conta</Link>
       </p>
     </section>

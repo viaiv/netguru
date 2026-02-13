@@ -1,15 +1,15 @@
 import { FormEvent, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 import { api, getErrorMessage } from '../services/api';
 
 function RegisterPage() {
-  const navigate = useNavigate();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [registered, setRegistered] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -24,12 +24,30 @@ function RegisterPage() {
         plan_tier: 'solo',
       });
 
-      navigate('/login');
+      setRegistered(true);
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
       setIsLoading(false);
     }
+  }
+
+  if (registered) {
+    return (
+      <section className="view">
+        <div className="view-head">
+          <p className="eyebrow">Quase la!</p>
+          <h2 className="view-title">Verifique seu email</h2>
+          <p className="view-subtitle">
+            Enviamos um email de verificacao para <strong>{email}</strong>.
+            Verifique sua caixa de entrada e spam para ativar sua conta.
+          </p>
+        </div>
+        <p className="auth-link" style={{ marginTop: 24 }}>
+          <Link to="/login">Ir para login</Link>
+        </p>
+      </section>
+    );
   }
 
   return (

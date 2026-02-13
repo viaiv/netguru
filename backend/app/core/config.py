@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     ALLOWED_FILE_EXTENSIONS: str = "pcap,pcapng,txt,conf,cfg,log,pdf,md"
     UPLOAD_DIR: str = "/app/uploads"
     
+    # Frontend
+    FRONTEND_URL: str = "http://localhost:5173"
+
     # CORS
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
     ALLOWED_HOSTS: List[str] = ["localhost", "127.0.0.1"]

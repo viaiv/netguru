@@ -10,6 +10,8 @@ from app.models.plan import Plan
 from app.models.subscription import Subscription
 from app.models.audit_log import AuditLog
 from app.models.usage_metric import UsageMetric
+from app.models.system_setting import SystemSetting
+from app.models.email_log import EmailLog
 
 __all__ = [
     "User",
@@ -21,4 +23,6 @@ __all__ = [
     "Subscription",
     "AuditLog",
     "UsageMetric",
+    "SystemSetting",
+    "EmailLog",
 ]

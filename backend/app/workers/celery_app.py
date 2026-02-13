@@ -37,6 +37,7 @@ celery_app.conf.include = [
     "app.workers.tasks.document_tasks",
     "app.workers.tasks.maintenance_tasks",
     "app.workers.tasks.pcap_tasks",
+    "app.workers.tasks.email_tasks",
 ]
 
 # Beat schedule — tarefas periodicas de manutencao

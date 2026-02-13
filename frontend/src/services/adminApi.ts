@@ -143,6 +143,31 @@ export interface IPlanUpdate {
   sort_order?: number;
 }
 
+export interface IEmailLog {
+  id: string;
+  recipient_email: string;
+  recipient_user_id: string | null;
+  email_type: string;
+  subject: string;
+  status: string;
+  error_message: string | null;
+  created_at: string;
+}
+
+export interface ISystemSetting {
+  id: string;
+  key: string;
+  value: string;
+  is_encrypted: boolean;
+  description: string | null;
+  updated_at: string;
+}
+
+export interface ISystemSettingUpdate {
+  value: string;
+  description?: string;
+}
+
 // ---------------------------------------------------------------------------
 // API Methods
 // ---------------------------------------------------------------------------
@@ -214,5 +239,42 @@ export async function updatePlan(planId: string, data: IPlanUpdate): Promise<IPl
 
 export async function deletePlan(planId: string): Promise<IPlan> {
   const r = await api.delete<IPlan>(`/admin/plans/${planId}`);
+  return r.data;
+}
+
+// ---------------------------------------------------------------------------
+// System Settings
+// ---------------------------------------------------------------------------
+
+export async function fetchSettings(): Promise<ISystemSetting[]> {
+  const r = await api.get<ISystemSetting[]>('/admin/settings');
+  return r.data;
+}
+
+export async function upsertSetting(
+  key: string,
+  data: ISystemSettingUpdate,
+): Promise<ISystemSetting> {
+  const r = await api.put<ISystemSetting>(`/admin/settings/${key}`, data);
+  return r.data;
+}
+
+export async function testEmail(): Promise<{ message: string }> {
+  const r = await api.post<{ message: string }>('/admin/settings/test-email');
+  return r.data;
+}
+
+// ---------------------------------------------------------------------------
+// Email Logs
+// ---------------------------------------------------------------------------
+
+export async function fetchEmailLogs(params: {
+  page?: number;
+  limit?: number;
+  email_type?: string;
+  status?: string;
+  search?: string;
+}): Promise<{ items: IEmailLog[]; pagination: IPaginationMeta }> {
+  const r = await api.get('/admin/email-logs', { params });
   return r.data;
 }

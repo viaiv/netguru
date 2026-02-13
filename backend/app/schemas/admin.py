@@ -191,6 +191,48 @@ class AdminUserUpdate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Email Logs
+# ---------------------------------------------------------------------------
+
+class EmailLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    recipient_email: str
+    recipient_user_id: Optional[UUID]
+    email_type: str
+    subject: str
+    status: str
+    error_message: Optional[str]
+    created_at: datetime
+
+
+class EmailLogListResponse(BaseModel):
+    items: list[EmailLogResponse]
+    pagination: PaginationMeta
+
+
+# ---------------------------------------------------------------------------
+# System Settings
+# ---------------------------------------------------------------------------
+
+class SystemSettingResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    key: str
+    value: str = Field(description="Plain value or masked if encrypted")
+    is_encrypted: bool
+    description: Optional[str]
+    updated_at: datetime
+
+
+class SystemSettingUpdate(BaseModel):
+    value: str = Field(..., max_length=2000)
+    description: Optional[str] = Field(None, max_length=255)
+
+
+# ---------------------------------------------------------------------------
 # Billing (Stripe)
 # ---------------------------------------------------------------------------
 

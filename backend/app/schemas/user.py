@@ -141,3 +141,23 @@ class TokenPayload(BaseModel):
     exp: datetime = Field(description="Expiration timestamp")
     type: Optional[str] = Field(None, description="access|refresh")
     jti: Optional[str] = Field(None, description="Token unique identifier")
+
+
+# ---------------------------------------------------------------------------
+# Email verification / Password reset
+# ---------------------------------------------------------------------------
+
+class VerifyEmailRequest(BaseModel):
+    """Schema para verificacao de email."""
+    token: str = Field(..., min_length=10, max_length=200)
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Schema para solicitar redefinicao de senha."""
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Schema para redefinir senha com token."""
+    token: str = Field(..., min_length=10, max_length=200)
+    new_password: str = Field(..., min_length=8, max_length=100)

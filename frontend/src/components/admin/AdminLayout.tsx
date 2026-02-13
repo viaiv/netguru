@@ -13,6 +13,8 @@ import AdminUserDetailPage from '../../pages/admin/AdminUserDetailPage';
 import AdminPlansPage from '../../pages/admin/AdminPlansPage';
 import AdminAuditLogPage from '../../pages/admin/AdminAuditLogPage';
 import AdminHealthPage from '../../pages/admin/AdminHealthPage';
+import AdminEmailLogsPage from '../../pages/admin/AdminEmailLogsPage';
+import AdminSettingsPage from '../../pages/admin/AdminSettingsPage';
 
 function AdminLayout() {
   const isMobile = useMobile();
@@ -51,6 +53,8 @@ function AdminLayout() {
             <Route path="plans" element={<AdminPlansPage />} />
             <Route path="audit-log" element={<AdminAuditLogPage />} />
             <Route path="health" element={<AdminHealthPage />} />
+            <Route path="email-logs" element={<AdminEmailLogsPage />} />
+            <Route path="settings" element={<AdminSettingsPage />} />
           </Routes>
         </div>
       </div>

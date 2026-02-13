@@ -8,16 +8,20 @@ import type {
   IAdminUserDetail,
   IAuditLogEntry,
   IDashboardStats,
+  IEmailLog,
   IPaginationMeta,
   IPlan,
   ISystemHealth,
+  ISystemSetting,
 } from '../services/adminApi';
 import {
   fetchAdminUserDetail,
   fetchAdminUsers,
   fetchAuditLog,
   fetchDashboardStats,
+  fetchEmailLogs,
   fetchPlans,
+  fetchSettings,
   fetchSystemHealth,
 } from '../services/adminApi';
 
@@ -44,6 +48,15 @@ interface IAdminState {
   plans: IPlan[];
   plansLoading: boolean;
 
+  // Settings
+  settings: ISystemSetting[];
+  settingsLoading: boolean;
+
+  // Email logs
+  emailLogs: IEmailLog[];
+  emailLogsPagination: IPaginationMeta | null;
+  emailLogsLoading: boolean;
+
   // Actions
   loadStats: () => Promise<void>;
   loadHealth: () => Promise<void>;
@@ -64,6 +77,14 @@ interface IAdminState {
     target_type?: string;
   }) => Promise<void>;
   loadPlans: () => Promise<void>;
+  loadSettings: () => Promise<void>;
+  loadEmailLogs: (params?: {
+    page?: number;
+    limit?: number;
+    email_type?: string;
+    status?: string;
+    search?: string;
+  }) => Promise<void>;
 }
 
 export const useAdminStore = create<IAdminState>((set) => ({
@@ -81,6 +102,11 @@ export const useAdminStore = create<IAdminState>((set) => ({
   auditLoading: false,
   plans: [],
   plansLoading: false,
+  settings: [],
+  settingsLoading: false,
+  emailLogs: [],
+  emailLogsPagination: null,
+  emailLogsLoading: false,
 
   loadStats: async () => {
     set({ statsLoading: true });
@@ -139,6 +165,26 @@ export const useAdminStore = create<IAdminState>((set) => ({
       set({ plans });
     } finally {
       set({ plansLoading: false });
+    }
+  },
+
+  loadSettings: async () => {
+    set({ settingsLoading: true });
+    try {
+      const settings = await fetchSettings();
+      set({ settings });
+    } finally {
+      set({ settingsLoading: false });
+    }
+  },
+
+  loadEmailLogs: async (params) => {
+    set({ emailLogsLoading: true });
+    try {
+      const { items, pagination } = await fetchEmailLogs(params ?? {});
+      set({ emailLogs: items, emailLogsPagination: pagination });
+    } finally {
+      set({ emailLogsLoading: false });
     }
   },
 }));
