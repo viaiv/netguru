@@ -152,7 +152,8 @@ class NetworkEngineerAgent:
         self._chat_model = _create_chat_model(provider_name, api_key, model)
         self._tools = tools
         graph = _build_graph(self._chat_model, tools)
-        self._compiled = graph.compile(recursion_limit=settings.AGENT_MAX_ITERATIONS * 2 + 1)
+        self._compiled = graph.compile()
+        self._recursion_limit = settings.AGENT_MAX_ITERATIONS * 2 + 1
 
     async def stream_response(
         self,
@@ -185,6 +186,7 @@ class NetworkEngineerAgent:
         async for event in self._compiled.astream_events(
             {"messages": lc_messages},
             version="v2",
+            config={"recursion_limit": self._recursion_limit},
         ):
             kind = event.get("event")
 
