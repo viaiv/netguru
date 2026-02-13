@@ -94,13 +94,25 @@ async def test_email(
     from app.core.database_sync import get_sync_db
     from app.services.email_service import EmailService
 
+    send_error: str | None = None
+
     def _do_send() -> None:
+        nonlocal send_error
         with get_sync_db() as sync_db:
             svc = EmailService(sync_db)
             svc._load_config()
-            svc.send_test_email(current_user.email, user_id=current_user.id)
+            try:
+                svc.send_test_email(current_user.email, user_id=current_user.id)
+            except Exception as exc:
+                send_error = str(exc)
 
     await asyncio.to_thread(_do_send)
+
+    if send_error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Falha ao enviar email de teste: {send_error}",
+        )
 
     return {"message": f"Email de teste enviado para {current_user.email}"}
 
