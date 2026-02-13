@@ -7,7 +7,6 @@ Despacha analise para Celery worker.
 from __future__ import annotations
 
 import asyncio
-import os
 from uuid import UUID
 
 from langchain_core.tools import StructuredTool
@@ -60,47 +59,20 @@ def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
                     f"(type: {document.file_type})."
                 )
 
-            # Determine file path (R2 or local)
-            is_r2 = (
-                document.storage_path.startswith("uploads/")
-                and not os.path.isabs(document.storage_path)
+            # Despacha para Celery worker (o worker baixa do R2 se necessario)
+            from app.workers.tasks.pcap_tasks import analyze_pcap
+
+            task_result = analyze_pcap.delay(
+                document.storage_path,
+                settings.PCAP_MAX_PACKETS,
             )
-            temp_path = None
 
-            try:
-                if is_r2:
-                    from app.services.r2_storage_service import R2StorageService
+            # Aguarda resultado sem bloquear event loop
+            result_data = await asyncio.to_thread(
+                task_result.get, timeout=settings.PCAP_ANALYSIS_TIMEOUT
+            )
 
-                    r2 = await R2StorageService.from_settings(db)
-                    temp_path = await asyncio.to_thread(
-                        r2.download_to_tempfile, document.storage_path, ".pcap"
-                    )
-                    file_path = str(temp_path)
-                else:
-                    if not os.path.exists(document.storage_path):
-                        return (
-                            "PCAP file not found on disk. "
-                            "The file may have been removed."
-                        )
-                    file_path = document.storage_path
-
-                # Despacha para Celery worker
-                from app.workers.tasks.pcap_tasks import analyze_pcap
-
-                task_result = analyze_pcap.delay(
-                    file_path,
-                    settings.PCAP_MAX_PACKETS,
-                )
-
-                # Aguarda resultado sem bloquear event loop
-                result_data = await asyncio.to_thread(
-                    task_result.get, timeout=settings.PCAP_ANALYSIS_TIMEOUT
-                )
-
-                return result_data["formatted"]
-            finally:
-                if temp_path is not None:
-                    temp_path.unlink(missing_ok=True)
+            return result_data["formatted"]
         except Exception as e:
             return f"Error analyzing PCAP: {e}"
 
