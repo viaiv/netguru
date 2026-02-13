@@ -27,7 +27,7 @@ class Plan(Base):
     stripe_price_id = Column(String(255), nullable=True)
 
     # Pricing
-    price_cents = Column(Integer, nullable=False, default=0, comment="Price in cents (USD)")
+    price_cents = Column(Integer, nullable=False, default=0, comment="Price in cents (BRL)")
     billing_period = Column(
         String(20),
         nullable=False,

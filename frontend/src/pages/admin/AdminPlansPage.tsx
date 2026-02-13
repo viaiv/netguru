@@ -89,7 +89,7 @@ function AdminPlansPage() {
   }
 
   function formatPrice(cents: number): string {
-    return `$${(cents / 100).toFixed(2)}`;
+    return `R$${(cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
   }
 
   return (
@@ -177,7 +177,7 @@ function AdminPlansPage() {
                 />
               </div>
               <div className="plan-form__row">
-                <label>Preco (centavos USD)</label>
+                <label>Preco (centavos BRL)</label>
                 <input
                   type="number"
                   value={formData.price_cents}

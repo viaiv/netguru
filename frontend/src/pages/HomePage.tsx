@@ -1,5 +1,16 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { api } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
+
+interface IPublicPlan {
+  name: string;
+  display_name: string;
+  price_cents: number;
+  billing_period: string;
+  features: Record<string, boolean> | null;
+  sort_order: number;
+}
 
 const FEATURES = [
   {
@@ -52,32 +63,36 @@ const STEPS = [
   },
 ];
 
-const PLANS = [
-  {
-    name: 'Solo Engineer',
-    price: '$29-49',
-    period: '/mês',
-    features: ['1 usuário', 'RAG Global', 'Todas as tools', 'Suporte por email'],
-    highlighted: false,
-  },
-  {
-    name: 'Team / MSP',
-    price: '$199',
-    period: '/mês',
-    features: ['Até 10 usuários', 'RAG Local', 'Topologia visual', 'Suporte prioritário'],
-    highlighted: true,
-  },
-  {
-    name: 'Enterprise',
-    price: 'Custom',
-    period: 'licença anual',
-    features: ['Usuários ilimitados', 'On-premise', 'SLA dedicado', 'Integração ITSM'],
-    highlighted: false,
-  },
-];
+function formatPrice(priceCents: number, billingPeriod: string): { price: string; period: string } {
+  if (priceCents === 0) {
+    return { price: 'Grátis', period: '' };
+  }
+  if (priceCents < 0) {
+    return { price: 'Custom', period: billingPeriod === 'yearly' ? 'licença anual' : '' };
+  }
+  const reais = (priceCents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const period = billingPeriod === 'yearly' ? '/ano' : '/mês';
+  return { price: `R$${reais}`, period };
+}
+
+function featureFlags(features: Record<string, boolean> | null): string[] {
+  if (!features) return [];
+  return Object.entries(features)
+    .filter(([, enabled]) => enabled)
+    .map(([key]) => key);
+}
 
 function HomePage() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const [plans, setPlans] = useState<IPublicPlan[]>([]);
+
+  useEffect(() => {
+    api.get<IPublicPlan[]>('/plans')
+      .then((r) => setPlans(r.data))
+      .catch(() => {/* silently fail — section just won't render */});
+  }, []);
+
+  const highlightedIndex = plans.length === 3 ? 1 : -1;
 
   return (
     <div className="landing">
@@ -151,32 +166,41 @@ function HomePage() {
       </section>
 
       {/* Pricing */}
-      <section className="landing-section">
-        <h2 className="landing-section-title">Planos</h2>
-        <p className="landing-section-subtitle">Escolha o plano ideal para sua operação.</p>
-        <div className="landing-pricing">
-          {PLANS.map((p) => (
-            <div key={p.name} className={`landing-plan-card ${p.highlighted ? 'landing-plan-card--highlighted' : ''}`}>
-              <h3 className="landing-plan-name">{p.name}</h3>
-              <p className="landing-plan-price">
-                {p.price}
-                <span className="landing-plan-period">{p.period}</span>
-              </p>
-              <ul className="landing-plan-features">
-                {p.features.map((feat) => (
-                  <li key={feat}>{feat}</li>
-                ))}
-              </ul>
-              <Link
-                to={isAuthenticated ? '/chat' : '/register'}
-                className={`btn ${p.highlighted ? 'btn-primary' : 'btn-secondary'} landing-plan-cta`}
-              >
-                {isAuthenticated ? 'Ir ao Chat' : 'Começar'}
-              </Link>
-            </div>
-          ))}
-        </div>
-      </section>
+      {plans.length > 0 && (
+        <section className="landing-section">
+          <h2 className="landing-section-title">Planos</h2>
+          <p className="landing-section-subtitle">Escolha o plano ideal para sua operação.</p>
+          <div className="landing-pricing">
+            {plans.map((p, i) => {
+              const { price, period } = formatPrice(p.price_cents, p.billing_period);
+              const highlighted = i === highlightedIndex;
+              const feats = featureFlags(p.features);
+              return (
+                <div key={p.name} className={`landing-plan-card ${highlighted ? 'landing-plan-card--highlighted' : ''}`}>
+                  <h3 className="landing-plan-name">{p.display_name}</h3>
+                  <p className="landing-plan-price">
+                    {price}
+                    {period && <span className="landing-plan-period">{period}</span>}
+                  </p>
+                  {feats.length > 0 && (
+                    <ul className="landing-plan-features">
+                      {feats.map((feat) => (
+                        <li key={feat}>{feat}</li>
+                      ))}
+                    </ul>
+                  )}
+                  <Link
+                    to={isAuthenticated ? '/chat' : '/register'}
+                    className={`btn ${highlighted ? 'btn-primary' : 'btn-secondary'} landing-plan-cta`}
+                  >
+                    {isAuthenticated ? 'Ir ao Chat' : 'Começar'}
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Footer CTA */}
       <section className="landing-footer-cta">
