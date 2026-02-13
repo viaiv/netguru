@@ -249,3 +249,43 @@ class CheckoutSessionResponse(BaseModel):
 
 class CustomerPortalResponse(BaseModel):
     portal_url: str
+
+
+# ---------------------------------------------------------------------------
+# Email Templates
+# ---------------------------------------------------------------------------
+
+class EmailTemplateVariable(BaseModel):
+    name: str
+    description: str
+
+
+class EmailTemplateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    email_type: str
+    subject: str
+    body_html: str
+    variables: list[EmailTemplateVariable]
+    is_active: bool
+    updated_at: datetime
+    updated_by: Optional[UUID]
+
+
+class EmailTemplateUpdate(BaseModel):
+    subject: Optional[str] = Field(None, max_length=255)
+    body_html: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class EmailTemplatePreviewRequest(BaseModel):
+    variables: dict[str, str] = Field(
+        default_factory=dict,
+        description="Variaveis de exemplo para preview (ex: {'action_url': 'https://...'})",
+    )
+
+
+class EmailTemplatePreviewResponse(BaseModel):
+    subject: str
+    html: str

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.email_log import EmailLog
+from app.services.email_template_service import EmailTemplateService
 from app.services.system_settings_service import SystemSettingsService
 
 logger = logging.getLogger(__name__)
@@ -144,6 +145,48 @@ class EmailService:
     # Emails transacionais
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Template helpers
+    # ------------------------------------------------------------------
+
+    def _get_template(self, email_type: str) -> Optional[object]:
+        """Busca template ativo do banco. Retorna None se nao encontrado ou inativo."""
+        try:
+            template = EmailTemplateService.get_by_type_sync(self._db, email_type)
+            if template and template.is_active:
+                return template
+        except Exception:
+            logger.warning("Falha ao buscar template '%s' do banco, usando fallback", email_type)
+        return None
+
+    def _render_from_template(
+        self,
+        email_type: str,
+        variables: dict[str, str],
+        *,
+        fallback_subject: str,
+        fallback_body: str,
+    ) -> tuple[str, str]:
+        """
+        Tenta renderizar a partir do template no DB. Se nao disponivel, usa fallback.
+
+        Returns:
+            Tuple (subject, full_html).
+        """
+        template = self._get_template(email_type)
+        if template:
+            body = EmailTemplateService.render(template.body_html, variables)
+            subject = EmailTemplateService.render(template.subject, variables)
+        else:
+            body = fallback_body
+            subject = fallback_subject
+        html = _render_template(title=subject, body=body)
+        return subject, html
+
+    # ------------------------------------------------------------------
+    # Emails transacionais
+    # ------------------------------------------------------------------
+
     def send_verification_email(
         self,
         to_email: str,
@@ -153,25 +196,30 @@ class EmailService:
     ) -> None:
         """Envia email de verificacao de conta."""
         link = f"{settings.FRONTEND_URL}/verify-email?token={token}"
-        subject = "Verifique seu email - NetGuru"
-        html = _render_template(
-            title="Verifique seu email",
-            body=f"""
+
+        fallback_body = f"""
             <p>Ola!</p>
             <p>Obrigado por se cadastrar no <strong>NetGuru</strong>.</p>
             <p>Clique no botao abaixo para verificar seu email:</p>
             <div style="text-align:center;margin:30px 0">
               <a href="{link}"
-                 style="background:#6366f1;color:#fff;padding:12px 32px;
-                        border-radius:6px;text-decoration:none;font-weight:600;
-                        display:inline-block">
+                 style="background:linear-gradient(110deg,#81d742,#a7e375);color:#17330d;
+                        padding:12px 32px;border-radius:12px;text-decoration:none;
+                        font-weight:700;display:inline-block;text-transform:uppercase;
+                        letter-spacing:0.06em;font-size:14px">
                 Verificar Email
               </a>
             </div>
-            <p style="color:#888;font-size:13px">
+            <p style="color:#4c5448;font-size:13px">
               Este link expira em 24 horas. Se voce nao criou esta conta, ignore este email.
             </p>
-            """,
+            """
+
+        subject, html = self._render_from_template(
+            "verification",
+            {"action_url": link},
+            fallback_subject="Verifique seu email - NetGuru",
+            fallback_body=fallback_body,
         )
         self._send(
             to_email, subject, html,
@@ -188,25 +236,30 @@ class EmailService:
     ) -> None:
         """Envia email de redefinicao de senha."""
         link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
-        subject = "Redefinir senha - NetGuru"
-        html = _render_template(
-            title="Redefinir senha",
-            body=f"""
+
+        fallback_body = f"""
             <p>Ola!</p>
             <p>Recebemos uma solicitacao para redefinir sua senha no <strong>NetGuru</strong>.</p>
             <p>Clique no botao abaixo para criar uma nova senha:</p>
             <div style="text-align:center;margin:30px 0">
               <a href="{link}"
-                 style="background:#6366f1;color:#fff;padding:12px 32px;
-                        border-radius:6px;text-decoration:none;font-weight:600;
-                        display:inline-block">
+                 style="background:linear-gradient(110deg,#81d742,#a7e375);color:#17330d;
+                        padding:12px 32px;border-radius:12px;text-decoration:none;
+                        font-weight:700;display:inline-block;text-transform:uppercase;
+                        letter-spacing:0.06em;font-size:14px">
                 Redefinir Senha
               </a>
             </div>
-            <p style="color:#888;font-size:13px">
+            <p style="color:#4c5448;font-size:13px">
               Este link expira em 1 hora. Se voce nao solicitou a redefinicao, ignore este email.
             </p>
-            """,
+            """
+
+        subject, html = self._render_from_template(
+            "password_reset",
+            {"action_url": link},
+            fallback_subject="Redefinir senha - NetGuru",
+            fallback_body=fallback_body,
         )
         self._send(
             to_email, subject, html,
@@ -224,23 +277,28 @@ class EmailService:
         """Envia email de boas-vindas apos verificacao."""
         greeting = f"Ola, {full_name}!" if full_name else "Ola!"
         link = f"{settings.FRONTEND_URL}/login"
-        subject = "Bem-vindo ao NetGuru!"
-        html = _render_template(
-            title="Bem-vindo ao NetGuru!",
-            body=f"""
+
+        fallback_body = f"""
             <p>{greeting}</p>
             <p>Sua conta foi verificada com sucesso. Voce ja pode comecar a usar o
             <strong>NetGuru</strong> — sua plataforma AI-powered para Network Operations.</p>
             <div style="text-align:center;margin:30px 0">
               <a href="{link}"
-                 style="background:#6366f1;color:#fff;padding:12px 32px;
-                        border-radius:6px;text-decoration:none;font-weight:600;
-                        display:inline-block">
+                 style="background:linear-gradient(110deg,#81d742,#a7e375);color:#17330d;
+                        padding:12px 32px;border-radius:12px;text-decoration:none;
+                        font-weight:700;display:inline-block;text-transform:uppercase;
+                        letter-spacing:0.06em;font-size:14px">
                 Acessar Plataforma
               </a>
             </div>
             <p>Duvidas? Responda este email ou acesse nossa documentacao.</p>
-            """,
+            """
+
+        subject, html = self._render_from_template(
+            "welcome",
+            {"user_name": greeting, "action_url": link},
+            fallback_subject="Bem-vindo ao NetGuru!",
+            fallback_body=fallback_body,
         )
         self._send(
             to_email, subject, html,
@@ -255,13 +313,16 @@ class EmailService:
         user_id: Optional[UUID] = None,
     ) -> None:
         """Envia email de teste para validar configuracao."""
-        subject = "Email de Teste - NetGuru"
-        html = _render_template(
-            title="Email de teste",
-            body="""
+        fallback_body = """
             <p>Este e um email de teste enviado pelo painel admin do <strong>NetGuru</strong>.</p>
             <p>Se voce esta vendo esta mensagem, a configuracao do Mailtrap esta funcionando corretamente.</p>
-            """,
+            """
+
+        subject, html = self._render_from_template(
+            "test",
+            {"user_name": "Admin"},
+            fallback_subject="Email de Teste - NetGuru",
+            fallback_body=fallback_body,
         )
         self._send(
             to_email, subject, html,
@@ -271,22 +332,40 @@ class EmailService:
 
 
 def _render_template(title: str, body: str) -> str:
-    """Renderiza template HTML inline para emails transacionais."""
+    """Renderiza template HTML inline para emails transacionais.
+
+    Identidade visual alinhada com a plataforma NetGuru (brainwork):
+    - Background sage #eef3e9, container branco, accent verde #81d742
+    - Fontes Lato/Oswald com fallbacks web-safe
+    - Border-radius 18px, sombras suaves
+    """
     return f"""<!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#0f0f23;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
-  <div style="max-width:560px;margin:40px auto;background:#1a1a2e;border-radius:12px;
-              border:1px solid rgba(99,102,241,0.2);overflow:hidden">
-    <div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:24px 32px">
-      <h1 style="margin:0;color:#fff;font-size:20px">{title}</h1>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Oswald:wght@500;700&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;background:#eef3e9;font-family:'Lato','Segoe UI',Helvetica,Arial,sans-serif">
+  <div style="max-width:560px;margin:40px auto;background:#ffffff;border-radius:18px;
+              border:1px solid #c9d4be;overflow:hidden;
+              box-shadow:0 22px 45px rgba(19,27,15,0.10)">
+    <!-- Header -->
+    <div style="background:linear-gradient(110deg,#81d742,#a7e375);padding:26px 32px">
+      <h1 style="margin:0;color:#17330d;font-size:20px;font-family:'Oswald','Segoe UI',Helvetica,sans-serif;
+                 text-transform:uppercase;letter-spacing:0.04em;font-weight:700">{title}</h1>
     </div>
-    <div style="padding:32px;color:#e2e8f0;font-size:15px;line-height:1.6">
+    <!-- Body -->
+    <div style="padding:32px;color:#1f1f1f;font-size:15px;line-height:1.7">
       {body}
     </div>
-    <div style="padding:16px 32px;border-top:1px solid rgba(255,255,255,0.06);
-                text-align:center;color:#64748b;font-size:12px">
-      NetGuru &mdash; Agentic Network Console
+    <!-- Footer -->
+    <div style="padding:16px 32px;border-top:1px solid #c9d4be;
+                text-align:center;color:#4c5448;font-size:12px">
+      <span style="font-family:'Oswald','Segoe UI',Helvetica,sans-serif;font-weight:700;
+                   text-transform:uppercase;letter-spacing:0.08em">NetGuru</span>
+      &mdash; Agentic Network Console
     </div>
   </div>
 </body>

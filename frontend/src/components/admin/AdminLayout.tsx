@@ -14,6 +14,7 @@ import AdminPlansPage from '../../pages/admin/AdminPlansPage';
 import AdminAuditLogPage from '../../pages/admin/AdminAuditLogPage';
 import AdminHealthPage from '../../pages/admin/AdminHealthPage';
 import AdminEmailLogsPage from '../../pages/admin/AdminEmailLogsPage';
+import AdminEmailTemplatesPage from '../../pages/admin/AdminEmailTemplatesPage';
 import AdminSettingsPage from '../../pages/admin/AdminSettingsPage';
 
 function AdminLayout() {
@@ -54,6 +55,7 @@ function AdminLayout() {
             <Route path="audit-log" element={<AdminAuditLogPage />} />
             <Route path="health" element={<AdminHealthPage />} />
             <Route path="email-logs" element={<AdminEmailLogsPage />} />
+            <Route path="email-templates" element={<AdminEmailTemplatesPage />} />
             <Route path="settings" element={<AdminSettingsPage />} />
           </Routes>
         </div>

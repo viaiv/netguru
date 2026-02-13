@@ -17,10 +17,15 @@ from app.models.user import User
 from app.schemas.admin import (
     EmailLogListResponse,
     EmailLogResponse,
+    EmailTemplatePreviewRequest,
+    EmailTemplatePreviewResponse,
+    EmailTemplateResponse,
+    EmailTemplateUpdate,
     PaginationMeta,
     SystemSettingResponse,
     SystemSettingUpdate,
 )
+from app.services.email_template_service import EmailTemplateService
 from app.services.system_settings_service import SystemSettingsService
 
 router = APIRouter()
@@ -156,3 +161,92 @@ async def list_email_logs(
         items=[EmailLogResponse.model_validate(r) for r in rows],
         pagination=PaginationMeta(total=total, page=page, pages=pages, limit=limit),
     )
+
+
+# ---------------------------------------------------------------------------
+# Email Templates
+# ---------------------------------------------------------------------------
+
+@router.get("/email-templates", response_model=list[EmailTemplateResponse])
+async def list_email_templates(
+    current_user: User = Depends(require_permissions(Permission.ADMIN_SETTINGS_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> list[EmailTemplateResponse]:
+    """Lista todos os templates de email."""
+    templates = await EmailTemplateService.get_all(db)
+    return [EmailTemplateResponse.model_validate(t) for t in templates]
+
+
+@router.get("/email-templates/{email_type}", response_model=EmailTemplateResponse)
+async def get_email_template(
+    email_type: str,
+    current_user: User = Depends(require_permissions(Permission.ADMIN_SETTINGS_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> EmailTemplateResponse:
+    """Busca um template pelo tipo de email."""
+    template = await EmailTemplateService.get_by_type(db, email_type)
+    if template is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Template '{email_type}' nao encontrado",
+        )
+    return EmailTemplateResponse.model_validate(template)
+
+
+@router.put("/email-templates/{email_type}", response_model=EmailTemplateResponse)
+async def update_email_template(
+    email_type: str,
+    body: EmailTemplateUpdate,
+    current_user: User = Depends(require_permissions(Permission.ADMIN_SETTINGS_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> EmailTemplateResponse:
+    """Atualiza subject, body_html e/ou is_active de um template."""
+    template = await EmailTemplateService.update(
+        db,
+        email_type,
+        subject=body.subject,
+        body_html=body.body_html,
+        is_active=body.is_active,
+        updated_by=current_user.id,
+    )
+    if template is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Template '{email_type}' nao encontrado",
+        )
+    return EmailTemplateResponse.model_validate(template)
+
+
+@router.post(
+    "/email-templates/{email_type}/preview",
+    response_model=EmailTemplatePreviewResponse,
+)
+async def preview_email_template(
+    email_type: str,
+    body: EmailTemplatePreviewRequest,
+    current_user: User = Depends(require_permissions(Permission.ADMIN_SETTINGS_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> EmailTemplatePreviewResponse:
+    """Renderiza template com variaveis de exemplo e retorna HTML completo."""
+    template = await EmailTemplateService.get_by_type(db, email_type)
+    if template is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Template '{email_type}' nao encontrado",
+        )
+
+    # Usa variaveis enviadas ou gera exemplos a partir da definicao
+    variables = dict(body.variables)
+    for var_def in template.variables:
+        if var_def["name"] not in variables:
+            variables[var_def["name"]] = f"[{var_def['name']}]"
+
+    rendered_body = EmailTemplateService.render(template.body_html, variables)
+
+    # Wrapa no layout base do email (mesmo usado pelo EmailService)
+    from app.services.email_service import _render_template
+    full_html = _render_template(title=template.subject, body=rendered_body)
+
+    rendered_subject = EmailTemplateService.render(template.subject, variables)
+
+    return EmailTemplatePreviewResponse(subject=rendered_subject, html=full_html)

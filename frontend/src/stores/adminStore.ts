@@ -9,6 +9,7 @@ import type {
   IAuditLogEntry,
   IDashboardStats,
   IEmailLog,
+  IEmailTemplate,
   IPaginationMeta,
   IPlan,
   ISystemHealth,
@@ -20,6 +21,7 @@ import {
   fetchAuditLog,
   fetchDashboardStats,
   fetchEmailLogs,
+  fetchEmailTemplates,
   fetchPlans,
   fetchSettings,
   fetchSystemHealth,
@@ -57,6 +59,10 @@ interface IAdminState {
   emailLogsPagination: IPaginationMeta | null;
   emailLogsLoading: boolean;
 
+  // Email templates
+  emailTemplates: IEmailTemplate[];
+  emailTemplatesLoading: boolean;
+
   // Actions
   loadStats: () => Promise<void>;
   loadHealth: () => Promise<void>;
@@ -85,6 +91,7 @@ interface IAdminState {
     status?: string;
     search?: string;
   }) => Promise<void>;
+  loadEmailTemplates: () => Promise<void>;
 }
 
 export const useAdminStore = create<IAdminState>((set) => ({
@@ -107,6 +114,8 @@ export const useAdminStore = create<IAdminState>((set) => ({
   emailLogs: [],
   emailLogsPagination: null,
   emailLogsLoading: false,
+  emailTemplates: [],
+  emailTemplatesLoading: false,
 
   loadStats: async () => {
     set({ statsLoading: true });
@@ -185,6 +194,16 @@ export const useAdminStore = create<IAdminState>((set) => ({
       set({ emailLogs: items, emailLogsPagination: pagination });
     } finally {
       set({ emailLogsLoading: false });
+    }
+  },
+
+  loadEmailTemplates: async () => {
+    set({ emailTemplatesLoading: true });
+    try {
+      const emailTemplates = await fetchEmailTemplates();
+      set({ emailTemplates });
+    } finally {
+      set({ emailTemplatesLoading: false });
     }
   },
 }));

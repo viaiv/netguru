@@ -12,6 +12,7 @@ from app.models.audit_log import AuditLog
 from app.models.usage_metric import UsageMetric
 from app.models.system_setting import SystemSetting
 from app.models.email_log import EmailLog
+from app.models.email_template import EmailTemplate
 
 __all__ = [
     "User",
@@ -25,4 +26,5 @@ __all__ = [
     "UsageMetric",
     "SystemSetting",
     "EmailLog",
+    "EmailTemplate",
 ]

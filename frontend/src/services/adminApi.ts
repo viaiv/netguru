@@ -278,3 +278,63 @@ export async function fetchEmailLogs(params: {
   const r = await api.get('/admin/email-logs', { params });
   return r.data;
 }
+
+// ---------------------------------------------------------------------------
+// Email Templates
+// ---------------------------------------------------------------------------
+
+export interface IEmailTemplateVariable {
+  name: string;
+  description: string;
+}
+
+export interface IEmailTemplate {
+  id: string;
+  email_type: string;
+  subject: string;
+  body_html: string;
+  variables: IEmailTemplateVariable[];
+  is_active: boolean;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface IEmailTemplateUpdate {
+  subject?: string;
+  body_html?: string;
+  is_active?: boolean;
+}
+
+export interface IEmailTemplatePreview {
+  subject: string;
+  html: string;
+}
+
+export async function fetchEmailTemplates(): Promise<IEmailTemplate[]> {
+  const r = await api.get<IEmailTemplate[]>('/admin/email-templates');
+  return r.data;
+}
+
+export async function fetchEmailTemplate(emailType: string): Promise<IEmailTemplate> {
+  const r = await api.get<IEmailTemplate>(`/admin/email-templates/${emailType}`);
+  return r.data;
+}
+
+export async function updateEmailTemplate(
+  emailType: string,
+  data: IEmailTemplateUpdate,
+): Promise<IEmailTemplate> {
+  const r = await api.put<IEmailTemplate>(`/admin/email-templates/${emailType}`, data);
+  return r.data;
+}
+
+export async function previewEmailTemplate(
+  emailType: string,
+  variables?: Record<string, string>,
+): Promise<IEmailTemplatePreview> {
+  const r = await api.post<IEmailTemplatePreview>(
+    `/admin/email-templates/${emailType}/preview`,
+    { variables: variables ?? {} },
+  );
+  return r.data;
+}
