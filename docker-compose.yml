@@ -43,6 +43,8 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://netguru:netguru_dev_password@postgres:5432/netguru
       - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
       - UVICORN_PORT=8000
     ports:
       - "${UVICORN_PORT}:8000"
@@ -55,6 +57,46 @@ services:
       redis:
         condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port ${UVICORN_PORT} --reload
+    networks:
+      - netguru-network
+
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: netguru-celery-worker
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://netguru:netguru_dev_password@postgres:5432/netguru
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    volumes:
+      - ./backend:/app
+      - /app/venv
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - netguru-network
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.beat
+    container_name: netguru-celery-beat
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://netguru:netguru_dev_password@postgres:5432/netguru
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    volumes:
+      - ./backend:/app
+      - /app/venv
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - netguru-network
 

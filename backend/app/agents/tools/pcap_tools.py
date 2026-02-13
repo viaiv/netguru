@@ -2,16 +2,20 @@
 PCAP tools para o agent LangGraph — analyze_pcap.
 
 Precisa de db + user_id para acessar arquivo via Document model.
+Despacha analise para Celery worker.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 from uuid import UUID
 
 from langchain_core.tools import StructuredTool
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.pcap_analyzer_service import PcapAnalyzerService
+from app.core.config import settings
+from app.models.document import Document
 
 
 def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
@@ -36,31 +40,45 @@ def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
             return f"Invalid document ID: '{document_id}'. Expected a UUID."
 
         try:
-            svc = PcapAnalyzerService(db)
-
             # Valida documento pertence ao usuario
-            document = await svc.get_document(doc_uuid, user_id)
+            result = await db.execute(
+                select(Document).where(
+                    Document.id == doc_uuid,
+                    Document.user_id == user_id,
+                )
+            )
+            document = result.scalar_one_or_none()
+
             if not document:
                 return (
                     f"Document '{document_id}' not found or does not belong to you."
                 )
 
-            # Valida tipo de arquivo
             if document.file_type not in ("pcap", "pcapng"):
                 return (
                     f"Document '{document.original_filename}' is not a PCAP file "
                     f"(type: {document.file_type})."
                 )
 
-            # Valida arquivo existe no disco
             if not os.path.exists(document.storage_path):
                 return (
                     f"PCAP file not found on disk. The file may have been removed."
                 )
 
-            # Analisa
-            summary = await svc.analyze(document.storage_path)
-            return svc.format_summary(summary)
+            # Despacha para Celery worker
+            from app.workers.tasks.pcap_tasks import analyze_pcap
+
+            task_result = analyze_pcap.delay(
+                document.storage_path,
+                settings.PCAP_MAX_PACKETS,
+            )
+
+            # Aguarda resultado sem bloquear event loop
+            result_data = await asyncio.to_thread(
+                task_result.get, timeout=settings.PCAP_ANALYSIS_TIMEOUT
+            )
+
+            return result_data["formatted"]
         except Exception as e:
             return f"Error analyzing PCAP: {e}"
 

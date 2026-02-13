@@ -1,0 +1,63 @@
+# ============================================
+# NetGuru Celery Worker - Production Dockerfile
+# Multi-stage build for optimized image
+# ============================================
+
+# --- Stage 1: Build dependencies ---
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir -r requirements.txt
+
+
+# --- Stage 2: Production runtime ---
+FROM python:3.11-slim AS runtime
+
+LABEL maintainer="NetGuru Team"
+LABEL description="NetGuru Celery Worker - Background Task Processing"
+
+# Non-root user for security
+RUN groupadd --gid 1000 appuser && \
+    useradd --uid 1000 --gid appuser --shell /bin/bash --create-home appuser
+
+# Runtime system dependencies only
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    tini \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy venv from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Copy application code
+COPY --chown=appuser:appuser app/ ./app/
+
+# Create directory for uploads (worker needs access for PCAP analysis)
+RUN mkdir -p /app/uploads && chown appuser:appuser /app/uploads
+
+USER appuser
+
+# tini as init process for proper signal handling
+ENTRYPOINT ["tini", "--"]
+
+CMD ["celery", "-A", "app.workers.celery_app", "worker", \
+     "--loglevel=info", "--concurrency=2"]
