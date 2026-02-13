@@ -150,10 +150,10 @@ function AdminEmailTemplatesPage() {
             >
               <span
                 style={{
-                  background: 'rgba(99,102,241,0.15)',
-                  color: '#818cf8',
+                  background: 'var(--accent-soft)',
+                  color: 'var(--accent-deep)',
                   padding: '2px 10px',
-                  borderRadius: 12,
+                  borderRadius: 999,
                   fontSize: 12,
                   fontWeight: 600,
                 }}
@@ -164,11 +164,11 @@ function AdminEmailTemplatesPage() {
                 style={{
                   fontSize: 11,
                   padding: '2px 8px',
-                  borderRadius: 10,
+                  borderRadius: 999,
                   background: t.is_active
-                    ? 'rgba(34,197,94,0.15)'
-                    : 'rgba(239,68,68,0.15)',
-                  color: t.is_active ? '#22c55e' : '#ef4444',
+                    ? 'var(--accent-soft)'
+                    : 'rgba(var(--danger-rgb), 0.12)',
+                  color: t.is_active ? 'var(--accent-deep)' : 'var(--danger)',
                   fontWeight: 600,
                 }}
               >
@@ -209,7 +209,7 @@ function AdminEmailTemplatesPage() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.6)',
+            background: 'rgba(0,0,0,0.35)',
             zIndex: 1000,
             display: 'flex',
             alignItems: 'center',
@@ -222,14 +222,15 @@ function AdminEmailTemplatesPage() {
         >
           <div
             style={{
-              background: '#1a1a2e',
-              borderRadius: 12,
-              border: '1px solid rgba(99,102,241,0.2)',
+              background: 'var(--panel-strong)',
+              borderRadius: 'var(--radius)',
+              border: '1px solid var(--edge)',
               width: '100%',
               maxWidth: 800,
               maxHeight: '90vh',
               overflow: 'auto',
               padding: 24,
+              boxShadow: 'var(--shadow)',
             }}
           >
             <div
@@ -240,7 +241,7 @@ function AdminEmailTemplatesPage() {
                 marginBottom: 16,
               }}
             >
-              <h3 style={{ margin: 0, color: '#e2e8f0' }}>
+              <h3 style={{ margin: 0, color: 'var(--ink)' }}>
                 Editar: {TYPE_LABELS[editing.email_type] ?? editing.email_type}
               </h3>
               <button
@@ -249,7 +250,7 @@ function AdminEmailTemplatesPage() {
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: '#64748b',
+                  color: 'var(--ink-soft)',
                   fontSize: 20,
                   cursor: 'pointer',
                 }}
@@ -303,10 +304,10 @@ function AdminEmailTemplatesPage() {
                       title={`${v.description} — clique para copiar`}
                       onClick={() => copyVariable(v.name)}
                       style={{
-                        background: 'rgba(99,102,241,0.1)',
-                        border: '1px solid rgba(99,102,241,0.3)',
-                        color: '#818cf8',
-                        borderRadius: 16,
+                        background: 'var(--accent-soft)',
+                        border: '1px solid rgba(var(--accent-rgb), 0.4)',
+                        color: 'var(--accent-deep)',
+                        borderRadius: 999,
                         padding: '4px 12px',
                         fontSize: 12,
                         cursor: 'pointer',
@@ -379,8 +380,8 @@ function AdminEmailTemplatesPage() {
                   style={{
                     width: '100%',
                     height: 500,
-                    border: '1px solid rgba(99,102,241,0.2)',
-                    borderRadius: 8,
+                    border: '1px solid var(--edge)',
+                    borderRadius: 12,
                     background: '#fff',
                     marginTop: 8,
                   }}
