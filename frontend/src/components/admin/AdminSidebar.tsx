@@ -3,7 +3,12 @@
  */
 import { NavLink } from 'react-router-dom';
 
-function AdminSidebar() {
+interface AdminSidebarProps {
+  isOpen?: boolean;
+  onNavigate?: () => void;
+}
+
+function AdminSidebar({ isOpen, onNavigate }: AdminSidebarProps) {
   const links = [
     { to: '/admin', label: 'Dashboard', exact: true },
     { to: '/admin/users', label: 'Usuarios' },
@@ -13,7 +18,7 @@ function AdminSidebar() {
   ];
 
   return (
-    <aside className="admin-sidebar">
+    <aside className={`admin-sidebar ${isOpen ? 'admin-sidebar--open' : ''}`}>
       <div className="admin-sidebar__header">
         <h2 className="admin-sidebar__title">Admin</h2>
       </div>
@@ -26,13 +31,14 @@ function AdminSidebar() {
             className={({ isActive }) =>
               `admin-sidebar__link ${isActive ? 'admin-sidebar__link--active' : ''}`
             }
+            onClick={onNavigate}
           >
             {link.label}
           </NavLink>
         ))}
       </nav>
       <div className="admin-sidebar__footer">
-        <NavLink to="/chat" className="admin-sidebar__back">
+        <NavLink to="/chat" className="admin-sidebar__back" onClick={onNavigate}>
           Voltar ao App
         </NavLink>
       </div>

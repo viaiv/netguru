@@ -5,6 +5,7 @@ import ConnectionStatus from '../components/chat/ConnectionStatus';
 import EmptyState from '../components/chat/EmptyState';
 import MarkdownContent from '../components/chat/MarkdownContent';
 import ToolCallDisplay from '../components/chat/ToolCallDisplay';
+import { useMobile } from '../hooks/useMediaQuery';
 import { useWebSocketReconnect } from '../hooks/useWebSocketReconnect';
 import type { IWebSocketEvent } from '../services/websocket';
 import { useChatStore, type IMessage } from '../stores/chatStore';
@@ -40,6 +41,8 @@ function ChatPage() {
 
   const chatWindowRef = useRef<HTMLDivElement>(null);
   const [inputValue, setInputValue] = useState('');
+  const isMobile = useMobile();
+  const [showSidebar, setShowSidebar] = useState(false);
 
   // ---- WS event handler ----
 
@@ -155,6 +158,13 @@ function ChatPage() {
     await deleteConversation(convId);
   }
 
+  // ---- Mobile sidebar helpers ----
+
+  function handleSelectConversation(convId: string): void {
+    selectConversation(convId);
+    if (isMobile) setShowSidebar(false);
+  }
+
   // ---- Render helpers ----
 
   function renderMessage(msg: IMessage) {
@@ -173,8 +183,13 @@ function ChatPage() {
 
   return (
     <div className="chat-page">
+      {/* ---- Mobile drawer overlay ---- */}
+      {isMobile && showSidebar && (
+        <div className="chat-drawer-overlay" onClick={() => setShowSidebar(false)} />
+      )}
+
       {/* ---- Sidebar ---- */}
-      <aside className="chat-sidebar">
+      <aside className={`chat-sidebar ${isMobile && showSidebar ? 'chat-sidebar--open' : ''}`}>
         <button type="button" className="btn btn-primary chat-new-btn" onClick={handleNewConversation}>
           + Nova Conversa
         </button>
@@ -188,7 +203,7 @@ function ChatPage() {
               <button
                 type="button"
                 className="conversation-item-body"
-                onClick={() => selectConversation(conv.id)}
+                onClick={() => handleSelectConversation(conv.id)}
               >
                 <span className="conversation-title">{conv.title}</span>
                 <span className="conversation-date">
@@ -214,11 +229,33 @@ function ChatPage() {
       {/* ---- Main chat area ---- */}
       <section className="chat-main">
         {!currentConversationId ? (
-          <EmptyState onSuggestion={handleSuggestion} />
+          <>
+            {isMobile && (
+              <div className="chat-toolbar">
+                <button
+                  type="button"
+                  className="chat-drawer-toggle"
+                  onClick={() => setShowSidebar((v) => !v)}
+                  aria-label="Conversas"
+                >
+                  &#9776;
+                </button>
+              </div>
+            )}
+            <EmptyState onSuggestion={handleSuggestion} />
+          </>
         ) : (
           <>
             {/* Connection status */}
             <div className="chat-toolbar">
+              <button
+                type="button"
+                className="chat-drawer-toggle"
+                onClick={() => setShowSidebar((v) => !v)}
+                aria-label="Conversas"
+              >
+                &#9776;
+              </button>
               <ConnectionStatus
                 isConnected={isConnected}
                 isReconnecting={isReconnecting}

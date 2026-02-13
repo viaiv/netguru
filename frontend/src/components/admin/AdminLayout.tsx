@@ -1,8 +1,10 @@
 /**
  * AdminLayout — sidebar + content area for admin routes.
  */
+import { useState } from 'react';
 import { Route, Routes } from 'react-router-dom';
 
+import { useMobile } from '../../hooks/useMediaQuery';
 import AdminSidebar from './AdminSidebar';
 import Breadcrumb from './Breadcrumb';
 import AdminDashboardPage from '../../pages/admin/AdminDashboardPage';
@@ -13,11 +15,34 @@ import AdminAuditLogPage from '../../pages/admin/AdminAuditLogPage';
 import AdminHealthPage from '../../pages/admin/AdminHealthPage';
 
 function AdminLayout() {
+  const isMobile = useMobile();
+  const [showSidebar, setShowSidebar] = useState(false);
+
+  function handleNavigate(): void {
+    if (isMobile) setShowSidebar(false);
+  }
+
   return (
     <div className="admin-layout">
-      <AdminSidebar />
+      {/* Mobile drawer overlay */}
+      {isMobile && showSidebar && (
+        <div className="admin-drawer-overlay" onClick={() => setShowSidebar(false)} />
+      )}
+
+      <AdminSidebar isOpen={!isMobile || showSidebar} onNavigate={handleNavigate} />
+
       <div className="admin-content">
-        <Breadcrumb />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            type="button"
+            className="admin-drawer-toggle"
+            onClick={() => setShowSidebar((v) => !v)}
+            aria-label="Menu"
+          >
+            &#9776;
+          </button>
+          <Breadcrumb />
+        </div>
         <div className="admin-content__body">
           <Routes>
             <Route index element={<AdminDashboardPage />} />

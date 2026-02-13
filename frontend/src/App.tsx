@@ -8,6 +8,7 @@ import RegisterPage from './pages/RegisterPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/admin/AdminRoute';
 import AdminLayout from './components/admin/AdminLayout';
+import { useMobile } from './hooks/useMediaQuery';
 import { AUTH_LOGOUT_EVENT, dispatchAuthLogout, type IAuthLogoutEventDetail } from './services/authEvents';
 import { useAuthStore } from './stores/authStore';
 
@@ -20,8 +21,11 @@ function App() {
   const clearAuth = useAuthStore((state) => state.clearAuth);
 
   const isAdminRoute = location.pathname.startsWith('/admin');
+  const isMobile = useMobile();
 
   const [railCollapsed, setRailCollapsed] = useState(false);
+
+  const hideRail = !isAuthenticated;
 
   function handleLogout(): void {
     dispatchAuthLogout('manual');
@@ -87,73 +91,53 @@ function App() {
         </div>
       </header>
 
-      <div className={`layout ${railCollapsed ? 'layout--collapsed' : ''}`}>
-        <aside className={`rail ${railCollapsed ? 'rail--collapsed' : ''}`}>
-          <button
-            type="button"
-            className="rail-toggle"
-            onClick={() => setRailCollapsed((prev) => !prev)}
-            title={railCollapsed ? 'Expandir menu' : 'Recolher menu'}
-          >
-            {railCollapsed ? '\u25B6' : '\u25C0'}
-          </button>
+      <div className={`layout ${railCollapsed ? 'layout--collapsed' : ''} ${hideRail ? 'layout--no-rail' : ''}`}>
+        {!hideRail && (
+          <aside className={`rail ${railCollapsed ? 'rail--collapsed' : ''}`}>
+            <button
+              type="button"
+              className="rail-toggle"
+              onClick={() => setRailCollapsed((prev) => !prev)}
+              title={railCollapsed ? 'Expandir menu' : 'Recolher menu'}
+            >
+              {railCollapsed ? '\u25B6' : '\u25C0'}
+            </button>
 
-          <nav className="nav">
-            {!isAuthenticated && (
-              <>
+            <nav className="nav">
+              <NavLink
+                to="/chat"
+                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                title="Chat"
+              >
+                {railCollapsed ? '\uD83D\uDCAC' : 'Chat'}
+              </NavLink>
+              <NavLink
+                to="/me"
+                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                title="Perfil"
+              >
+                {railCollapsed ? '\uD83D\uDC64' : 'Perfil'}
+              </NavLink>
+              {isAdmin && (
                 <NavLink
-                  to="/login"
-                  className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-                  title="Login"
+                  to="/admin"
+                  className={({ isActive }) => `nav-link nav-link--admin ${isActive ? 'active' : ''}`}
+                  title="Admin"
                 >
-                  {railCollapsed ? '\uD83D\uDD12' : 'Login'}
+                  {railCollapsed ? '\u2699' : 'Admin'}
                 </NavLink>
-                <NavLink
-                  to="/register"
-                  className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-                  title="Cadastro"
-                >
-                  {railCollapsed ? '\uD83D\uDCDD' : 'Cadastro'}
-                </NavLink>
-              </>
-            )}
-            {isAuthenticated && (
-              <>
-                <NavLink
-                  to="/chat"
-                  className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-                  title="Chat"
-                >
-                  {railCollapsed ? '\uD83D\uDCAC' : 'Chat'}
-                </NavLink>
-                <NavLink
-                  to="/me"
-                  className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-                  title="Perfil"
-                >
-                  {railCollapsed ? '\uD83D\uDC64' : 'Perfil'}
-                </NavLink>
-                {isAdmin && (
-                  <NavLink
-                    to="/admin"
-                    className={({ isActive }) => `nav-link nav-link--admin ${isActive ? 'active' : ''}`}
-                    title="Admin"
-                  >
-                    {railCollapsed ? '\u2699' : 'Admin'}
-                  </NavLink>
-                )}
-              </>
-            )}
-          </nav>
+              )}
+            </nav>
 
-          {!railCollapsed && isAuthenticated && (
-            <div className="rail-card">
-              <button type="button" className="ghost-btn" onClick={handleLogout}>
-                Encerrar sessão
-              </button>
-            </div>
-          )}
-        </aside>
+            {!railCollapsed && isAuthenticated && (
+              <div className="rail-card">
+                <button type="button" className="ghost-btn" onClick={handleLogout}>
+                  Encerrar sessão
+                </button>
+              </div>
+            )}
+          </aside>
+        )}
 
         <main className="panel">
           <div className="panel-inner">
