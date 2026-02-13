@@ -15,6 +15,7 @@ import AdminAuditLogPage from '../../pages/admin/AdminAuditLogPage';
 import AdminHealthPage from '../../pages/admin/AdminHealthPage';
 import AdminEmailLogsPage from '../../pages/admin/AdminEmailLogsPage';
 import AdminEmailTemplatesPage from '../../pages/admin/AdminEmailTemplatesPage';
+import AdminStripeEventsPage from '../../pages/admin/AdminStripeEventsPage';
 import AdminSettingsPage from '../../pages/admin/AdminSettingsPage';
 
 function AdminLayout() {
@@ -56,6 +57,7 @@ function AdminLayout() {
             <Route path="health" element={<AdminHealthPage />} />
             <Route path="email-logs" element={<AdminEmailLogsPage />} />
             <Route path="email-templates" element={<AdminEmailTemplatesPage />} />
+            <Route path="stripe-events" element={<AdminStripeEventsPage />} />
             <Route path="settings" element={<AdminSettingsPage />} />
           </Routes>
         </div>

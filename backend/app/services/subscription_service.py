@@ -1,5 +1,8 @@
 """
 Subscription service — Stripe checkout, portal, and webhook handling.
+
+Carrega credenciais via SystemSettings (DB, Fernet-encrypted) com fallback
+para variaveis de ambiente (retrocompatibilidade).
 """
 from __future__ import annotations
 
@@ -11,11 +14,14 @@ from uuid import UUID
 import stripe
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.plan import Plan
+from app.models.stripe_event import StripeEvent
 from app.models.subscription import Subscription
 from app.models.user import User
+from app.services.system_settings_service import SystemSettingsService
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +35,117 @@ class SubscriptionServiceError(Exception):
         super().__init__(detail)
 
 
+class StripeNotConfiguredError(SubscriptionServiceError):
+    """Credenciais Stripe nao configuradas."""
+
+    def __init__(self, detail: str = "Stripe nao configurado. Configure as credenciais no painel admin ou variaveis de ambiente.") -> None:
+        super().__init__(detail, code="stripe_not_configured")
+
+
 class SubscriptionService:
     """
     Manages Stripe checkout, customer portal, and webhook events.
+
+    Usa factory ``from_settings`` (async) ou ``from_settings_sync`` (Celery)
+    para carregar credenciais do SystemSettings com fallback para env vars.
     """
 
-    def __init__(self) -> None:
-        stripe.api_key = settings.STRIPE_SECRET_KEY
+    def __init__(
+        self,
+        *,
+        secret_key: str,
+        webhook_secret: str,
+        publishable_key: str = "",
+    ) -> None:
+        self._secret_key = secret_key
+        self._webhook_secret = webhook_secret
+        self._publishable_key = publishable_key
+
+    def _configure_stripe(self) -> None:
+        """Seta stripe.api_key antes de cada operacao."""
+        stripe.api_key = self._secret_key
+
+    # ------------------------------------------------------------------
+    # Factory methods
+    # ------------------------------------------------------------------
+
+    @classmethod
+    async def from_settings(cls, db: AsyncSession) -> SubscriptionService:
+        """
+        Factory async — carrega credenciais do SystemSettings (FastAPI).
+
+        Fallback para env vars se DB estiver vazio (retrocompatibilidade).
+
+        Raises:
+            StripeNotConfiguredError: Se nenhuma credencial disponivel.
+        """
+        enabled = await SystemSettingsService.get(db, "stripe_enabled")
+        if enabled == "false":
+            raise StripeNotConfiguredError(
+                "Stripe esta desabilitado nas configuracoes do sistema."
+            )
+
+        secret_key = await SystemSettingsService.get(db, "stripe_secret_key")
+        webhook_secret = await SystemSettingsService.get(db, "stripe_webhook_secret")
+        publishable_key = await SystemSettingsService.get(db, "stripe_publishable_key")
+
+        # Fallback para env vars
+        if not secret_key:
+            secret_key = settings.STRIPE_SECRET_KEY
+        if not webhook_secret:
+            webhook_secret = settings.STRIPE_WEBHOOK_SECRET
+        if not publishable_key:
+            publishable_key = settings.STRIPE_PUBLISHABLE_KEY
+
+        if not secret_key:
+            raise StripeNotConfiguredError()
+
+        return cls(
+            secret_key=secret_key,
+            webhook_secret=webhook_secret or "",
+            publishable_key=publishable_key or "",
+        )
+
+    @classmethod
+    def from_settings_sync(cls, db: Session) -> SubscriptionService:
+        """
+        Factory sync — carrega credenciais do SystemSettings (Celery).
+
+        Fallback para env vars se DB estiver vazio (retrocompatibilidade).
+
+        Raises:
+            StripeNotConfiguredError: Se nenhuma credencial disponivel.
+        """
+        enabled = SystemSettingsService.get_sync(db, "stripe_enabled")
+        if enabled == "false":
+            raise StripeNotConfiguredError(
+                "Stripe esta desabilitado nas configuracoes do sistema."
+            )
+
+        secret_key = SystemSettingsService.get_sync(db, "stripe_secret_key")
+        webhook_secret = SystemSettingsService.get_sync(db, "stripe_webhook_secret")
+        publishable_key = SystemSettingsService.get_sync(db, "stripe_publishable_key")
+
+        # Fallback para env vars
+        if not secret_key:
+            secret_key = settings.STRIPE_SECRET_KEY
+        if not webhook_secret:
+            webhook_secret = settings.STRIPE_WEBHOOK_SECRET
+        if not publishable_key:
+            publishable_key = settings.STRIPE_PUBLISHABLE_KEY
+
+        if not secret_key:
+            raise StripeNotConfiguredError()
+
+        return cls(
+            secret_key=secret_key,
+            webhook_secret=webhook_secret or "",
+            publishable_key=publishable_key or "",
+        )
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     async def create_checkout_session(
         self,
@@ -52,6 +162,7 @@ class SubscriptionService:
         Returns:
             dict with checkout_url and session_id.
         """
+        self._configure_stripe()
         plan = await self._get_plan(db, plan_id)
 
         if not plan.stripe_price_id:
@@ -95,6 +206,7 @@ class SubscriptionService:
         Returns:
             dict with portal_url.
         """
+        self._configure_stripe()
         sub = await self._get_active_subscription(db, user.id)
         if not sub or not sub.stripe_customer_id:
             raise SubscriptionServiceError(
@@ -121,17 +233,27 @@ class SubscriptionService:
         Returns:
             Event type string for logging.
         """
+        self._configure_stripe()
         try:
             event = stripe.Webhook.construct_event(
-                payload, sig_header, settings.STRIPE_WEBHOOK_SECRET,
+                payload, sig_header, self._webhook_secret,
             )
-        except stripe.SignatureVerificationError:
+        except stripe.SignatureVerificationError as exc:
+            await self._log_event(
+                db,
+                event_id="unknown",
+                event_type="signature_verification_error",
+                status="failed",
+                error_message=str(exc)[:500],
+                payload_summary=str(payload[:500]),
+            )
             raise SubscriptionServiceError(
                 "Assinatura do webhook invalida.",
                 code="invalid_webhook_signature",
             )
 
         event_type = event["type"]
+        event_id = event["id"]
         data = event["data"]["object"]
 
         handler = {
@@ -142,9 +264,34 @@ class SubscriptionService:
         }.get(event_type)
 
         if handler:
-            await handler(db, data)
+            try:
+                await handler(db, data)
+            except Exception as exc:
+                await self._log_event(
+                    db,
+                    event_id=event_id,
+                    event_type=event_type,
+                    status="failed",
+                    data=data,
+                    error_message=str(exc)[:500],
+                )
+                raise
+            await self._log_event(
+                db,
+                event_id=event_id,
+                event_type=event_type,
+                status="processed",
+                data=data,
+            )
             logger.info("Stripe webhook processed: %s", event_type)
         else:
+            await self._log_event(
+                db,
+                event_id=event_id,
+                event_type=event_type,
+                status="ignored",
+                data=data,
+            )
             logger.debug("Stripe webhook ignored: %s", event_type)
 
         return event_type
@@ -243,6 +390,51 @@ class SubscriptionService:
         if sub:
             sub.status = "past_due"
             await db.flush()
+
+    # ------------------------------------------------------------------
+    # Event logging
+    # ------------------------------------------------------------------
+
+    async def _log_event(
+        self,
+        db: AsyncSession,
+        *,
+        event_id: str,
+        event_type: str,
+        status: str,
+        data: Optional[dict[str, Any]] = None,
+        error_message: Optional[str] = None,
+        payload_summary: Optional[str] = None,
+    ) -> None:
+        """Persist a StripeEvent record for admin visibility."""
+        try:
+            record = StripeEvent(
+                event_id=event_id,
+                event_type=event_type,
+                status=status,
+                customer_id=data.get("customer") if data else None,
+                subscription_id=data.get("subscription") or (data.get("id") if data else None),
+                user_id=self._extract_user_id(data),
+                error_message=error_message,
+                payload_summary=payload_summary or (str(data)[:500] if data else None),
+            )
+            db.add(record)
+            await db.flush()
+        except Exception:
+            logger.exception("Falha ao persistir StripeEvent (event_id=%s)", event_id)
+
+    @staticmethod
+    def _extract_user_id(data: Optional[dict[str, Any]]) -> Optional[UUID]:
+        """Extract user_id from event metadata, if present."""
+        if not data:
+            return None
+        raw = data.get("metadata", {}).get("user_id")
+        if raw:
+            try:
+                return UUID(raw)
+            except (ValueError, AttributeError):
+                pass
+        return None
 
     # ------------------------------------------------------------------
     # Helpers

@@ -1,5 +1,5 @@
 """
-Admin settings endpoints — manage system-wide configuration and email logs.
+Admin settings endpoints — manage system-wide configuration, email logs, and stripe events.
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from app.core.database import get_db
 from app.core.dependencies import require_permissions
 from app.core.rbac import Permission
 from app.models.email_log import EmailLog
+from app.models.stripe_event import StripeEvent
 from app.models.user import User
 from app.schemas.admin import (
     EmailLogListResponse,
@@ -22,6 +23,8 @@ from app.schemas.admin import (
     EmailTemplateResponse,
     EmailTemplateUpdate,
     PaginationMeta,
+    StripeEventListResponse,
+    StripeEventResponse,
     SystemSettingResponse,
     SystemSettingUpdate,
 )
@@ -159,6 +162,45 @@ async def test_r2(
     return {"message": "Conexao com R2 realizada com sucesso (CORS configurado)"}
 
 
+@router.post("/settings/test-stripe", status_code=status.HTTP_200_OK)
+async def test_stripe(
+    current_user: User = Depends(require_permissions(Permission.ADMIN_SETTINGS_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Testa conexao com Stripe validando a API key."""
+    import stripe as stripe_mod
+
+    from app.services.subscription_service import (
+        StripeNotConfiguredError,
+        SubscriptionService,
+    )
+
+    try:
+        svc = await SubscriptionService.from_settings(db)
+    except StripeNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    svc._configure_stripe()
+
+    try:
+        account = stripe_mod.Account.retrieve()
+        name = getattr(account, "settings", {}).get("dashboard", {}).get("display_name") or account.get("id", "OK")
+        return {"message": f"Conexao com Stripe realizada com sucesso (conta: {name})"}
+    except stripe_mod.AuthenticationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"API key Stripe invalida: {exc}",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Falha ao conectar ao Stripe: {exc}",
+        ) from exc
+
+
 # ---------------------------------------------------------------------------
 # Email logs
 # ---------------------------------------------------------------------------
@@ -287,3 +329,41 @@ async def preview_email_template(
     rendered_subject = EmailTemplateService.render(template.subject, variables)
 
     return EmailTemplatePreviewResponse(subject=rendered_subject, html=full_html)
+
+
+# ---------------------------------------------------------------------------
+# Stripe Events
+# ---------------------------------------------------------------------------
+
+@router.get("/stripe-events", response_model=StripeEventListResponse)
+async def list_stripe_events(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    event_type: Optional[str] = Query(None),
+    status_filter: Optional[str] = Query(None, alias="status"),
+    current_user: User = Depends(require_permissions(Permission.ADMIN_SETTINGS_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> StripeEventListResponse:
+    """Lista eventos Stripe com paginacao e filtros."""
+    base = select(StripeEvent)
+
+    if event_type:
+        base = base.where(StripeEvent.event_type.ilike(f"%{event_type}%"))
+    if status_filter:
+        base = base.where(StripeEvent.status == status_filter)
+
+    # Total count
+    count_stmt = select(func.count()).select_from(base.subquery())
+    total = int((await db.execute(count_stmt)).scalar_one())
+
+    # Paginated results
+    offset = (page - 1) * limit
+    rows_stmt = base.order_by(desc(StripeEvent.created_at)).offset(offset).limit(limit)
+    rows = (await db.execute(rows_stmt)).scalars().all()
+
+    pages = max(1, (total + limit - 1) // limit)
+
+    return StripeEventListResponse(
+        items=[StripeEventResponse.model_validate(r) for r in rows],
+        pagination=PaginationMeta(total=total, page=page, pages=pages, limit=limit),
+    )

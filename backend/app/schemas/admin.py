@@ -292,6 +292,30 @@ class EmailTemplatePreviewResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Stripe Events
+# ---------------------------------------------------------------------------
+
+class StripeEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    event_id: str
+    event_type: str
+    status: str
+    customer_id: Optional[str]
+    subscription_id: Optional[str]
+    user_id: Optional[UUID]
+    error_message: Optional[str]
+    payload_summary: Optional[str]
+    created_at: datetime
+
+
+class StripeEventListResponse(BaseModel):
+    items: list[StripeEventResponse]
+    pagination: PaginationMeta
+
+
+# ---------------------------------------------------------------------------
 # Celery Task Events
 # ---------------------------------------------------------------------------
 

@@ -14,6 +14,7 @@ from app.models.system_setting import SystemSetting
 from app.models.email_log import EmailLog
 from app.models.email_template import EmailTemplate
 from app.models.celery_task_event import CeleryTaskEvent
+from app.models.stripe_event import StripeEvent
 
 __all__ = [
     "User",
@@ -29,4 +30,5 @@ __all__ = [
     "EmailLog",
     "EmailTemplate",
     "CeleryTaskEvent",
+    "StripeEvent",
 ]

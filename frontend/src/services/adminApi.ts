@@ -269,6 +269,11 @@ export async function testR2(): Promise<{ message: string }> {
   return r.data;
 }
 
+export async function testStripe(): Promise<{ message: string }> {
+  const r = await api.post<{ message: string }>('/admin/settings/test-stripe');
+  return r.data;
+}
+
 // ---------------------------------------------------------------------------
 // Email Logs
 // ---------------------------------------------------------------------------
@@ -341,6 +346,33 @@ export async function previewEmailTemplate(
     `/admin/email-templates/${emailType}/preview`,
     { variables: variables ?? {} },
   );
+  return r.data;
+}
+
+// ---------------------------------------------------------------------------
+// Stripe Events
+// ---------------------------------------------------------------------------
+
+export interface IStripeEvent {
+  id: string;
+  event_id: string;
+  event_type: string;
+  status: string;
+  customer_id: string | null;
+  subscription_id: string | null;
+  user_id: string | null;
+  error_message: string | null;
+  payload_summary: string | null;
+  created_at: string;
+}
+
+export async function fetchStripeEvents(params: {
+  page?: number;
+  limit?: number;
+  event_type?: string;
+  status?: string;
+}): Promise<{ items: IStripeEvent[]; pagination: IPaginationMeta }> {
+  const r = await api.get('/admin/settings/stripe-events', { params });
   return r.data;
 }
 

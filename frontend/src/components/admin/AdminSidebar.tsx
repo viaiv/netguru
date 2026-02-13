@@ -17,6 +17,7 @@ function AdminSidebar({ isOpen, onNavigate }: AdminSidebarProps) {
     { to: '/admin/health', label: 'System Health' },
     { to: '/admin/email-logs', label: 'Email Logs' },
     { to: '/admin/email-templates', label: 'Email Templates' },
+    { to: '/admin/stripe-events', label: 'Stripe Events' },
     { to: '/admin/settings', label: 'Configuracoes' },
   ];
 

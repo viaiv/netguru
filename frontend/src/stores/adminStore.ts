@@ -12,6 +12,7 @@ import type {
   IEmailTemplate,
   IPaginationMeta,
   IPlan,
+  IStripeEvent,
   ISystemHealth,
   ISystemSetting,
 } from '../services/adminApi';
@@ -24,6 +25,7 @@ import {
   fetchEmailTemplates,
   fetchPlans,
   fetchSettings,
+  fetchStripeEvents,
   fetchSystemHealth,
 } from '../services/adminApi';
 
@@ -63,6 +65,11 @@ interface IAdminState {
   emailTemplates: IEmailTemplate[];
   emailTemplatesLoading: boolean;
 
+  // Stripe events
+  stripeEvents: IStripeEvent[];
+  stripeEventsPagination: IPaginationMeta | null;
+  stripeEventsLoading: boolean;
+
   // Actions
   loadStats: () => Promise<void>;
   loadHealth: () => Promise<void>;
@@ -92,6 +99,12 @@ interface IAdminState {
     search?: string;
   }) => Promise<void>;
   loadEmailTemplates: () => Promise<void>;
+  loadStripeEvents: (params?: {
+    page?: number;
+    limit?: number;
+    event_type?: string;
+    status?: string;
+  }) => Promise<void>;
 }
 
 export const useAdminStore = create<IAdminState>((set) => ({
@@ -116,6 +129,9 @@ export const useAdminStore = create<IAdminState>((set) => ({
   emailLogsLoading: false,
   emailTemplates: [],
   emailTemplatesLoading: false,
+  stripeEvents: [],
+  stripeEventsPagination: null,
+  stripeEventsLoading: false,
 
   loadStats: async () => {
     set({ statsLoading: true });
@@ -204,6 +220,16 @@ export const useAdminStore = create<IAdminState>((set) => ({
       set({ emailTemplates });
     } finally {
       set({ emailTemplatesLoading: false });
+    }
+  },
+
+  loadStripeEvents: async (params) => {
+    set({ stripeEventsLoading: true });
+    try {
+      const { items, pagination } = await fetchStripeEvents(params ?? {});
+      set({ stripeEvents: items, stripeEventsPagination: pagination });
+    } finally {
+      set({ stripeEventsLoading: false });
     }
   },
 }));
