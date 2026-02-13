@@ -372,7 +372,7 @@ export async function fetchStripeEvents(params: {
   event_type?: string;
   status?: string;
 }): Promise<{ items: IStripeEvent[]; pagination: IPaginationMeta }> {
-  const r = await api.get('/admin/settings/stripe-events', { params });
+  const r = await api.get('/admin/stripe-events', { params });
   return r.data;
 }
 
