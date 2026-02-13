@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 
+import ChatPage from './pages/ChatPage';
 import LoginPage from './pages/LoginPage';
 import MePage from './pages/MePage';
 import RegisterPage from './pages/RegisterPage';
@@ -106,6 +107,12 @@ function App() {
               Cadastro
             </NavLink>
             <NavLink
+              to="/chat"
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              Chat
+            </NavLink>
+            <NavLink
               to="/me"
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
             >
@@ -117,7 +124,7 @@ function App() {
             <p className="rail-label">current route</p>
             <p className="rail-value">{location.pathname}</p>
             <p className="rail-help">
-              Fluxo alvo: <code>/register</code> → <code>/login</code> → <code>/me</code>.
+              Fluxo: <code>/register</code> → <code>/login</code> → <code>/chat</code>.
             </p>
             {isAuthenticated ? (
               <button type="button" className="ghost-btn" onClick={handleLogout}>
@@ -133,6 +140,14 @@ function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route
+                path="/chat"
+                element={
+                  <ProtectedRoute>
+                    <ChatPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/me"
                 element={
                   <ProtectedRoute>
@@ -142,7 +157,7 @@ function App() {
               />
               <Route
                 path="*"
-                element={<Navigate to={isAuthenticated ? '/me' : '/login'} replace />}
+                element={<Navigate to={isAuthenticated ? '/chat' : '/login'} replace />}
               />
             </Routes>
           </div>

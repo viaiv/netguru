@@ -71,6 +71,15 @@ class Settings(BaseSettings):
     USE_QDRANT: bool = False
     QDRANT_URL: str = "http://localhost:6333"
     
+    # Chat / Agent
+    CHAT_HISTORY_LIMIT: int = 20
+    CHAT_MAX_MESSAGE_LENGTH: int = 10000
+    DEFAULT_LLM_MODEL_OPENAI: str = "gpt-4o"
+    DEFAULT_LLM_MODEL_ANTHROPIC: str = "claude-sonnet-4-20250514"
+    DEFAULT_LLM_MODEL_AZURE: str = "gpt-4o"
+    LLM_MAX_TOKENS: int = 4096
+    LLM_TEMPERATURE: float = 0.7
+
     # Monitoring
     PROMETHEUS_ENABLED: bool = False
     SENTRY_DSN: str = ""

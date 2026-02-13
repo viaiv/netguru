@@ -8,8 +8,9 @@
 > **⚠️ Manutenção**: Se qualquer procedimento documentado aqui estiver desatualizado, sugira correções e atualize este arquivo.
 
 > **📝 CHECKPOINT TEMPORÁRIO (REMOVER NA PRÓXIMA SESSÃO):**
-> Paramos após fechar UUID em PK/FK + endpoints `/files` (upload/list/detail/download/delete) no backend.
-> Próximo passo planejado: WebSocket de chat com streaming + integração inicial de ChatService/RAG local.
+> WebSocket chat com streaming implementado: LLM client (OpenAI/Anthropic/Azure), LangGraph agent,
+> ChatService, endpoint WS, frontend com Zustand store + ChatPage.
+> Próximo passo: testar end-to-end com API key real + iniciar RAG (Phase 3-4).
 
 ---
 
