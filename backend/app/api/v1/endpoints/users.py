@@ -3,10 +3,10 @@ User profile endpoints.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,11 +17,13 @@ from app.core.security import decrypt_api_key, encrypt_api_key
 from app.models.user import User
 from app.schemas.user import (
     ApiKeyMetadataResponse,
+    UserByoLlmUsageSummaryResponse,
     UserResponse,
     UserRoleUpdate,
     UserStatusUpdate,
     UserUpdate,
 )
+from app.services.byollm_usage_service import ByoLlmUsageService
 
 router = APIRouter()
 
@@ -53,6 +55,44 @@ async def get_me(
     Get current authenticated user information.
     """
     return _build_user_response(current_user)
+
+
+@router.get("/me/usage-summary", response_model=UserByoLlmUsageSummaryResponse)
+async def get_my_usage_summary(
+    days: int = Query(default=7, ge=1, le=90),
+    provider: str | None = Query(default=None, max_length=50),
+    current_user: User = Depends(require_permissions(Permission.USERS_READ_SELF)),
+    db: AsyncSession = Depends(get_db),
+) -> UserByoLlmUsageSummaryResponse:
+    """
+    Return BYO-LLM usage summary for current user in the requested window.
+    """
+    end_date = date.today()
+    start_date = end_date - timedelta(days=days - 1)
+
+    report = await ByoLlmUsageService.build_report(
+        db=db,
+        start_date=start_date,
+        end_date=end_date,
+        provider_filter=provider.lower().strip() if provider else None,
+        user_id=current_user.id,
+    )
+
+    return UserByoLlmUsageSummaryResponse(
+        period_days=days,
+        provider_filter=report.get("provider_filter"),
+        totals=report["totals"],
+        by_provider_model=report["by_provider_model"],
+        alerts=[
+            {
+                "code": alert.get("code", "unknown"),
+                "severity": alert.get("severity", "info"),
+                "message": alert.get("message", ""),
+            }
+            for alert in report.get("alerts", [])
+            if isinstance(alert, dict)
+        ],
+    )
 
 
 @router.patch("/me", response_model=UserResponse)

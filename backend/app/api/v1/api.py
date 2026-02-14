@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
     admin,
+    admin_usage,
     auth,
     billing,
     chat,
@@ -35,6 +36,7 @@ api_router.include_router(ws_chat.router, tags=["WebSocket Chat"])
 
 api_router.include_router(plans.router, prefix="/plans", tags=["Plans"])
 api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
+api_router.include_router(admin_usage.router, prefix="/admin", tags=["Admin Usage"])
 api_router.include_router(settings.router, prefix="/admin", tags=["Admin Settings"])
 api_router.include_router(billing.router, prefix="/billing", tags=["Billing"])
 

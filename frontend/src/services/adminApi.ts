@@ -26,6 +26,70 @@ export interface IDashboardStats {
   messages_today: number;
 }
 
+export interface IByoLlmTotals {
+  messages: number;
+  tokens: number;
+  latency_p50_ms: number;
+  latency_p95_ms: number;
+  error_rate_pct: number;
+  attempts_total: number;
+  attempts_failed: number;
+  tool_calls_total: number;
+  tool_calls_failed: number;
+}
+
+export interface IByoLlmProviderModelItem {
+  provider: string;
+  model: string;
+  messages: number;
+  tokens: number;
+  avg_latency_ms: number;
+  error_rate_pct: number;
+}
+
+export interface IByoLlmToolItem {
+  tool: string;
+  calls: number;
+  failed_calls: number;
+  avg_duration_ms: number;
+  error_rate_pct: number;
+}
+
+export interface IByoLlmAlert {
+  code: string;
+  severity: 'info' | 'warning' | 'critical';
+  message: string;
+  current_value: number;
+  threshold: number;
+}
+
+export interface IByoLlmExportRow {
+  message_id: string;
+  conversation_id: string;
+  user_id: string;
+  created_at: string;
+  provider: string;
+  model: string;
+  tokens: number;
+  latency_ms: number;
+  attempts_total: number;
+  attempts_failed: number;
+  tool_calls_total: number;
+  tool_calls_failed: number;
+  fallback_triggered: boolean;
+}
+
+export interface IByoLlmUsageReport {
+  start_date: string;
+  end_date: string;
+  provider_filter: string | null;
+  totals: IByoLlmTotals;
+  by_provider_model: IByoLlmProviderModelItem[];
+  by_tool: IByoLlmToolItem[];
+  alerts: IByoLlmAlert[];
+  export_rows: IByoLlmExportRow[];
+}
+
 export interface IServiceStatus {
   name: string;
   status: 'healthy' | 'degraded' | 'down';
@@ -207,6 +271,29 @@ export interface ISystemMemoryUpdate {
 export async function fetchDashboardStats(): Promise<IDashboardStats> {
   const r = await api.get<IDashboardStats>('/admin/dashboard');
   return r.data;
+}
+
+export async function fetchByoLlmUsageReport(params: {
+  start_date?: string;
+  end_date?: string;
+  provider?: string;
+  user_id?: string;
+}): Promise<IByoLlmUsageReport> {
+  const r = await api.get<IByoLlmUsageReport>('/admin/usage/byollm', { params });
+  return r.data;
+}
+
+export async function exportByoLlmUsageCsv(params: {
+  start_date?: string;
+  end_date?: string;
+  provider?: string;
+  user_id?: string;
+}): Promise<Blob> {
+  const r = await api.get('/admin/usage/byollm', {
+    params: { ...params, export: 'csv' },
+    responseType: 'blob',
+  });
+  return r.data as Blob;
 }
 
 export async function fetchSystemHealth(): Promise<ISystemHealth> {

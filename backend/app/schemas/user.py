@@ -123,6 +123,45 @@ class ApiKeyMetadataResponse(BaseModel):
     masked_key: Optional[str] = None
 
 
+class UserByoLlmTotals(BaseModel):
+    """Aggregated BYO-LLM totals for user-facing summary."""
+
+    messages: int = 0
+    tokens: int = 0
+    latency_p50_ms: float = 0.0
+    latency_p95_ms: float = 0.0
+    error_rate_pct: float = 0.0
+
+
+class UserByoLlmProviderItem(BaseModel):
+    """Provider/model row in user BYO-LLM summary."""
+
+    provider: str
+    model: str
+    messages: int
+    tokens: int
+    avg_latency_ms: float
+    error_rate_pct: float
+
+
+class UserByoLlmAlert(BaseModel):
+    """Simple budget/quality alert shown to end users."""
+
+    code: str
+    severity: str
+    message: str
+
+
+class UserByoLlmUsageSummaryResponse(BaseModel):
+    """User-facing BYO-LLM usage summary for a date window."""
+
+    period_days: int
+    provider_filter: Optional[str] = None
+    totals: UserByoLlmTotals
+    by_provider_model: list[UserByoLlmProviderItem]
+    alerts: list[UserByoLlmAlert]
+
+
 class UserRoleUpdate(BaseModel):
     """Schema for admin role updates."""
 

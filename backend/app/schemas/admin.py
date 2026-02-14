@@ -135,6 +135,70 @@ class DashboardStats(BaseModel):
     messages_today: int
 
 
+class ByoLlmTotals(BaseModel):
+    messages: int = 0
+    tokens: int = 0
+    latency_p50_ms: float = 0.0
+    latency_p95_ms: float = 0.0
+    error_rate_pct: float = 0.0
+    attempts_total: int = 0
+    attempts_failed: int = 0
+    tool_calls_total: int = 0
+    tool_calls_failed: int = 0
+
+
+class ByoLlmProviderModelItem(BaseModel):
+    provider: str
+    model: str
+    messages: int
+    tokens: int
+    avg_latency_ms: float
+    error_rate_pct: float
+
+
+class ByoLlmToolItem(BaseModel):
+    tool: str
+    calls: int
+    failed_calls: int
+    avg_duration_ms: float
+    error_rate_pct: float
+
+
+class ByoLlmAlert(BaseModel):
+    code: str
+    severity: str = Field(description="info|warning|critical")
+    message: str
+    current_value: float
+    threshold: float
+
+
+class ByoLlmExportRow(BaseModel):
+    message_id: UUID
+    conversation_id: UUID
+    user_id: UUID
+    created_at: datetime
+    provider: str
+    model: str
+    tokens: int
+    latency_ms: int
+    attempts_total: int
+    attempts_failed: int
+    tool_calls_total: int
+    tool_calls_failed: int
+    fallback_triggered: bool
+
+
+class ByoLlmUsageReportResponse(BaseModel):
+    start_date: date
+    end_date: date
+    provider_filter: Optional[str] = None
+    totals: ByoLlmTotals
+    by_provider_model: list[ByoLlmProviderModelItem]
+    by_tool: list[ByoLlmToolItem]
+    alerts: list[ByoLlmAlert]
+    export_rows: list[ByoLlmExportRow]
+
+
 class ServiceStatus(BaseModel):
     name: str
     status: str = Field(description="healthy|degraded|down")
