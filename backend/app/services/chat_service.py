@@ -2,6 +2,8 @@
 Chat service — orchestrates message persistence + agent invocation + streaming.
 """
 import asyncio
+import logging
+import time
 from datetime import datetime
 from typing import AsyncGenerator
 from uuid import UUID
@@ -25,6 +27,8 @@ from app.services.memory_service import MemoryContextResolution, MemoryService
 from app.services.system_settings_service import SystemSettingsService
 from app.services.playbook_service import PlaybookResponse, PlaybookService
 from app.services.usage_tracking_service import UsageTrackingService
+
+logger = logging.getLogger(__name__)
 
 
 class ChatServiceError(Exception):
@@ -237,7 +241,7 @@ class ChatService:
                 )
             history[-1]["content"] = enriched_content
 
-        # 7. Build agent with tools
+        # 7. Build tools + fallback plan
         try:
             model_override = conversation.model_used
             if using_free_llm and not model_override:
@@ -251,11 +255,11 @@ class ChatService:
                 plan_tier=getattr(user, "plan_tier", None),
                 user_message=content,
             )
-            agent = NetworkEngineerAgent(
-                provider_name=provider_name,
-                api_key=api_key,
-                model=model_override,
-                tools=tools,
+            llm_attempts = await self._build_llm_attempt_chain(
+                primary_provider=provider_name,
+                primary_api_key=api_key,
+                primary_model=model_override,
+                using_free_llm=using_free_llm,
             )
         except Exception as exc:
             await self._db.rollback()
@@ -287,147 +291,268 @@ class ChatService:
         accumulated = ""
         tool_calls_log: list[dict] = []
         active_tool_calls: dict[str, dict] = {}
-        try:
-            async for event in agent.stream_response(history):
-                event_type = event.get("type")
+        llm_attempt_audit: list[dict] = []
+        selected_llm_attempt: dict | None = None
 
-                if event_type == "text":
-                    accumulated += event["content"]
-                    yield {"type": "stream_chunk", "content": event["content"]}
+        total_attempts = len(llm_attempts)
+        for attempt_index, llm_attempt in enumerate(llm_attempts):
+            attempt_started_at = time.monotonic()
+            output_emitted = False
+            attempt_provider = str(llm_attempt.get("provider_name", "unknown"))
+            attempt_model = llm_attempt.get("model")
+            attempt_source = str(llm_attempt.get("source", "unknown"))
 
-                elif event_type == "tool_call_start":
-                    tool_call_id = str(event.get("tool_call_id", ""))
-                    tool_name = str(event.get("tool_name", "unknown"))
-                    tool_calls_log.append({
-                        "tool_call_id": tool_call_id,
-                        "tool": tool_name,
-                        "input": event["tool_input"],
-                        "status": "running",
-                    })
-                    active_tool_calls[tool_call_id] = {"tool_name": tool_name}
-                    yield {
-                        "type": "tool_call_start",
-                        "tool_call_id": tool_call_id,
-                        "tool_name": tool_name,
-                        "tool_input": event["tool_input"],
-                    }
-                    # Estado detalhado para jobs assincronos (MVP #14).
-                    yield {
-                        "type": "tool_call_state",
-                        "tool_call_id": tool_call_id,
-                        "tool_name": tool_name,
-                        "status": "queued",
-                    }
-                    yield {
-                        "type": "tool_call_state",
-                        "tool_call_id": tool_call_id,
-                        "tool_name": tool_name,
-                        "status": "running",
-                    }
-
-                elif event_type == "tool_call_progress":
-                    tool_call_id = str(event.get("tool_call_id", ""))
-                    tool_name = str(event.get("tool_name", "unknown"))
-                    progress_pct = event.get("progress_pct")
-                    elapsed_ms = int(event.get("elapsed_ms", 0) or 0)
-                    eta_ms = event.get("eta_ms")
-                    tc = self._find_tool_call_log(
-                        tool_calls_log=tool_calls_log,
-                        tool_call_id=tool_call_id,
-                        tool_name=tool_name,
+            try:
+                agent = NetworkEngineerAgent(
+                    provider_name=attempt_provider,
+                    api_key=str(llm_attempt.get("api_key", "")),
+                    model=attempt_model if isinstance(attempt_model, str) else None,
+                    tools=tools,
+                )
+            except Exception as exc:
+                attempt_duration_ms = int((time.monotonic() - attempt_started_at) * 1000)
+                eligible, eligibility_reason = self._is_fallback_eligible_error(exc)
+                llm_attempt_audit.append(
+                    self._build_llm_attempt_audit_entry(
+                        provider_name=attempt_provider,
+                        model=attempt_model if isinstance(attempt_model, str) else None,
+                        source=attempt_source,
+                        status="failed_init",
+                        duration_ms=attempt_duration_ms,
+                        error=str(exc),
+                        eligible_fallback=eligible,
+                        eligibility_reason=eligibility_reason,
                     )
-                    if tc is not None:
-                        tc["status"] = "running"
-                        tc["elapsed_ms"] = elapsed_ms
-                        if progress_pct is not None:
-                            tc["progress_pct"] = int(progress_pct)
-                        if eta_ms is not None:
-                            tc["eta_ms"] = int(eta_ms)
+                )
 
-                    yield {
-                        "type": "tool_call_state",
-                        "tool_call_id": tool_call_id,
-                        "tool_name": tool_name,
-                        "status": "progress",
-                        "progress_pct": progress_pct,
-                        "elapsed_ms": elapsed_ms,
-                        "eta_ms": eta_ms,
-                    }
-
-                elif event_type == "tool_call_end":
-                    tool_call_id = str(event.get("tool_call_id", ""))
-                    tool_name = str(event.get("tool_name", "unknown"))
-                    result_preview = str(event.get("result_preview", ""))
-                    duration_ms = int(event.get("duration_ms", 0) or 0)
-                    full_result = event.get("full_result")
-                    status = (
-                        "failed"
-                        if self._is_tool_result_failure(result_preview, full_result)
-                        else "completed"
+                can_retry = eligible and attempt_index < total_attempts - 1
+                if can_retry:
+                    delay_seconds = self._fallback_delay_seconds(attempt_index)
+                    logger.warning(
+                        "LLM fallback (init) user=%s conv=%s from=%s/%s reason=%s next_attempt=%s delay=%.2fs",
+                        user.id,
+                        conversation_id,
+                        attempt_provider,
+                        attempt_model,
+                        eligibility_reason,
+                        attempt_index + 2,
+                        delay_seconds,
                     )
-                    tc = self._find_tool_call_log(
-                        tool_calls_log=tool_calls_log,
-                        tool_call_id=tool_call_id,
-                        tool_name=tool_name,
-                    )
-                    if tc is not None:
-                        tc["result_preview"] = result_preview
-                        tc["duration_ms"] = duration_ms
-                        tc["status"] = status
-                        if status == "completed":
-                            tc["progress_pct"] = 100
-                        if full_result:
-                            tc["full_result"] = full_result
-                    active_tool_calls.pop(tool_call_id, None)
+                    if delay_seconds > 0:
+                        await asyncio.sleep(delay_seconds)
+                    continue
 
-                    yield {
-                        "type": "tool_call_end",
-                        "tool_call_id": tool_call_id,
-                        "tool_name": tool_name,
-                        "result_preview": result_preview,
-                        "duration_ms": duration_ms,
-                    }
-                    state_event: dict = {
-                        "type": "tool_call_state",
-                        "tool_call_id": tool_call_id,
-                        "tool_name": tool_name,
-                        "status": status,
-                        "duration_ms": duration_ms,
-                    }
-                    if status == "completed":
-                        state_event["progress_pct"] = 100
-                    else:
-                        state_event["detail"] = (
-                            "Tool reportou erro/timeout. Revise parâmetros e tente novamente."
+                await self._db.rollback()
+                yield {
+                    "type": "error",
+                    "code": "llm_init_error",
+                    "detail": f"Erro ao configurar provedor LLM: {exc}",
+                }
+                return
+
+            try:
+                async for event in agent.stream_response(history):
+                    event_type = event.get("type")
+
+                    if event_type == "text":
+                        output_emitted = True
+                        accumulated += event["content"]
+                        yield {"type": "stream_chunk", "content": event["content"]}
+
+                    elif event_type == "tool_call_start":
+                        output_emitted = True
+                        tool_call_id = str(event.get("tool_call_id", ""))
+                        tool_name = str(event.get("tool_name", "unknown"))
+                        tool_calls_log.append({
+                            "tool_call_id": tool_call_id,
+                            "tool": tool_name,
+                            "input": event["tool_input"],
+                            "status": "running",
+                        })
+                        active_tool_calls[tool_call_id] = {"tool_name": tool_name}
+                        yield {
+                            "type": "tool_call_start",
+                            "tool_call_id": tool_call_id,
+                            "tool_name": tool_name,
+                            "tool_input": event["tool_input"],
+                        }
+                        # Estado detalhado para jobs assincronos (MVP #14).
+                        yield {
+                            "type": "tool_call_state",
+                            "tool_call_id": tool_call_id,
+                            "tool_name": tool_name,
+                            "status": "queued",
+                        }
+                        yield {
+                            "type": "tool_call_state",
+                            "tool_call_id": tool_call_id,
+                            "tool_name": tool_name,
+                            "status": "running",
+                        }
+
+                    elif event_type == "tool_call_progress":
+                        output_emitted = True
+                        tool_call_id = str(event.get("tool_call_id", ""))
+                        tool_name = str(event.get("tool_name", "unknown"))
+                        progress_pct = event.get("progress_pct")
+                        elapsed_ms = int(event.get("elapsed_ms", 0) or 0)
+                        eta_ms = event.get("eta_ms")
+                        tc = self._find_tool_call_log(
+                            tool_calls_log=tool_calls_log,
+                            tool_call_id=tool_call_id,
+                            tool_name=tool_name,
                         )
-                    yield state_event
-        except asyncio.CancelledError:
+                        if tc is not None:
+                            tc["status"] = "running"
+                            tc["elapsed_ms"] = elapsed_ms
+                            if progress_pct is not None:
+                                tc["progress_pct"] = int(progress_pct)
+                            if eta_ms is not None:
+                                tc["eta_ms"] = int(eta_ms)
+
+                        yield {
+                            "type": "tool_call_state",
+                            "tool_call_id": tool_call_id,
+                            "tool_name": tool_name,
+                            "status": "progress",
+                            "progress_pct": progress_pct,
+                            "elapsed_ms": elapsed_ms,
+                            "eta_ms": eta_ms,
+                        }
+
+                    elif event_type == "tool_call_end":
+                        output_emitted = True
+                        tool_call_id = str(event.get("tool_call_id", ""))
+                        tool_name = str(event.get("tool_name", "unknown"))
+                        result_preview = str(event.get("result_preview", ""))
+                        duration_ms = int(event.get("duration_ms", 0) or 0)
+                        full_result = event.get("full_result")
+                        status = (
+                            "failed"
+                            if self._is_tool_result_failure(result_preview, full_result)
+                            else "completed"
+                        )
+                        tc = self._find_tool_call_log(
+                            tool_calls_log=tool_calls_log,
+                            tool_call_id=tool_call_id,
+                            tool_name=tool_name,
+                        )
+                        if tc is not None:
+                            tc["result_preview"] = result_preview
+                            tc["duration_ms"] = duration_ms
+                            tc["status"] = status
+                            if status == "completed":
+                                tc["progress_pct"] = 100
+                            if full_result:
+                                tc["full_result"] = full_result
+                        active_tool_calls.pop(tool_call_id, None)
+
+                        yield {
+                            "type": "tool_call_end",
+                            "tool_call_id": tool_call_id,
+                            "tool_name": tool_name,
+                            "result_preview": result_preview,
+                            "duration_ms": duration_ms,
+                        }
+                        state_event: dict = {
+                            "type": "tool_call_state",
+                            "tool_call_id": tool_call_id,
+                            "tool_name": tool_name,
+                            "status": status,
+                            "duration_ms": duration_ms,
+                        }
+                        if status == "completed":
+                            state_event["progress_pct"] = 100
+                        else:
+                            state_event["detail"] = (
+                                "Tool reportou erro/timeout. Revise parâmetros e tente novamente."
+                            )
+                        yield state_event
+
+                attempt_duration_ms = int((time.monotonic() - attempt_started_at) * 1000)
+                llm_attempt_audit.append(
+                    self._build_llm_attempt_audit_entry(
+                        provider_name=attempt_provider,
+                        model=attempt_model if isinstance(attempt_model, str) else None,
+                        source=attempt_source,
+                        status="success",
+                        duration_ms=attempt_duration_ms,
+                    )
+                )
+                selected_llm_attempt = llm_attempt
+                if attempt_index > 0:
+                    logger.info(
+                        "LLM fallback sucesso user=%s conv=%s selected=%s/%s attempt=%s/%s",
+                        user.id,
+                        conversation_id,
+                        attempt_provider,
+                        attempt_model,
+                        attempt_index + 1,
+                        total_attempts,
+                    )
+                break
+            except asyncio.CancelledError:
+                await self._db.rollback()
+                raise
+            except Exception as exc:
+                attempt_duration_ms = int((time.monotonic() - attempt_started_at) * 1000)
+                eligible, eligibility_reason = self._is_fallback_eligible_error(exc)
+                llm_attempt_audit.append(
+                    self._build_llm_attempt_audit_entry(
+                        provider_name=attempt_provider,
+                        model=attempt_model if isinstance(attempt_model, str) else None,
+                        source=attempt_source,
+                        status="failed_stream",
+                        duration_ms=attempt_duration_ms,
+                        error=str(exc),
+                        eligible_fallback=eligible,
+                        eligibility_reason=eligibility_reason,
+                    )
+                )
+
+                can_retry = eligible and (not output_emitted) and attempt_index < total_attempts - 1
+                if can_retry:
+                    delay_seconds = self._fallback_delay_seconds(attempt_index)
+                    logger.warning(
+                        "LLM fallback (stream) user=%s conv=%s from=%s/%s reason=%s next_attempt=%s delay=%.2fs",
+                        user.id,
+                        conversation_id,
+                        attempt_provider,
+                        attempt_model,
+                        eligibility_reason,
+                        attempt_index + 2,
+                        delay_seconds,
+                    )
+                    if delay_seconds > 0:
+                        await asyncio.sleep(delay_seconds)
+                    continue
+
+                await self._db.rollback()
+                async for failure_event in self._emit_failed_tool_states(
+                    active_tool_calls=active_tool_calls,
+                    detail="Execucao interrompida por erro no provedor LLM.",
+                ):
+                    yield failure_event
+                if isinstance(exc, LLMProviderError):
+                    yield {
+                        "type": "error",
+                        "code": "llm_error",
+                        "detail": str(exc),
+                    }
+                else:
+                    yield {
+                        "type": "error",
+                        "code": "stream_error",
+                        "detail": f"Erro durante streaming: {exc}",
+                    }
+                return
+
+        if selected_llm_attempt is None:
             await self._db.rollback()
-            raise
-        except LLMProviderError as exc:
-            await self._db.rollback()
-            async for failure_event in self._emit_failed_tool_states(
-                active_tool_calls=active_tool_calls,
-                detail="Execucao interrompida por erro no provedor LLM.",
-            ):
-                yield failure_event
             yield {
                 "type": "error",
                 "code": "llm_error",
-                "detail": str(exc),
-            }
-            return
-        except Exception as exc:
-            await self._db.rollback()
-            async for failure_event in self._emit_failed_tool_states(
-                active_tool_calls=active_tool_calls,
-                detail="Execucao interrompida por erro interno durante o streaming.",
-            ):
-                yield failure_event
-            yield {
-                "type": "error",
-                "code": "stream_error",
-                "detail": f"Erro durante streaming: {exc}",
+                "detail": "Falha ao obter resposta apos tentativas de fallback de provedor/modelo.",
             }
             return
 
@@ -442,6 +567,13 @@ class ChatService:
             assistant_metadata["memory_context"] = MemoryService.build_context_metadata(
                 memory_resolution.entries
             )
+        assistant_metadata["llm_execution"] = {
+            "selected_provider": selected_llm_attempt.get("provider_name"),
+            "selected_model": selected_llm_attempt.get("model"),
+            "fallback_triggered": len(llm_attempt_audit) > 1,
+            "attempt_count": len(llm_attempt_audit),
+            "attempts": llm_attempt_audit,
+        }
         assistant_msg.message_metadata = self._augment_response_metadata(
             metadata=assistant_metadata or None,
             response_content=accumulated,
@@ -782,6 +914,222 @@ class ChatService:
             "file_type": attachment.file_type,
             "source": attachment.source,
         }
+
+    async def _build_llm_attempt_chain(
+        self,
+        *,
+        primary_provider: str,
+        primary_api_key: str,
+        primary_model: str | None,
+        using_free_llm: bool,
+    ) -> list[dict]:
+        """
+        Build ordered LLM attempts (provider/model) for automatic fallback.
+        """
+        attempts: list[dict] = []
+        seen: set[tuple[str, str, str]] = set()
+
+        async def _safe_get_setting(key: str) -> str | None:
+            try:
+                return await SystemSettingsService.get(self._db, key)
+            except Exception:
+                return None
+
+        def _add_attempt(
+            *,
+            provider_name: str,
+            api_key: str,
+            model: str | None,
+            source: str,
+        ) -> None:
+            provider = provider_name.lower().strip()
+            if not provider or not api_key:
+                return
+            resolved_model = model or self._default_model_for_provider(provider)
+            key = (provider, resolved_model or "", api_key)
+            if key in seen:
+                return
+            seen.add(key)
+            attempts.append(
+                {
+                    "provider_name": provider,
+                    "api_key": api_key,
+                    "model": resolved_model,
+                    "source": source,
+                }
+            )
+
+        normalized_primary_provider = primary_provider.lower().strip()
+        resolved_primary_model = (
+            primary_model
+            or self._default_model_for_provider(normalized_primary_provider)
+        )
+        _add_attempt(
+            provider_name=normalized_primary_provider,
+            api_key=primary_api_key,
+            model=resolved_primary_model,
+            source="primary",
+        )
+
+        default_primary_model = self._default_model_for_provider(normalized_primary_provider)
+        if (
+            resolved_primary_model
+            and default_primary_model
+            and resolved_primary_model != default_primary_model
+        ):
+            _add_attempt(
+                provider_name=normalized_primary_provider,
+                api_key=primary_api_key,
+                model=default_primary_model,
+                source="primary_default_model",
+            )
+
+        free_enabled = await _safe_get_setting("free_llm_enabled")
+        free_primary_key: str | None = None
+        free_primary_provider: str | None = None
+        free_primary_model: str | None = None
+        if free_enabled == "true":
+            free_primary_key = await _safe_get_setting("free_llm_api_key")
+            free_primary_provider = (
+                await _safe_get_setting("free_llm_provider")
+            ) or "google"
+            free_primary_model = (
+                await _safe_get_setting("free_llm_model")
+            ) or self._default_model_for_provider(free_primary_provider)
+
+        if not using_free_llm and free_primary_key and free_primary_provider:
+            _add_attempt(
+                provider_name=free_primary_provider,
+                api_key=free_primary_key,
+                model=free_primary_model,
+                source="fallback_free_primary",
+            )
+
+        secondary_provider = await _safe_get_setting("free_llm_fallback_provider")
+        secondary_model = await _safe_get_setting("free_llm_fallback_model")
+        secondary_key = await _safe_get_setting("free_llm_fallback_api_key")
+        if secondary_provider:
+            resolved_secondary_key = (
+                secondary_key
+                or free_primary_key
+                or (primary_api_key if using_free_llm else None)
+            )
+            if resolved_secondary_key:
+                _add_attempt(
+                    provider_name=secondary_provider,
+                    api_key=resolved_secondary_key,
+                    model=secondary_model,
+                    source="fallback_secondary",
+                )
+
+        if not attempts:
+            _add_attempt(
+                provider_name=normalized_primary_provider,
+                api_key=primary_api_key,
+                model=resolved_primary_model,
+                source="primary",
+            )
+        return attempts
+
+    @staticmethod
+    def _default_model_for_provider(provider_name: str) -> str:
+        mapping = {
+            "openai": settings.DEFAULT_LLM_MODEL_OPENAI,
+            "anthropic": settings.DEFAULT_LLM_MODEL_ANTHROPIC,
+            "azure": settings.DEFAULT_LLM_MODEL_AZURE,
+            "google": settings.DEFAULT_LLM_MODEL_GOOGLE,
+            "groq": settings.DEFAULT_LLM_MODEL_GROQ,
+            "deepseek": settings.DEFAULT_LLM_MODEL_DEEPSEEK,
+            "openrouter": settings.DEFAULT_LLM_MODEL_OPENROUTER,
+        }
+        return mapping.get(provider_name.lower().strip(), settings.DEFAULT_LLM_MODEL_GOOGLE)
+
+    @staticmethod
+    def _build_llm_attempt_audit_entry(
+        *,
+        provider_name: str,
+        model: str | None,
+        source: str,
+        status: str,
+        duration_ms: int,
+        error: str | None = None,
+        eligible_fallback: bool | None = None,
+        eligibility_reason: str | None = None,
+    ) -> dict:
+        payload = {
+            "provider": provider_name,
+            "model": model,
+            "source": source,
+            "status": status,
+            "duration_ms": duration_ms,
+        }
+        if error:
+            payload["error"] = error[:300]
+        if eligible_fallback is not None:
+            payload["eligible_fallback"] = bool(eligible_fallback)
+        if eligibility_reason:
+            payload["eligibility_reason"] = eligibility_reason
+        return payload
+
+    @staticmethod
+    def _is_fallback_eligible_error(exc: Exception) -> tuple[bool, str]:
+        """
+        Decide if an LLM failure should trigger fallback.
+
+        Non-eligible examples:
+        - invalid API key / auth
+        - unsupported provider / missing config
+        """
+        details = f"{type(exc).__name__}: {exc}".lower()
+
+        non_eligible_markers = (
+            "invalid api key",
+            "incorrect api key",
+            "authentication",
+            "unauthorized",
+            "forbidden",
+            "api key is required",
+            "not configured",
+            "unsupported provider",
+            "permission denied",
+        )
+        if any(marker in details for marker in non_eligible_markers):
+            return False, "non_eligible_configuration"
+
+        eligible_markers = (
+            "rate limit",
+            "too many requests",
+            "timeout",
+            "timed out",
+            "temporarily unavailable",
+            "service unavailable",
+            "overloaded",
+            "connection",
+            "internal server error",
+            "server error",
+            "bad gateway",
+            "gateway timeout",
+            "model not found",
+            "no such model",
+            "429",
+            "500",
+            "502",
+            "503",
+            "504",
+        )
+        if any(marker in details for marker in eligible_markers):
+            return True, "eligible_transient_provider_error"
+
+        if isinstance(exc, LLMProviderError):
+            return True, "eligible_provider_error"
+        return False, "non_eligible_unknown"
+
+    @staticmethod
+    def _fallback_delay_seconds(failed_attempt_index: int) -> float:
+        """
+        Exponential backoff delay before the next fallback attempt.
+        """
+        return min(2.5, 0.35 * (2 ** max(0, failed_attempt_index)))
 
     @classmethod
     def _augment_response_metadata(

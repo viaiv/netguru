@@ -24,6 +24,7 @@ ENCRYPTED_KEYS = frozenset({
     "stripe_secret_key",
     "stripe_webhook_secret",
     "free_llm_api_key",
+    "free_llm_fallback_api_key",
 })
 
 

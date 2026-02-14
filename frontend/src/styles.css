@@ -1094,6 +1094,13 @@ textarea:focus {
   color: rgba(var(--ink-rgb), 0.7);
 }
 
+.message-llm-meta {
+  margin: 0 0 8px;
+  font-size: 0.72rem;
+  color: rgba(var(--ink-rgb), 0.68);
+  font-weight: 600;
+}
+
 .evidence-panel {
   margin-top: 10px;
   padding-top: 10px;

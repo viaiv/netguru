@@ -363,6 +363,16 @@ function ChatPage() {
           file_type?: string;
         }
       | undefined;
+    const llmExecution = metadata?.llm_execution as Record<string, unknown> | undefined;
+    const selectedProvider =
+      typeof llmExecution?.selected_provider === 'string'
+        ? llmExecution.selected_provider
+        : null;
+    const selectedModel =
+      typeof llmExecution?.selected_model === 'string'
+        ? llmExecution.selected_model
+        : null;
+    const fallbackTriggered = llmExecution?.fallback_triggered === true;
     const hasPcapTool = metaToolCalls?.some((tc) => tc.tool === 'analyze_pcap');
 
     return (
@@ -395,6 +405,13 @@ function ChatPage() {
                 <p className="message-context-file">
                   Arquivo usado: {resolvedAttachment.filename}
                   {resolvedAttachment.file_type ? ` (${resolvedAttachment.file_type})` : ''}
+                </p>
+              )}
+              {selectedProvider && (
+                <p className="message-llm-meta">
+                  Modelo ativo: {selectedProvider}
+                  {selectedModel ? ` / ${selectedModel}` : ''}
+                  {fallbackTriggered ? ' (fallback)' : ''}
                 </p>
               )}
               <MarkdownContent content={msg.content} />
