@@ -29,6 +29,7 @@ function ChatPage() {
     fetchConversations,
     createConversation,
     deleteConversation,
+    renameConversation,
     selectConversation,
     fetchMessages,
     addUserMessage,
@@ -47,6 +48,10 @@ function ChatPage() {
   const [inputValue, setInputValue] = useState('');
   const isMobile = useMobile();
   const [showSidebar, setShowSidebar] = useState(false);
+
+  // ---- Inline rename state ----
+  const [editingConvId, setEditingConvId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
 
   // ---- File attachment state ----
 
@@ -234,6 +239,34 @@ function ChatPage() {
     await deleteConversation(convId);
   }
 
+  // ---- Rename conversation ----
+
+  function handleStartRename(e: React.MouseEvent, convId: string, currentTitle: string): void {
+    e.stopPropagation();
+    setEditingConvId(convId);
+    setEditingTitle(currentTitle);
+  }
+
+  async function handleFinishRename(): Promise<void> {
+    if (!editingConvId) return;
+    const trimmed = editingTitle.trim();
+    if (trimmed && trimmed.length <= 255) {
+      await renameConversation(editingConvId, trimmed);
+    }
+    setEditingConvId(null);
+    setEditingTitle('');
+  }
+
+  function handleRenameKeyDown(e: React.KeyboardEvent): void {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleFinishRename();
+    } else if (e.key === 'Escape') {
+      setEditingConvId(null);
+      setEditingTitle('');
+    }
+  }
+
   // ---- Mobile sidebar helpers ----
 
   function handleSelectConversation(convId: string): void {
@@ -309,24 +342,48 @@ function ChatPage() {
               key={conv.id}
               className={`conversation-item ${conv.id === currentConversationId ? 'conversation-item--active' : ''}`}
             >
-              <button
-                type="button"
-                className="conversation-item-body"
-                onClick={() => handleSelectConversation(conv.id)}
-              >
-                <span className="conversation-title">{conv.title}</span>
-                <span className="conversation-date">
-                  {new Date(conv.updated_at).toLocaleDateString('pt-BR')}
-                </span>
-              </button>
-              <button
-                type="button"
-                className="conversation-delete-btn"
-                title="Excluir conversa"
-                onClick={(e) => handleDeleteConversation(e, conv.id)}
-              >
-                &times;
-              </button>
+              {editingConvId === conv.id ? (
+                <div className="conversation-item-body">
+                  <input
+                    className="conversation-title-input"
+                    value={editingTitle}
+                    onChange={(e) => setEditingTitle(e.target.value)}
+                    onBlur={handleFinishRename}
+                    onKeyDown={handleRenameKeyDown}
+                    maxLength={255}
+                    autoFocus
+                  />
+                </div>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="conversation-item-body"
+                    onClick={() => handleSelectConversation(conv.id)}
+                  >
+                    <span className="conversation-title">{conv.title}</span>
+                    <span className="conversation-date">
+                      {new Date(conv.updated_at).toLocaleDateString('pt-BR')}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="conversation-action-btn conversation-rename-btn"
+                    title="Renomear conversa"
+                    onClick={(e) => handleStartRename(e, conv.id, conv.title)}
+                  >
+                    &#9998;
+                  </button>
+                  <button
+                    type="button"
+                    className="conversation-action-btn conversation-delete-btn"
+                    title="Excluir conversa"
+                    onClick={(e) => handleDeleteConversation(e, conv.id)}
+                  >
+                    &times;
+                  </button>
+                </>
+              )}
             </div>
           ))}
           {conversations.length === 0 && (

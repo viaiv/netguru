@@ -35,6 +35,14 @@ class ConversationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, protected_namespaces=())
 
 
+class ConversationUpdate(BaseModel):
+    """
+    Request schema for updating a conversation (rename).
+    """
+
+    title: str = Field(min_length=1, max_length=255)
+
+
 class MessageCreate(BaseModel):
     """
     Request schema for appending a message into a conversation.

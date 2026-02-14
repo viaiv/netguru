@@ -56,6 +56,7 @@ interface IChatState {
   fetchConversations: () => Promise<void>;
   createConversation: (title?: string) => Promise<IConversation | null>;
   deleteConversation: (id: string) => Promise<boolean>;
+  renameConversation: (id: string, title: string) => Promise<boolean>;
   selectConversation: (id: string) => void;
   fetchMessages: (conversationId: string) => Promise<void>;
 
@@ -129,6 +130,23 @@ export const useChatStore = create<IChatState>((set, get) => ({
               activeToolCalls: [],
             }
           : {}),
+        error: null,
+      }));
+      return true;
+    } catch (err) {
+      set({ error: getErrorMessage(err) });
+      return false;
+    }
+  },
+
+  renameConversation: async (id: string, title: string) => {
+    try {
+      const response = await api.patch<IConversation>(`/chat/conversations/${id}`, { title });
+      const updated = response.data;
+      set((state) => ({
+        conversations: state.conversations.map((c) =>
+          c.id === id ? { ...c, title: updated.title } : c,
+        ),
         error: null,
       }));
       return true;

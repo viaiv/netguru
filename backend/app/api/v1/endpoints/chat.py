@@ -20,6 +20,7 @@ from app.models.user import User
 from app.schemas.chat import (
     ConversationCreate,
     ConversationResponse,
+    ConversationUpdate,
     MessageCreate,
     MessageResponse,
 )
@@ -101,6 +102,31 @@ async def create_conversation(
         model_used=payload.model_used,
     )
     db.add(conversation)
+    await db.commit()
+    await db.refresh(conversation)
+    return _build_conversation_response(conversation)
+
+
+@router.patch(
+    "/conversations/{conversation_id}",
+    response_model=ConversationResponse,
+)
+async def update_conversation(
+    conversation_id: UUID,
+    payload: ConversationUpdate,
+    current_user: User = Depends(require_permissions(Permission.USERS_UPDATE_SELF)),
+    db: AsyncSession = Depends(get_db),
+) -> ConversationResponse:
+    """
+    Rename a conversation owned by the current user.
+    """
+    conversation = await _get_owned_conversation(
+        conversation_id=conversation_id,
+        user_id=current_user.id,
+        db=db,
+    )
+    conversation.title = payload.title
+    conversation.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(conversation)
     return _build_conversation_response(conversation)

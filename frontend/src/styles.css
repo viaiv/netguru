@@ -901,7 +901,7 @@ select:focus {
   color: inherit;
 }
 
-.conversation-delete-btn {
+.conversation-action-btn {
   flex-shrink: 0;
   display: none;
   align-items: center;
@@ -915,16 +915,37 @@ select:focus {
   font-size: 1.1rem;
   cursor: pointer;
   transition: background-color 120ms ease, color 120ms ease;
+}
+
+.conversation-delete-btn {
   margin-right: 4px;
 }
 
-.conversation-item:hover .conversation-delete-btn {
+.conversation-item:hover .conversation-action-btn {
   display: flex;
+}
+
+.conversation-rename-btn:hover {
+  background: rgba(var(--accent-rgb), 0.15);
+  color: var(--accent);
 }
 
 .conversation-delete-btn:hover {
   background: rgba(220, 53, 69, 0.15);
   color: #dc3545;
+}
+
+.conversation-title-input {
+  font-size: 0.88rem;
+  font-weight: 600;
+  font-family: inherit;
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid rgba(var(--accent-rgb), 0.5);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  outline: none;
 }
 
 .conversation-title {
@@ -1414,7 +1435,7 @@ select:focus {
     display: block;
   }
 
-  .conversation-delete-btn {
+  .conversation-action-btn {
     display: flex;
     width: 36px;
     height: 36px;
