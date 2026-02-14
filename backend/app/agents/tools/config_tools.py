@@ -9,6 +9,7 @@ from langchain_core.tools import StructuredTool
 
 from app.services.config_diff_service import ConfigDiffService
 from app.services.config_parser_service import ConfigParserService
+from app.services.pre_change_review_service import PreChangeReviewService
 from app.services.config_validator_service import ConfigValidatorService
 
 
@@ -126,5 +127,48 @@ def create_diff_config_risk_tool() -> StructuredTool:
             "by sections (interfaces, routing, ACL, VLAN, services), risk scores "
             "(security/availability/performance), critical changes, and rollback "
             "recommendations. Use for pre-change risk analysis and drift detection."
+        ),
+    )
+
+
+def create_pre_change_review_tool() -> StructuredTool:
+    """Cria tool de pre-change review com decisao assistida."""
+
+    async def _pre_change_review(
+        change_proposal: str,
+        running_config: str = "",
+        golden_config: str = "",
+    ) -> str:
+        """
+        Review a proposed network change before execution.
+        Produces impact matrix, pre-check/post-check lists, and go/no-go decision.
+
+        Use this tool when the user asks for pre-change assessment, impact review,
+        change advisory support, go/no-go recommendation, or risk validation.
+
+        Args:
+            change_proposal: Proposed command/config/text describing the change.
+            running_config: Optional current config for deeper context.
+            golden_config: Optional baseline/golden config for drift/risk enrichment.
+        """
+        try:
+            svc = PreChangeReviewService()
+            report = svc.review_change(
+                change_proposal=change_proposal,
+                running_config=running_config.strip() or None,
+                golden_config=golden_config.strip() or None,
+            )
+            return svc.format_report(report)
+        except Exception as e:
+            return f"Error reviewing pre-change proposal: {e}"
+
+    return StructuredTool.from_function(
+        coroutine=_pre_change_review,
+        name="pre_change_review",
+        description=(
+            "Evaluate a proposed network change before execution. Returns impact matrix "
+            "(routing, security, convergence, observability), pre/post operational checks, "
+            "automated post-change playbook, and assisted decision (go/no-go/go with mitigation). "
+            "Use for CAB-style pre-change validation and risk control."
         ),
     )

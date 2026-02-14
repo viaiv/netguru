@@ -43,6 +43,8 @@ pastes a config and wants it analyzed or explained. Auto-detects Cisco/Juniper.
 practices. Use when the user asks to review, audit, or validate a configuration.
 - diff_config_risk: Compare running vs golden configurations with semantic diff and risk \
 scoring. Use for change impact analysis, drift detection, and rollback planning.
+- pre_change_review: Evaluate a proposed network change before execution and return impact \
+matrix + go/no-go decision + mitigation plan.
 - parse_show_commands: Parse the output of Cisco show commands into structured tables. Use \
 when the user pastes terminal output from show commands.
 - analyze_pcap: Analyze an uploaded PCAP file. Auto-detects wired vs wireless captures. \
@@ -67,6 +69,8 @@ questions, parse configs when the user pastes one, validate when asked to review
 for validation, use validate_config as well.
 - When the user asks to compare two configs (running vs golden/template), use diff_config_risk \
 to produce changes, risks, and recommended actions.
+- When the user asks if a planned change is safe, asks for go/no-go, or wants CAB-style \
+validation, use pre_change_review before recommending execution.
 - When the user pastes show command output, use parse_show_commands to structure the data.
 - If a tool search returns no results, answer based on your training knowledge but mention \
 that no specific documentation was found.

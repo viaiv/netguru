@@ -10,6 +10,7 @@ const TOOL_LABELS: Record<string, string> = {
   parse_config: 'Analisando configuracao',
   validate_config: 'Validando configuracao',
   diff_config_risk: 'Comparando running x golden',
+  pre_change_review: 'Executando pre-change review',
   parse_show_commands: 'Analisando saida de comando',
   analyze_pcap: 'Analisando captura de pacotes',
 };

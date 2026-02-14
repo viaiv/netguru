@@ -101,6 +101,41 @@ async def test_diff_config_risk_tool_returns_markdown_report(
 
 
 @pytest.mark.asyncio
+async def test_pre_change_review_tool_returns_go_no_go_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pre_change_review tool should return formatted pre-change decision report."""
+
+    class FakePreChangeReviewService:
+        def review_change(
+            self,
+            change_proposal: str,
+            running_config: str | None = None,
+            golden_config: str | None = None,
+        ):  # noqa: ANN201
+            assert "router bgp 65001" in change_proposal
+            assert running_config == "running config"
+            assert golden_config == "golden config"
+            return {"decision": "no-go"}
+
+        def format_report(self, report) -> str:  # noqa: ANN001
+            assert report == {"decision": "no-go"}
+            return "## Decisao assistida\n- Decisao: **NO-GO**"
+
+    monkeypatch.setattr(config_tools, "PreChangeReviewService", FakePreChangeReviewService)
+
+    tool = config_tools.create_pre_change_review_tool()
+    result = await tool.ainvoke(
+        {
+            "change_proposal": "router bgp 65001",
+            "running_config": "running config",
+            "golden_config": "golden config",
+        },
+    )
+    assert "NO-GO" in result
+
+
+@pytest.mark.asyncio
 async def test_parse_show_commands_tool_returns_formatted_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
