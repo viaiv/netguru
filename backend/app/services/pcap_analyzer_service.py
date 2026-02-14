@@ -636,6 +636,20 @@ class PcapAnalyzerService:
         if not packets:
             return summary
 
+        # Fallback: re-check wireless in case _detect_wireless missed it
+        # (e.g., Celery worker with stale code or import issue)
+        try:
+            from scapy.layers.dot11 import Dot11, RadioTap  # type: ignore[import-untyped]
+
+            wireless_count = sum(
+                1 for p in packets[:50]
+                if p.haslayer(Dot11) or p.haslayer(RadioTap)
+            )
+            if wireless_count > len(packets[:50]) * 0.5:
+                return self._analyze_wireless_sync(file_path, max_packets)
+        except ImportError:
+            pass
+
         # Duracao
         timestamps = [float(p.time) for p in packets]
         if len(timestamps) >= 2:
@@ -1387,6 +1401,16 @@ class PcapAnalyzerService:
                 return "ARP"
             if etype == 0x8100:
                 return "802.1Q"
+
+        # Detectar pacotes wireless que caem no analisador wired por erro
+        try:
+            from scapy.layers.dot11 import Dot11, RadioTap  # type: ignore[import-untyped]
+
+            if pkt.haslayer(RadioTap) or pkt.haslayer(Dot11):
+                return "802.11 (Wireless)"
+        except ImportError:
+            pass
+
         return "Other"
 
     # ------------------------------------------------------------------
