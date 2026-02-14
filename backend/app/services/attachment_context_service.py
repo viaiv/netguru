@@ -345,7 +345,8 @@ class AttachmentContextService:
 
         if intent == "pcap":
             parts.append(
-                "Use a tool analyze_pcap com este document_id para analisar a captura."
+                f"Para analisar este PCAP, chame analyze_pcap(document_id=\"{selected.document_id}\"). "
+                "IMPORTANTE: passe exatamente o UUID acima, nunca o filename."
             )
 
         if intent in {"config", "generic"} and selected.file_type in TEXTUAL_FILE_TYPES:

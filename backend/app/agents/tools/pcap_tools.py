@@ -98,6 +98,7 @@ def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
             "reason codes, retry rate, signal strength (dBm), channels, SSIDs, bandwidth "
             "stats, and wireless anomaly detection (deauth floods, high retries). "
             "Use when the user asks about a packet capture or PCAP analysis. "
-            "Input: the document_id (UUID) of the uploaded PCAP file."
+            "Input: the document_id (UUID) of the uploaded PCAP file. "
+            "IMPORTANT: always pass the UUID from [CONTEXTO_AUTOMATICO_DE_ANEXO], never the filename."
         ),
     )
