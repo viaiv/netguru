@@ -40,6 +40,7 @@ function ChatPage() {
     handleWsError,
     setConnected,
     clearError,
+    updateConversationTitle,
   } = useChatStore();
 
   const chatWindowRef = useRef<HTMLDivElement>(null);
@@ -74,6 +75,11 @@ function ChatPage() {
         case 'tool_call_end':
           handleToolCallEnd(event.tool_name!, event.result_preview!, event.duration_ms!);
           break;
+        case 'title_updated':
+          if (currentConversationId && event.title) {
+            updateConversationTitle(currentConversationId, event.title);
+          }
+          break;
         case 'error':
           handleWsError(event.detail ?? 'Erro desconhecido');
           break;
@@ -81,7 +87,7 @@ function ChatPage() {
           break;
       }
     },
-    [handleStreamStart, handleStreamChunk, handleStreamEnd, handleToolCallStart, handleToolCallEnd, handleWsError],
+    [handleStreamStart, handleStreamChunk, handleStreamEnd, handleToolCallStart, handleToolCallEnd, handleWsError, currentConversationId, updateConversationTitle],
   );
 
   // ---- WebSocket with auto-reconnect ----
@@ -257,7 +263,7 @@ function ChatPage() {
     const hasPcapTool = metaToolCalls?.some((tc) => tc.tool === 'analyze_pcap');
 
     return (
-      <div key={msg.id}>
+      <div key={msg.id} className={`message-row ${isUser ? 'message-row--user' : 'message-row--assistant'}`}>
         {/* Tool calls from historical messages */}
         {!isUser && metaToolCalls && metaToolCalls.length > 0 && (
           <ToolCallDisplay

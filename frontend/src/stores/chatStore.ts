@@ -59,6 +59,9 @@ interface IChatState {
   selectConversation: (id: string) => void;
   fetchMessages: (conversationId: string) => Promise<void>;
 
+  // Title
+  updateConversationTitle: (conversationId: string, title: string) => void;
+
   // WS actions
   addUserMessage: (content: string) => void;
   handleStreamStart: (messageId: string) => void;
@@ -156,6 +159,14 @@ export const useChatStore = create<IChatState>((set, get) => ({
     } catch (err) {
       set({ error: getErrorMessage(err) });
     }
+  },
+
+  updateConversationTitle: (conversationId: string, title: string) => {
+    set((state) => ({
+      conversations: state.conversations.map((c) =>
+        c.id === conversationId ? { ...c, title } : c,
+      ),
+    }));
   },
 
   addUserMessage: (content: string) => {

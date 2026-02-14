@@ -86,6 +86,14 @@ class ChatService:
         self._db.add(user_msg)
         await self._db.flush()
 
+        # 4b. Auto-generate title from first user message
+        title_event = None
+        if conversation.title == "Nova Conversa":
+            new_title = self._generate_title(content)
+            conversation.title = new_title
+            await self._db.flush()
+            title_event = {"type": "title_updated", "title": new_title}
+
         # 5. Load conversation history
         history = await self._load_history(conversation_id)
 
@@ -116,6 +124,9 @@ class ChatService:
         await self._db.flush()
 
         yield {"type": "stream_start", "message_id": str(assistant_msg.id)}
+
+        if title_event:
+            yield title_event
 
         accumulated = ""
         tool_calls_log: list[dict] = []
@@ -217,6 +228,17 @@ class ChatService:
                 code="conversation_not_found",
             )
         return conversation
+
+    @staticmethod
+    def _generate_title(content: str, max_length: int = 60) -> str:
+        """Generate a conversation title from the first user message."""
+        # Remove quebras de linha e espacos extras
+        title = " ".join(content.split())
+        if len(title) <= max_length:
+            return title
+        # Trunca na ultima palavra completa
+        truncated = title[:max_length].rsplit(" ", 1)[0]
+        return truncated + "..."
 
     async def _load_history(
         self,

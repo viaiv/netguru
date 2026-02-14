@@ -1009,6 +1009,19 @@ select:focus {
   gap: 14px;
 }
 
+.message-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.message-row--user {
+  align-items: flex-end;
+}
+
+.message-row--assistant {
+  align-items: flex-start;
+}
+
 .message-bubble {
   max-width: 78%;
   border-radius: 16px;
@@ -1017,13 +1030,11 @@ select:focus {
 }
 
 .message-bubble--user {
-  align-self: flex-end;
   background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.22), rgba(var(--accent-rgb), 0.10));
   border: 1px solid rgba(var(--accent-rgb), 0.28);
 }
 
 .message-bubble--assistant {
-  align-self: flex-start;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(var(--ink-rgb), 0.14);
 }

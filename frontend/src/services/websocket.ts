@@ -9,6 +9,7 @@ export type TWebSocketEventType =
   | 'stream_end'
   | 'tool_call_start'
   | 'tool_call_end'
+  | 'title_updated'
   | 'error'
   | 'pong';
 
@@ -23,6 +24,7 @@ export interface IWebSocketEvent {
   tool_input?: string;
   result_preview?: string;
   duration_ms?: number;
+  title?: string;
 }
 
 type TEventHandler = (event: IWebSocketEvent) => void;
