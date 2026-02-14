@@ -442,7 +442,13 @@ class ChatService:
             assistant_metadata["memory_context"] = MemoryService.build_context_metadata(
                 memory_resolution.entries
             )
-        assistant_msg.message_metadata = assistant_metadata or None
+        assistant_msg.message_metadata = self._augment_response_metadata(
+            metadata=assistant_metadata or None,
+            response_content=accumulated,
+            tool_calls_log=tool_calls_log,
+            attachment_metadata=attachment_metadata,
+            memory_resolution=memory_resolution,
+        )
         conversation.updated_at = datetime.utcnow()
 
         try:
@@ -776,6 +782,271 @@ class ChatService:
             "file_type": attachment.file_type,
             "source": attachment.source,
         }
+
+    @classmethod
+    def _augment_response_metadata(
+        cls,
+        *,
+        metadata: dict | None,
+        response_content: str,
+        tool_calls_log: list[dict],
+        attachment_metadata: dict | None,
+        memory_resolution: MemoryContextResolution | None,
+    ) -> dict | None:
+        """
+        Enrich assistant metadata with evidence block and confidence heuristics.
+        """
+        payload: dict = {}
+        if isinstance(metadata, dict):
+            payload.update(metadata)
+
+        evidence_items = cls._build_evidence_items(
+            tool_calls_log=tool_calls_log,
+            attachment_metadata=attachment_metadata,
+            memory_resolution=memory_resolution,
+        )
+        evidence_summary = cls._summarize_evidence_strength(evidence_items)
+        payload["evidence"] = {
+            "items": evidence_items,
+            **evidence_summary,
+        }
+        payload["confidence"] = cls._build_confidence_block(
+            evidence_items=evidence_items,
+            evidence_summary=evidence_summary,
+            response_content=response_content,
+        )
+        return payload or None
+
+    @classmethod
+    def _build_evidence_items(
+        cls,
+        *,
+        tool_calls_log: list[dict],
+        attachment_metadata: dict | None,
+        memory_resolution: MemoryContextResolution | None,
+    ) -> list[dict]:
+        """
+        Build normalized evidence items from tools, memory and attachment context.
+        """
+        items: list[dict] = []
+
+        for idx, tool_call in enumerate(tool_calls_log):
+            tool_name = str(tool_call.get("tool", "unknown"))
+            status = str(tool_call.get("status", "completed"))
+            result_preview = cls._compact_text(str(tool_call.get("result_preview", "")))
+            tool_input = cls._compact_text(str(tool_call.get("input", "")))
+            full_result = cls._compact_text(str(tool_call.get("full_result", "")))
+            strength = cls._resolve_tool_strength(tool_name=tool_name, status=status)
+            summary = f"Tool '{tool_name}' executada com status '{status}'."
+            if result_preview:
+                summary = f"{summary} Resultado: {result_preview[:180]}"
+
+            items.append(
+                {
+                    "id": f"tool:{idx}",
+                    "type": "tool_call",
+                    "source": tool_name,
+                    "status": status,
+                    "strength": strength,
+                    "summary": summary,
+                    "details": {
+                        "input": tool_input[:400],
+                        "result_preview": result_preview[:400],
+                        "output": full_result[:400] if full_result else result_preview[:400],
+                        "duration_ms": tool_call.get("duration_ms"),
+                    },
+                }
+            )
+
+        if memory_resolution is not None and memory_resolution.entries:
+            items.append(
+                {
+                    "id": "memory:context",
+                    "type": "memory",
+                    "source": "memory_context",
+                    "status": "applied",
+                    "strength": "medium",
+                    "summary": (
+                        f"{len(memory_resolution.entries)} memoria(s) persistentes aplicadas "
+                        "ao contexto da resposta."
+                    ),
+                    "details": {
+                        "applied_count": len(memory_resolution.entries),
+                        "keys": [entry.memory_key for entry in memory_resolution.entries],
+                    },
+                }
+            )
+
+        if isinstance(attachment_metadata, dict):
+            attachment_context = attachment_metadata.get("attachment_context")
+            if isinstance(attachment_context, dict):
+                status = str(attachment_context.get("status", "resolved"))
+                if status == "resolved":
+                    resolved = attachment_context.get("resolved_attachment", {})
+                    filename = (
+                        resolved.get("filename")
+                        if isinstance(resolved, dict)
+                        else None
+                    )
+                    summary = "Contexto de anexo resolvido para esta resposta."
+                    if filename:
+                        summary = f"{summary} Arquivo: {filename}"
+                    items.append(
+                        {
+                            "id": "attachment:resolved",
+                            "type": "attachment",
+                            "source": "attachment_context",
+                            "status": status,
+                            "strength": "weak",
+                            "summary": summary,
+                            "details": attachment_context,
+                        }
+                    )
+                elif status == "ambiguous":
+                    items.append(
+                        {
+                            "id": "attachment:ambiguous",
+                            "type": "attachment",
+                            "source": "attachment_context",
+                            "status": status,
+                            "strength": "weak",
+                            "summary": (
+                                "Contexto de anexo ambiguo; resposta depende de confirmacao do usuario."
+                            ),
+                            "details": attachment_context,
+                        }
+                    )
+        return items
+
+    @staticmethod
+    def _resolve_tool_strength(*, tool_name: str, status: str) -> str:
+        if status != "completed":
+            return "weak"
+
+        strong_tools = {
+            "search_rag_global",
+            "search_rag_local",
+            "diff_config_risk",
+            "pre_change_review",
+        }
+        medium_tools = {
+            "parse_config",
+            "validate_config",
+            "parse_show_commands",
+            "analyze_pcap",
+        }
+        if tool_name in strong_tools:
+            return "strong"
+        if tool_name in medium_tools:
+            return "medium"
+        return "weak"
+
+    @staticmethod
+    def _summarize_evidence_strength(evidence_items: list[dict]) -> dict:
+        strong_count = sum(1 for item in evidence_items if item.get("strength") == "strong")
+        medium_count = sum(1 for item in evidence_items if item.get("strength") == "medium")
+        weak_count = sum(1 for item in evidence_items if item.get("strength") == "weak")
+        failed_count = sum(1 for item in evidence_items if item.get("status") == "failed")
+        return {
+            "total_count": len(evidence_items),
+            "strong_count": strong_count,
+            "medium_count": medium_count,
+            "weak_count": weak_count,
+            "failed_count": failed_count,
+        }
+
+    @classmethod
+    def _build_confidence_block(
+        cls,
+        *,
+        evidence_items: list[dict],
+        evidence_summary: dict,
+        response_content: str,
+    ) -> dict:
+        """
+        Compute transparent confidence score from evidence quality/quantity.
+        """
+        strong_count = int(evidence_summary.get("strong_count", 0))
+        medium_count = int(evidence_summary.get("medium_count", 0))
+        weak_count = int(evidence_summary.get("weak_count", 0))
+        failed_count = int(evidence_summary.get("failed_count", 0))
+        total_count = int(evidence_summary.get("total_count", 0))
+        tool_call_count = sum(
+            1 for item in evidence_items if item.get("type") == "tool_call"
+        )
+
+        base_score = 30
+        strong_bonus = min(strong_count * 22, 44)
+        medium_bonus = min(medium_count * 10, 20)
+        weak_bonus = min(weak_count * 4, 8)
+        failure_penalty = min(failed_count * 14, 28)
+        no_evidence_penalty = 12 if total_count == 0 else 0
+        short_answer_penalty = (
+            6
+            if cls._compact_text(response_content)
+            and len(cls._compact_text(response_content)) < 80
+            else 0
+        )
+
+        score = (
+            base_score
+            + strong_bonus
+            + medium_bonus
+            + weak_bonus
+            - failure_penalty
+            - no_evidence_penalty
+            - short_answer_penalty
+        )
+
+        score = max(5, min(score, 95))
+        if score >= 80:
+            level = "high"
+        elif score >= 55:
+            level = "medium"
+        else:
+            level = "low"
+
+        reasons: list[str] = []
+        if strong_count > 0:
+            reasons.append(f"{strong_count} evidencia(s) forte(s) de ferramentas/fontes.")
+        if medium_count > 0:
+            reasons.append(f"{medium_count} evidencia(s) complementar(es).")
+        if tool_call_count > 0:
+            reasons.append(f"{tool_call_count} tool call(s) observavel(is) na resposta.")
+        if failed_count > 0:
+            reasons.append(f"{failed_count} tool call(s) falharam durante a geracao.")
+        if total_count == 0:
+            reasons.append("Nenhuma evidencia observavel foi registrada nesta resposta.")
+
+        warning: str | None = None
+        if strong_count == 0:
+            warning = (
+                "Sinal de cautela: faltam evidencias fortes; valide comandos/sintaxe antes da execucao."
+            )
+        if failed_count > 0 and warning is None:
+            warning = (
+                "Uma ou mais ferramentas falharam; considere repetir a consulta para elevar confianca."
+            )
+
+        return {
+            "score": score,
+            "level": level,
+            "reasons": reasons,
+            "warning": warning,
+            "heuristics": {
+                "base_score": base_score,
+                "strong_bonus": strong_bonus,
+                "medium_bonus": medium_bonus,
+                "weak_bonus": weak_bonus,
+                "failure_penalty": failure_penalty,
+                "no_evidence_penalty": no_evidence_penalty,
+                "short_answer_penalty": short_answer_penalty,
+            },
+        }
+
+    @staticmethod
+    def _compact_text(value: str) -> str:
+        return " ".join(value.split())
 
     @staticmethod
     def _find_tool_call_log(

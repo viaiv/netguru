@@ -9,7 +9,10 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.services.attachment_context_service import AttachmentContextResolution
+from app.services.attachment_context_service import (
+    AttachmentContextResolution,
+    ResolvedAttachment,
+)
 from app.services.chat_service import ChatService
 from app.services.memory_service import AppliedMemory, MemoryContextResolution
 
@@ -153,6 +156,150 @@ async def test_chat_service_injects_memory_context_and_stream_metadata(
     assert "metadata" in stream_end
     assert stream_end["metadata"]["memory_context"]["applied_count"] == 1
     assert stream_end["metadata"]["memory_context"]["entries"][0]["memory_key"] == "asn"
+
+
+@pytest.mark.asyncio
+async def test_chat_service_serializes_evidence_and_confidence_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Assistant metadata should expose evidence items and confidence breakdown for UI rendering.
+    """
+    fake_db = FakeChatDbSession()
+    service = ChatService(fake_db)  # type: ignore[arg-type]
+    conversation_id = uuid4()
+    user_id = uuid4()
+
+    user = SimpleNamespace(
+        id=user_id,
+        llm_provider="openai",
+        encrypted_api_key="encrypted",
+    )
+    conversation = SimpleNamespace(
+        id=conversation_id,
+        model_used=None,
+        title="Nova Conversa",
+        updated_at=None,
+    )
+
+    async def _fake_get_owned_conversation(  # noqa: ANN202
+        _self: ChatService, _conversation_id, _user_id
+    ):
+        return conversation
+
+    async def _fake_increment_messages(_db, _user_id, _count=1):  # noqa: ANN001, ANN202
+        return None
+
+    async def _fake_load_history(  # noqa: ANN202
+        _self: ChatService, _conversation_id
+    ):
+        return [{"role": "user", "content": "como habilitar autenticacao ospf?"}]
+
+    async def _fake_resolve_attachment_context(  # noqa: ANN202
+        _self: ChatService,
+        *,
+        user_id: UUID,  # noqa: ARG001
+        conversation_id: UUID,  # noqa: ARG001
+        content: str,  # noqa: ARG001
+        attachment_document_ids,  # noqa: ANN001, ARG001
+    ):
+        return AttachmentContextResolution(
+            content_for_agent="como habilitar autenticacao ospf?",
+            resolved_attachment=ResolvedAttachment(
+                document_id=uuid4(),
+                filename="core-sw-01-running.cfg",
+                file_type="cfg",
+                source="explicit",
+            ),
+        )
+
+    async def _fake_resolve_memory_context(  # noqa: ANN202
+        _self: ChatService,
+        *,
+        user_id: UUID,  # noqa: ARG001
+        content_for_agent: str,  # noqa: ARG001
+        preferred_vendor: str | None = None,  # noqa: ARG001
+        allow_vendor_prompt: bool = True,  # noqa: ARG001
+    ):
+        entry = AppliedMemory(
+            memory_id=uuid4(),
+            origin="system",
+            scope="system",
+            scope_name=None,
+            memory_key="ospf_auth_profile",
+            memory_value="message-digest",
+            version=1,
+            expires_at=datetime.utcnow(),
+        )
+        return MemoryContextResolution(
+            entries=[entry],
+            context_block=(
+                "[MEMORIA_PERSISTENTE]\n"
+                "- [system][system] ospf_auth_profile: message-digest\n"
+                "[/MEMORIA_PERSISTENTE]"
+            ),
+        )
+
+    class FakeNetworkEngineerAgent:
+        def __init__(self, **_kwargs) -> None:  # noqa: ANN003
+            pass
+
+        async def stream_response(self, _messages):  # noqa: ANN001, ANN202
+            yield {
+                "type": "tool_call_start",
+                "tool_call_id": "tc-1",
+                "tool_name": "search_rag_global",
+                "tool_input": "ospf message-digest authentication ios",
+            }
+            yield {
+                "type": "tool_call_end",
+                "tool_call_id": "tc-1",
+                "tool_name": "search_rag_global",
+                "result_preview": "Cisco IOS supports area-level and interface-level OSPF MD5.",
+                "duration_ms": 124,
+            }
+            yield {"type": "text", "content": "Use autenticacao OSPF MD5 na interface de uplink."}
+
+    monkeypatch.setattr(ChatService, "_get_owned_conversation", _fake_get_owned_conversation)
+    monkeypatch.setattr(ChatService, "_load_history", _fake_load_history)
+    monkeypatch.setattr(ChatService, "_resolve_attachment_context", _fake_resolve_attachment_context)
+    monkeypatch.setattr(ChatService, "_resolve_memory_context", _fake_resolve_memory_context)
+    monkeypatch.setattr("app.services.chat_service.decrypt_api_key", lambda _value: "plain-key")
+    monkeypatch.setattr("app.services.chat_service.get_agent_tools", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        "app.services.chat_service.NetworkEngineerAgent",
+        FakeNetworkEngineerAgent,
+    )
+    monkeypatch.setattr(
+        "app.services.chat_service.UsageTrackingService.increment_messages",
+        _fake_increment_messages,
+    )
+
+    events: list[dict] = []
+    async for event in service.process_user_message(
+        user=user,
+        conversation_id=conversation_id,
+        content="como habilitar autenticacao ospf?",
+    ):
+        events.append(event)
+
+    stream_end = next(e for e in events if e["type"] == "stream_end")
+    metadata = stream_end["metadata"]
+    evidence = metadata["evidence"]
+    confidence = metadata["confidence"]
+
+    assert evidence["total_count"] == 3
+    assert evidence["strong_count"] == 1
+    assert evidence["medium_count"] == 1
+    assert evidence["weak_count"] == 1
+    assert confidence["score"] >= 55
+    assert confidence["level"] in {"medium", "high"}
+    assert "heuristics" in confidence
+    assert any("tool call" in reason for reason in confidence["reasons"])
+
+    tool_item = next(item for item in evidence["items"] if item["type"] == "tool_call")
+    assert tool_item["source"] == "search_rag_global"
+    assert tool_item["details"]["output"]
 
 
 @pytest.mark.asyncio

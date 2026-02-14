@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import AutoResizeTextarea from '../components/chat/AutoResizeTextarea';
 import ConnectionStatus from '../components/chat/ConnectionStatus';
 import EmptyState from '../components/chat/EmptyState';
+import EvidencePanel from '../components/chat/EvidencePanel';
 import FileAttachmentChip from '../components/chat/FileAttachmentChip';
 import MarkdownContent from '../components/chat/MarkdownContent';
 import ToolCallDisplay from '../components/chat/ToolCallDisplay';
@@ -340,7 +341,11 @@ function ChatPage() {
 
   function renderMessage(msg: IMessage) {
     const isUser = msg.role === 'user';
-    const metaToolCalls = (msg.metadata as Record<string, unknown>)?.tool_calls as Array<{
+    const metadata =
+      msg.metadata && typeof msg.metadata === 'object' && !Array.isArray(msg.metadata)
+        ? (msg.metadata as Record<string, unknown>)
+        : null;
+    const metaToolCalls = metadata?.tool_calls as Array<{
       tool: string;
       input?: string;
       result_preview?: string;
@@ -351,9 +356,8 @@ function ChatPage() {
       eta_ms?: number | null;
       detail?: string;
     }> | undefined;
-    const resolvedAttachment = (
-      (msg.metadata as Record<string, unknown>)?.attachment_context as Record<string, unknown> | undefined
-    )?.resolved_attachment as
+    const resolvedAttachment = (metadata?.attachment_context as Record<string, unknown> | undefined)
+      ?.resolved_attachment as
       | {
           filename?: string;
           file_type?: string;
@@ -394,6 +398,7 @@ function ChatPage() {
                 </p>
               )}
               <MarkdownContent content={msg.content} />
+              <EvidencePanel metadata={metadata} />
             </>
           )}
         </div>
