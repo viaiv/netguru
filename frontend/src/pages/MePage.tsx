@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import {
   api,
@@ -6,6 +7,11 @@ import {
   type IUserResponse,
 } from '../services/api';
 import { dispatchAuthLogout } from '../services/authEvents';
+import {
+  createPortalSession,
+  fetchMySubscription,
+  type IUserSubscription,
+} from '../services/billingApi';
 
 const LLM_PROVIDERS = [
   { value: 'openai', label: 'OpenAI' },
@@ -48,11 +54,28 @@ interface IUserByoLlmUsageSummary {
   alerts: IUserByoLlmAlert[];
 }
 
+function isUnlimited(value: number): boolean {
+  return value >= 999_999;
+}
+
+function formatLimit(value: number): string {
+  if (isUnlimited(value)) return 'Ilimitado';
+  return value.toLocaleString('pt-BR');
+}
+
+function usagePercent(current: number, max: number): number {
+  if (isUnlimited(max) || max === 0) return 0;
+  return Math.min(100, Math.round((current / max) * 100));
+}
+
 function MePage() {
+  const navigate = useNavigate();
   const [user, setUser] = useState<IUserResponse | null>(null);
   const [usageSummary, setUsageSummary] = useState<IUserByoLlmUsageSummary | null>(null);
+  const [subscription, setSubscription] = useState<IUserSubscription | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [portalLoading, setPortalLoading] = useState(false);
 
   // LLM config form
   const [llmProvider, setLlmProvider] = useState('');
@@ -65,20 +88,33 @@ function MePage() {
     setIsLoading(true);
 
     try {
-      const [profileResponse, usageResponse] = await Promise.all([
+      const [profileResponse, usageResponse, subResponse] = await Promise.all([
         api.get<IUserResponse>('/users/me'),
         api.get<IUserByoLlmUsageSummary>('/users/me/usage-summary', {
           params: { days: 7 },
         }),
+        fetchMySubscription().catch(() => null),
       ]);
       setUser(profileResponse.data);
       setUsageSummary(usageResponse.data);
+      setSubscription(subResponse);
       setLlmProvider(profileResponse.data.llm_provider || '');
       setApiKey('');
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function handleManagePayment(): Promise<void> {
+    setPortalLoading(true);
+    try {
+      const result = await createPortalSession();
+      window.location.href = result.portal_url;
+    } catch (err) {
+      setError(getErrorMessage(err));
+      setPortalLoading(false);
     }
   }
 
@@ -180,6 +216,117 @@ function MePage() {
               <p className="kv-value">{user.is_verified ? 'Sim' : 'Não'}</p>
             </article>
           </div>
+
+          {/* Subscription & Daily Usage */}
+          {subscription && (
+            <>
+              <div className="view-head">
+                <p className="eyebrow">Assinatura</p>
+                <h2 className="view-title">Plano e uso diario</h2>
+                <p className="view-subtitle">
+                  Gerencie sua assinatura e acompanhe o uso do dia.
+                </p>
+              </div>
+
+              <div className="kv-grid">
+                <article className="kv-card">
+                  <p className="kv-label">Plano atual</p>
+                  <p className="kv-value">{subscription.plan.display_name}</p>
+                </article>
+                <article className="kv-card">
+                  <p className="kv-label">Status</p>
+                  <p className="kv-value">
+                    {subscription.has_subscription
+                      ? subscription.subscription?.status === 'active'
+                        ? 'Ativo'
+                        : subscription.subscription?.status ?? 'Sem assinatura'
+                      : 'Sem assinatura Stripe'}
+                  </p>
+                </article>
+                {subscription.subscription?.current_period_end && (
+                  <article className="kv-card">
+                    <p className="kv-label">Proximo vencimento</p>
+                    <p className="kv-value">
+                      {new Date(subscription.subscription.current_period_end).toLocaleDateString('pt-BR')}
+                    </p>
+                  </article>
+                )}
+              </div>
+
+              {/* Daily usage bars */}
+              <div className="kv-grid" style={{ marginTop: '1rem' }}>
+                {([
+                  {
+                    label: 'Uploads hoje',
+                    current: subscription.usage_today.uploads_today,
+                    max: subscription.plan.upload_limit_daily,
+                  },
+                  {
+                    label: 'Mensagens hoje',
+                    current: subscription.usage_today.messages_today,
+                    max: subscription.plan.max_conversations_daily,
+                  },
+                  {
+                    label: 'Tokens hoje',
+                    current: subscription.usage_today.tokens_today,
+                    max: subscription.plan.max_tokens_daily,
+                  },
+                ] as const).map((item) => {
+                  const pct = usagePercent(item.current, item.max);
+                  const barColor = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#22c55e';
+                  return (
+                    <article key={item.label} className="kv-card">
+                      <p className="kv-label">{item.label}</p>
+                      <p className="kv-value">
+                        {item.current.toLocaleString('pt-BR')} / {formatLimit(item.max)}
+                      </p>
+                      {!isUnlimited(item.max) && (
+                        <div
+                          style={{
+                            marginTop: '0.5rem',
+                            height: '6px',
+                            background: 'rgba(255,255,255,0.1)',
+                            borderRadius: '3px',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${pct}%`,
+                              height: '100%',
+                              background: barColor,
+                              borderRadius: '3px',
+                              transition: 'width 0.3s ease',
+                            }}
+                          />
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="button-row" style={{ marginTop: '1rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => navigate('/pricing')}
+                >
+                  Upgrade
+                </button>
+                {subscription.has_subscription && (
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    disabled={portalLoading}
+                    onClick={() => void handleManagePayment()}
+                  >
+                    {portalLoading ? 'Abrindo...' : 'Gerenciar pagamento'}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
 
           {usageSummary && (
             <>

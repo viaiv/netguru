@@ -38,6 +38,7 @@ from app.services.file_storage import (
     persist_uploaded_file,
     resolve_storage_path,
 )
+from app.services.plan_limit_service import PlanLimitError, PlanLimitService
 from app.services.r2_storage_service import (
     R2NotConfiguredError,
     R2OperationError,
@@ -154,6 +155,17 @@ async def presign_upload(
     Cria documento com status 'pending_upload'. O frontend faz PUT na URL
     retornada e depois chama POST /files/confirm.
     """
+    # Plan limit enforcement
+    try:
+        await PlanLimitService.check_upload_limit(db, current_user)
+        file_size_mb = body.file_size_bytes / (1024 * 1024)
+        await PlanLimitService.check_file_size(db, current_user, file_size_mb)
+    except PlanLimitError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=exc.detail,
+        ) from exc
+
     try:
         extension = ensure_extension_allowed(body.filename)
     except FileStorageError as exc:
@@ -296,6 +308,14 @@ async def upload_file(
     """
     Upload a file and persist metadata for current user.
     """
+    # Plan limit enforcement
+    try:
+        await PlanLimitService.check_upload_limit(db, current_user)
+    except PlanLimitError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=exc.detail,
+        ) from exc
 
     if not file.filename:
         raise HTTPException(

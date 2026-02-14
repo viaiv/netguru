@@ -1,24 +1,34 @@
 """
-Billing endpoints — Stripe checkout, customer portal, webhook.
+Billing endpoints — Stripe checkout, customer portal, webhook, subscription info.
 """
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
+from app.models.plan import Plan
+from app.models.subscription import Subscription
 from app.models.user import User
 from app.schemas.admin import (
     CheckoutSessionRequest,
     CheckoutSessionResponse,
     CustomerPortalResponse,
 )
+from app.schemas.billing import (
+    SubscriptionDetail,
+    UsageTodayResponse,
+    UserSubscriptionPlan,
+    UserSubscriptionResponse,
+)
 from app.services.subscription_service import (
     StripeNotConfiguredError,
     SubscriptionService,
     SubscriptionServiceError,
 )
+from app.services.usage_tracking_service import UsageTrackingService
 
 router = APIRouter()
 
@@ -79,6 +89,56 @@ async def create_portal(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=exc.detail,
         ) from exc
+
+
+@router.get("/subscription", response_model=UserSubscriptionResponse)
+async def get_my_subscription(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UserSubscriptionResponse:
+    """Return the current user's plan, active subscription, and today's usage."""
+    # Resolve plan from user.plan_tier
+    tier = getattr(current_user, "plan_tier", None) or "solo"
+    stmt = select(Plan).where(Plan.name == tier)
+    plan = (await db.execute(stmt)).scalar_one_or_none()
+    if plan is None:
+        stmt = select(Plan).where(Plan.name == "solo")
+        plan = (await db.execute(stmt)).scalar_one_or_none()
+    if plan is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Plano nao encontrado.",
+        )
+
+    plan_data = UserSubscriptionPlan.model_validate(plan)
+
+    # Fetch active subscription (if any)
+    sub_stmt = (
+        select(Subscription)
+        .where(
+            Subscription.user_id == current_user.id,
+            Subscription.status.in_(["active", "trialing", "past_due"]),
+        )
+        .order_by(Subscription.created_at.desc())
+        .limit(1)
+    )
+    subscription = (await db.execute(sub_stmt)).scalar_one_or_none()
+    sub_data = SubscriptionDetail.model_validate(subscription) if subscription else None
+
+    # Fetch today's usage
+    usage = await UsageTrackingService.get_today_usage(db, current_user.id)
+    usage_data = UsageTodayResponse(
+        uploads_today=usage.uploads_count if usage else 0,
+        messages_today=usage.messages_count if usage else 0,
+        tokens_today=usage.tokens_used if usage else 0,
+    )
+
+    return UserSubscriptionResponse(
+        has_subscription=subscription is not None,
+        plan=plan_data,
+        subscription=sub_data,
+        usage_today=usage_data,
+    )
 
 
 @router.post("/webhook", status_code=status.HTTP_200_OK)

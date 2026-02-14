@@ -9,6 +9,7 @@ import LoginPage from './pages/LoginPage';
 import MePage from './pages/MePage';
 import MemoriesPage from './pages/MemoriesPage';
 import PcapDashboardPage from './pages/PcapDashboardPage';
+import PricingPage from './pages/PricingPage';
 import RegisterPage from './pages/RegisterPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
@@ -57,6 +58,7 @@ function App() {
   }, [clearAuth, navigate]);
 
   const isHomePage = location.pathname === '/home';
+  const isPricingPage = location.pathname === '/pricing';
   const isPcapRoute = location.pathname.startsWith('/pcap/');
 
   // PCAP dashboard — layout fullscreen, sem chrome/rail/panel
@@ -78,6 +80,28 @@ function App() {
   // Landing page — layout proprio, sem chrome/rail/panel
   if (isHomePage) {
     return <HomePage />;
+  }
+
+  // Pricing page — layout publico com chrome minimo
+  if (isPricingPage) {
+    return (
+      <div className="app-shell">
+        <div className="bg-grid" />
+        <div className="bg-glow bg-glow-a" />
+        <div className="bg-glow bg-glow-b" />
+        <header className="chrome">
+          <div className="brand-block">
+            <p className="kicker">NetGuru</p>
+            <h1 className="brand-title">Agentic Network Console</h1>
+          </div>
+        </header>
+        <main className="panel" style={{ marginLeft: 0 }}>
+          <div className="panel-inner">
+            <PricingPage />
+          </div>
+        </main>
+      </div>
+    );
   }
 
   // Admin area — layout proprio, sem header/sidebar do app
@@ -221,6 +245,38 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <MemoriesPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/billing/success"
+                element={
+                  <ProtectedRoute>
+                    <section className="view">
+                      <div className="view-head" style={{ textAlign: 'center' }}>
+                        <p className="eyebrow">Billing</p>
+                        <h2 className="view-title">Assinatura confirmada!</h2>
+                        <p className="view-subtitle">
+                          Seu pagamento foi processado com sucesso. Sua assinatura esta ativa.
+                        </p>
+                      </div>
+                      <div className="button-row" style={{ justifyContent: 'center' }}>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={() => navigate('/me')}
+                        >
+                          Ver meu perfil
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => navigate('/chat')}
+                        >
+                          Ir para o chat
+                        </button>
+                      </div>
+                    </section>
                   </ProtectedRoute>
                 }
               />

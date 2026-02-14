@@ -26,6 +26,7 @@ from app.services.attachment_context_service import (
 from app.services.llm_client import LLMProviderError
 from app.services.memory_service import MemoryContextResolution, MemoryService
 from app.services.system_settings_service import SystemSettingsService
+from app.services.plan_limit_service import PlanLimitError, PlanLimitService
 from app.services.playbook_service import PlaybookResponse, PlaybookService
 from app.services.usage_tracking_service import UsageTrackingService
 
@@ -85,6 +86,15 @@ class ChatService:
                 f"Mensagem excede limite de {settings.CHAT_MAX_MESSAGE_LENGTH} caracteres.",
                 code="message_too_long",
             )
+
+        # 2b. Plan limit enforcement — daily messages
+        try:
+            await PlanLimitService.check_message_limit(self._db, user)
+        except PlanLimitError as exc:
+            raise ChatServiceError(
+                exc.detail,
+                code="message_limit_exceeded",
+            ) from exc
 
         # 3. Resolve LLM provider (BYO-LLM ou free fallback via DB)
         if user.llm_provider and user.encrypted_api_key:

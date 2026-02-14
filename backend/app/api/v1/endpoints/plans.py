@@ -20,4 +20,9 @@ async def list_public_plans(
     """List active plans (public, no auth required)."""
     stmt = select(Plan).where(Plan.is_active.is_(True)).order_by(Plan.sort_order)
     plans = (await db.execute(stmt)).scalars().all()
-    return [PublicPlanResponse.model_validate(p) for p in plans]
+    result: list[PublicPlanResponse] = []
+    for p in plans:
+        data = PublicPlanResponse.model_validate(p)
+        data.is_purchasable = bool(p.stripe_price_id)
+        result.append(data)
+    return result
