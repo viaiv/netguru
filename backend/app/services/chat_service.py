@@ -1,6 +1,7 @@
 """
 Chat service — orchestrates message persistence + agent invocation + streaming.
 """
+import asyncio
 from datetime import datetime
 from typing import AsyncGenerator
 from uuid import UUID
@@ -164,7 +165,9 @@ class ChatService:
                         "result_preview": event["result_preview"],
                         "duration_ms": event["duration_ms"],
                     }
-
+        except asyncio.CancelledError:
+            await self._db.rollback()
+            raise
         except LLMProviderError as exc:
             await self._db.rollback()
             yield {
@@ -189,6 +192,9 @@ class ChatService:
 
         try:
             await self._db.commit()
+        except asyncio.CancelledError:
+            await self._db.rollback()
+            raise
         except Exception as exc:
             await self._db.rollback()
             yield {

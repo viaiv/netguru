@@ -11,6 +11,7 @@ Protocol:
     {"type": "stream_start", "message_id": "..."}
     {"type": "stream_chunk", "content": "..."}
     {"type": "stream_end",   "message_id": "...", "tokens_used": int|null}
+    {"type": "stream_cancelled", "reason": "..."}
     {"type": "error",        "code": "...", "detail": "..."}
     {"type": "pong"}
 
@@ -175,17 +176,24 @@ async def websocket_chat(
                         except (asyncio.CancelledError, Exception):
                             pass
 
-                    # Se cancelou, notifica o frontend
-                    if cancel_task in done:
+                    user_cancelled = cancel_task in done and stream_task.cancelled()
+
+                    # Se cancelou, garante cleanup transacional e notifica frontend
+                    if user_cancelled:
+                        try:
+                            await db.rollback()
+                        except Exception:
+                            pass
                         await websocket.send_json({
-                            "type": "stream_end",
-                            "message_id": None,
-                            "tokens_used": None,
+                            "type": "stream_cancelled",
+                            "reason": "cancelled_by_user",
                         })
 
                     # Se o stream_task falhou com erro nao tratado
-                    if stream_task in done and stream_task.exception():
+                    if stream_task in done and not stream_task.cancelled():
                         exc = stream_task.exception()
+                        if not exc:
+                            continue
                         if isinstance(exc, ChatServiceError):
                             await websocket.send_json({
                                 "type": "error",

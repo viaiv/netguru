@@ -36,6 +36,7 @@ function ChatPage() {
     handleStreamStart,
     handleStreamChunk,
     handleStreamEnd,
+    handleStreamCancelled,
     handleToolCallStart,
     handleToolCallEnd,
     handleWsError,
@@ -72,7 +73,14 @@ function ChatPage() {
           handleStreamChunk(event.content!);
           break;
         case 'stream_end':
-          handleStreamEnd(event.message_id!, event.tokens_used ?? null);
+          if (event.message_id) {
+            handleStreamEnd(event.message_id, event.tokens_used ?? null);
+          } else {
+            handleStreamCancelled();
+          }
+          break;
+        case 'stream_cancelled':
+          handleStreamCancelled();
           break;
         case 'tool_call_start':
           handleToolCallStart(event.tool_name!, event.tool_input!);
@@ -92,7 +100,17 @@ function ChatPage() {
           break;
       }
     },
-    [handleStreamStart, handleStreamChunk, handleStreamEnd, handleToolCallStart, handleToolCallEnd, handleWsError, currentConversationId, updateConversationTitle],
+    [
+      handleStreamStart,
+      handleStreamChunk,
+      handleStreamEnd,
+      handleStreamCancelled,
+      handleToolCallStart,
+      handleToolCallEnd,
+      handleWsError,
+      currentConversationId,
+      updateConversationTitle,
+    ],
   );
 
   // ---- WebSocket with auto-reconnect ----

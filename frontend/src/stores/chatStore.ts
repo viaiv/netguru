@@ -68,6 +68,7 @@ interface IChatState {
   handleStreamStart: (messageId: string) => void;
   handleStreamChunk: (content: string) => void;
   handleStreamEnd: (messageId: string, tokensUsed: number | null) => void;
+  handleStreamCancelled: () => void;
   handleToolCallStart: (toolName: string, toolInput: string) => void;
   handleToolCallEnd: (toolName: string, resultPreview: string, durationMs: number) => void;
   handleWsError: (detail: string) => void;
@@ -237,6 +238,15 @@ export const useChatStore = create<IChatState>((set, get) => ({
       streamingMessageId: null,
       activeToolCalls: [],
     }));
+  },
+
+  handleStreamCancelled: () => {
+    set({
+      isStreaming: false,
+      streamingContent: '',
+      streamingMessageId: null,
+      activeToolCalls: [],
+    });
   },
 
   handleToolCallStart: (toolName: string, toolInput: string) => {

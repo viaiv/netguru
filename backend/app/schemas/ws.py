@@ -48,6 +48,13 @@ class WsStreamEnd(BaseModel):
     tokens_used: int | None = None
 
 
+class WsStreamCancelled(BaseModel):
+    """Signals that the streamed response was cancelled by the client."""
+
+    type: str = "stream_cancelled"
+    reason: str | None = None
+
+
 class WsError(BaseModel):
     """Error notification from server."""
 

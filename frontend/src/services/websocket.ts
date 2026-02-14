@@ -7,6 +7,7 @@ export type TWebSocketEventType =
   | 'stream_start'
   | 'stream_chunk'
   | 'stream_end'
+  | 'stream_cancelled'
   | 'tool_call_start'
   | 'tool_call_end'
   | 'title_updated'
@@ -25,6 +26,7 @@ export interface IWebSocketEvent {
   result_preview?: string;
   duration_ms?: number;
   title?: string;
+  reason?: string;
 }
 
 type TEventHandler = (event: IWebSocketEvent) => void;
