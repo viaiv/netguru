@@ -2,6 +2,7 @@
 FastAPI dependencies for auth, database, etc.
 """
 from collections.abc import Callable
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 from fastapi import Depends, HTTPException, status
@@ -78,7 +79,13 @@ async def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is disabled"
         )
-    
+
+    # Auto-downgrade expired trial
+    if user.trial_ends_at and datetime.utcnow() > user.trial_ends_at:
+        user.plan_tier = "free"
+        user.trial_ends_at = None
+        await db.commit()
+
     return user
 
 

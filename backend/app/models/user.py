@@ -61,6 +61,7 @@ class User(Base):
         nullable=False
     )
     last_login_at = Column(DateTime, nullable=True)
+    trial_ends_at = Column(DateTime, nullable=True)
     
     # Relationships
     conversations = relationship(

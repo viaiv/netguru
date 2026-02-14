@@ -209,6 +209,36 @@ def recalculate_stale_embeddings() -> dict:
     return {"updated": total_updated}
 
 
+@celery_app.task(name="app.workers.tasks.maintenance_tasks.downgrade_expired_trials")
+def downgrade_expired_trials() -> dict:
+    """
+    Downgrade usuarios com trial expirado para plano free.
+
+    Safety net para cobrir usuarios que nao fazem login apos o trial expirar.
+    O downgrade lazy em get_current_user cobre quem loga; esta task cobre o resto.
+    """
+    from app.core.database_sync import get_sync_db
+    from app.models.user import User
+
+    downgraded = 0
+    now = datetime.utcnow()
+
+    with get_sync_db() as db:
+        stmt = select(User).where(
+            User.trial_ends_at.isnot(None),
+            User.trial_ends_at < now,
+        )
+        expired_users = db.execute(stmt).scalars().all()
+
+        for user in expired_users:
+            user.plan_tier = "free"
+            user.trial_ends_at = None
+            downgraded += 1
+
+    logger.info("downgrade_expired_trials: %d usuarios rebaixados para free", downgraded)
+    return {"downgraded": downgraded}
+
+
 @celery_app.task(name="app.workers.tasks.maintenance_tasks.mark_stale_tasks_timeout")
 def mark_stale_tasks_timeout() -> dict:
     """

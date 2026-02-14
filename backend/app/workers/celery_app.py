@@ -65,4 +65,8 @@ celery_app.conf.beat_schedule = {
         "task": "app.workers.tasks.maintenance_tasks.mark_stale_tasks_timeout",
         "schedule": 5 * 60,  # a cada 5 minutos
     },
+    "downgrade-expired-trials": {
+        "task": "app.workers.tasks.maintenance_tasks.downgrade_expired_trials",
+        "schedule": settings.DOWNGRADE_EXPIRED_TRIALS_HOURS * 3600,
+    },
 }

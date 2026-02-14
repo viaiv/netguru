@@ -18,13 +18,14 @@ class UserBase(BaseModel):
 class UserCreate(BaseModel):
     """
     Schema for user registration.
-    
+
     User must provide their own LLM API key (BYO-LLM model).
+    Registration always starts with a trial period (plan_tier set server-side).
     """
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=100)
     full_name: Optional[str] = Field(None, max_length=255)
-    
+
     # BYO-LLM: User's own API key
     api_key: Optional[str] = Field(
         None,
@@ -36,12 +37,6 @@ class UserCreate(BaseModel):
         None,
         description="openai|anthropic|azure|local",
         pattern="^(openai|anthropic|azure|local)$"
-    )
-    
-    plan_tier: str = Field(
-        default="solo",
-        description="solo|team|enterprise",
-        pattern="^(solo|team|enterprise)$"
     )
 
 
@@ -65,7 +60,7 @@ class UserUpdate(BaseModel):
 class UserResponse(UserBase):
     """
     Schema for user data in responses.
-    
+
     NEVER include encrypted_api_key or hashed_password.
     """
     id: UUID
@@ -79,7 +74,9 @@ class UserResponse(UserBase):
     is_verified: bool
     created_at: datetime
     last_login_at: Optional[datetime]
-    
+    trial_ends_at: Optional[datetime] = None
+    is_on_trial: bool = False
+
     class Config:
         from_attributes = True
 

@@ -32,6 +32,10 @@ def _build_user_response(user: User) -> UserResponse:
     """
     Build a safe user response without sensitive fields.
     """
+    is_on_trial = (
+        user.trial_ends_at is not None
+        and user.trial_ends_at > datetime.utcnow()
+    )
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -44,6 +48,8 @@ def _build_user_response(user: User) -> UserResponse:
         is_verified=user.is_verified,
         created_at=user.created_at,
         last_login_at=user.last_login_at,
+        trial_ends_at=user.trial_ends_at,
+        is_on_trial=is_on_trial,
     )
 
 

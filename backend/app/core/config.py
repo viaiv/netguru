@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     CLEANUP_EXPIRED_TOKENS_HOURS: int = 6
     HEALTH_CHECK_MINUTES: int = 5
     STALE_EMBEDDINGS_HOURS: int = 12
+    DOWNGRADE_EXPIRED_TRIALS_HOURS: int = 1
     ORPHAN_UPLOAD_AGE_HOURS: int = 72
     
     # File Upload
@@ -106,6 +107,10 @@ class Settings(BaseSettings):
     DEFAULT_LLM_MODEL_OPENROUTER: str = "google/gemini-2.0-flash-001"
     LLM_MAX_TOKENS: int = 4096
     LLM_TEMPERATURE: float = 0.7
+
+    # Trial
+    TRIAL_DAYS: int = 15
+    TRIAL_PLAN_TIER: str = "team"
 
     # Stripe
     STRIPE_SECRET_KEY: str = ""

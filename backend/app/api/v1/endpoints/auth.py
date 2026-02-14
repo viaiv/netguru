@@ -4,7 +4,7 @@ Authentication endpoints: register, login, refresh token, email verification, pa
 from __future__ import annotations
 
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -48,6 +48,10 @@ def _build_user_response(user: User) -> UserResponse:
     """
     Build a safe user response without sensitive fields.
     """
+    is_on_trial = (
+        user.trial_ends_at is not None
+        and user.trial_ends_at > datetime.utcnow()
+    )
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -60,6 +64,8 @@ def _build_user_response(user: User) -> UserResponse:
         is_verified=user.is_verified,
         created_at=user.created_at,
         last_login_at=user.last_login_at,
+        trial_ends_at=user.trial_ends_at,
+        is_on_trial=is_on_trial,
     )
 
 
@@ -99,14 +105,15 @@ async def register(
     is_first_user = first_user_result.scalar_one_or_none() is None
     assigned_role = UserRole.OWNER.value if is_first_user else UserRole.MEMBER.value
 
-    # Create user
+    # Create user with trial period
     user = User(
         email=user_in.email,
         hashed_password=get_password_hash(user_in.password),
         full_name=user_in.full_name,
         encrypted_api_key=encrypted_api_key,
         llm_provider=user_in.llm_provider,
-        plan_tier=user_in.plan_tier,
+        plan_tier=settings.TRIAL_PLAN_TIER,
+        trial_ends_at=datetime.utcnow() + timedelta(days=settings.TRIAL_DAYS),
         role=assigned_role,
     )
 
