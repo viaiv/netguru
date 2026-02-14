@@ -672,6 +672,7 @@ async def stripe_sync_plan(
         ) from exc
 
     svc._configure_stripe()
+    logger.info("Stripe sync started for plan %s (%s)", plan.name, plan_id)
 
     changes: dict = {}
 
@@ -713,9 +714,16 @@ async def stripe_sync_plan(
                 pass  # Non-critical
 
     except stripe_lib.StripeError as exc:
+        logger.exception("Stripe API error syncing plan %s: %s", plan_id, exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Erro ao comunicar com Stripe: {exc.user_message or str(exc)}",
+        ) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error syncing plan %s with Stripe", plan_id)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Erro inesperado ao sincronizar com Stripe: {str(exc)}",
         ) from exc
 
     plan.updated_at = datetime.utcnow()
