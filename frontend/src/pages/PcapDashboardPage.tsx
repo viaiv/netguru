@@ -35,6 +35,12 @@ function formatBps(bps: number): string {
   return `${(bps / 1_000_000).toFixed(2)} Mbps`;
 }
 
+function hasData(obj: Record<string, unknown> | unknown[] | undefined | null): boolean {
+  if (!obj) return false;
+  if (Array.isArray(obj)) return obj.length > 0;
+  return Object.keys(obj).length > 0;
+}
+
 function PcapDashboardPage() {
   const { messageId } = useParams<{ messageId: string }>();
   const [data, setData] = useState<IPcapAnalysisData | null>(null);
@@ -71,10 +77,15 @@ function PcapDashboardPage() {
     );
   }
 
+  const hasHttp = hasData(data.http_methods) || hasData(data.http_status_codes);
+  const hasTls = hasData(data.tls_versions) || (data.tls_sni_hosts?.length > 0);
+  const hasVoip = hasData(data.voip_sip_methods) || data.voip_rtp_streams > 0;
+  const hasSecurity = hasHttp || hasTls || hasVoip;
+
   const tabs: { key: TTab; label: string; show: boolean }[] = [
     { key: 'overview', label: 'Visao Geral', show: true },
     { key: 'traffic', label: 'Trafego', show: true },
-    { key: 'security', label: 'Seguranca', show: !!(data.http || data.tls || data.voip) },
+    { key: 'security', label: 'Seguranca', show: hasSecurity },
     { key: 'wireless', label: 'Wireless', show: !!data.is_wireless },
   ];
 
@@ -85,7 +96,7 @@ function PcapDashboardPage() {
           <h1 className="pcap-dashboard__title">PCAP Dashboard</h1>
           <p className="pcap-dashboard__subtitle">
             {data.total_packets?.toLocaleString()} pacotes
-            {data.capture_duration ? ` | ${data.capture_duration.toFixed(1)}s` : ''}
+            {data.duration_seconds ? ` | ${data.duration_seconds.toFixed(1)}s` : ''}
             {data.is_wireless ? ' | Wi-Fi (802.11)' : ' | Ethernet/IP'}
           </p>
         </div>
@@ -111,7 +122,7 @@ function PcapDashboardPage() {
         {tab === 'overview' && <OverviewTab data={data} />}
         {tab === 'traffic' && <TrafficTab data={data} />}
         {tab === 'security' && <SecurityTab data={data} />}
-        {tab === 'wireless' && data.wireless && <WirelessTab data={data} />}
+        {tab === 'wireless' && data.is_wireless && <WirelessTab data={data} />}
       </div>
     </div>
   );
@@ -122,6 +133,11 @@ function PcapDashboardPage() {
 /* ------------------------------------------------------------------ */
 
 function OverviewTab({ data }: { data: IPcapAnalysisData }) {
+  // Convert protocols dict to array for PieChart
+  const protocolEntries = Object.entries(data.protocols || {})
+    .map(([protocol, count]) => ({ protocol, count }))
+    .sort((a, b) => b.count - a.count);
+
   return (
     <>
       {/* Stats header */}
@@ -132,28 +148,24 @@ function OverviewTab({ data }: { data: IPcapAnalysisData }) {
         </div>
         <div className="pcap-stat-card">
           <p className="pcap-stat-card__label">Duracao</p>
-          <p className="pcap-stat-card__value">{data.capture_duration?.toFixed(1)}s</p>
+          <p className="pcap-stat-card__value">{data.duration_seconds?.toFixed(1)}s</p>
         </div>
-        {data.bandwidth && (
-          <>
-            <div className="pcap-stat-card">
-              <p className="pcap-stat-card__label">Total Bytes</p>
-              <p className="pcap-stat-card__value">{formatBytes(data.bandwidth.total_bytes)}</p>
-            </div>
-            <div className="pcap-stat-card">
-              <p className="pcap-stat-card__label">Avg Throughput</p>
-              <p className="pcap-stat-card__value">{formatBps(data.bandwidth.avg_bps)}</p>
-            </div>
-            <div className="pcap-stat-card">
-              <p className="pcap-stat-card__label">Peak Throughput</p>
-              <p className="pcap-stat-card__value">{formatBps(data.bandwidth.peak_bps)}</p>
-            </div>
-          </>
-        )}
-        {data.tcp_issues && (
+        <div className="pcap-stat-card">
+          <p className="pcap-stat-card__label">Total Bytes</p>
+          <p className="pcap-stat-card__value">{formatBytes(data.total_bytes || 0)}</p>
+        </div>
+        <div className="pcap-stat-card">
+          <p className="pcap-stat-card__label">Avg Throughput</p>
+          <p className="pcap-stat-card__value">{formatBps(data.avg_throughput_bps || 0)}</p>
+        </div>
+        <div className="pcap-stat-card">
+          <p className="pcap-stat-card__label">Peak Throughput</p>
+          <p className="pcap-stat-card__value">{formatBps(data.peak_throughput_bps || 0)}</p>
+        </div>
+        {data.tcp_issues && data.tcp_issues.length > 0 && (
           <div className="pcap-stat-card">
-            <p className="pcap-stat-card__label">TCP Retrans</p>
-            <p className="pcap-stat-card__value">{data.tcp_issues.retransmissions}</p>
+            <p className="pcap-stat-card__label">TCP Issues</p>
+            <p className="pcap-stat-card__value">{data.tcp_issues.length}</p>
           </div>
         )}
       </div>
@@ -161,21 +173,23 @@ function OverviewTab({ data }: { data: IPcapAnalysisData }) {
       {/* Charts row */}
       <div className="pcap-charts-row">
         {/* Protocol Pie */}
-        {data.protocols && data.protocols.length > 0 && (
+        {protocolEntries.length > 0 && (
           <div className="pcap-card">
             <h3 className="pcap-card__title">Distribuicao de Protocolos</h3>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={data.protocols}
+                  data={protocolEntries}
                   dataKey="count"
                   nameKey="protocol"
                   cx="50%"
                   cy="50%"
                   outerRadius={100}
-                  label={({ name, percent }: { name?: string; percent?: number }) => `${name ?? ''} (${((percent ?? 0) * 100).toFixed(1)}%)`}
+                  label={({ name, percent }: { name?: string; percent?: number }) =>
+                    `${name ?? ''} (${((percent ?? 0) * 100).toFixed(1)}%)`
+                  }
                 >
-                  {data.protocols.map((_entry, idx) => (
+                  {protocolEntries.map((_entry, idx) => (
                     <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
                   ))}
                 </Pie>
@@ -194,7 +208,7 @@ function OverviewTab({ data }: { data: IPcapAnalysisData }) {
               <BarChart data={data.top_talkers.slice(0, 10)} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(31,31,31,0.1)" />
                 <XAxis type="number" />
-                <YAxis dataKey="ip" type="category" width={120} tick={{ fontSize: 12 }} />
+                <YAxis dataKey="ip" type="category" width={140} tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(value: unknown) => formatBytes(value as number)} />
                 <Bar dataKey="bytes" fill="#1665cf" radius={[0, 4, 4, 0]} />
               </BarChart>
@@ -203,34 +217,27 @@ function OverviewTab({ data }: { data: IPcapAnalysisData }) {
         )}
       </div>
 
-      {/* Anomalies table */}
+      {/* Network protocols detected */}
+      {data.network_protocols && data.network_protocols.length > 0 && (
+        <div className="pcap-card">
+          <h3 className="pcap-card__title">Protocolos de Rede Detectados</h3>
+          <div className="pcap-ssid-list">
+            {data.network_protocols.map((p, i) => (
+              <span key={i} className="pcap-ssid-chip">{p}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Anomalies */}
       {data.anomalies && data.anomalies.length > 0 && (
         <div className="pcap-card">
           <h3 className="pcap-card__title">Anomalias Detectadas</h3>
-          <div className="pcap-table-wrapper">
-            <table className="pcap-table">
-              <thead>
-                <tr>
-                  <th>Severidade</th>
-                  <th>Tipo</th>
-                  <th>Descricao</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.anomalies.map((a, i) => (
-                  <tr key={i}>
-                    <td>
-                      <span className={`pcap-anomaly-badge pcap-anomaly-badge--${a.severity}`}>
-                        {a.severity}
-                      </span>
-                    </td>
-                    <td>{a.type}</td>
-                    <td>{a.description}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul className="pcap-anomaly-list">
+            {data.anomalies.map((a, i) => (
+              <li key={i} className="pcap-anomaly-item">{a}</li>
+            ))}
+          </ul>
         </div>
       )}
     </>
@@ -242,6 +249,16 @@ function OverviewTab({ data }: { data: IPcapAnalysisData }) {
 /* ------------------------------------------------------------------ */
 
 function TrafficTab({ data }: { data: IPcapAnalysisData }) {
+  // Convert frame_size_distribution dict to sorted array
+  const frameSizeOrder = ['0-64', '65-128', '129-256', '257-512', '513-1024', '1025-1518', '1519-9000 (Jumbo)', '9001+'];
+  const frameSizes = Object.entries(data.frame_size_distribution || {})
+    .map(([range, count]) => ({ range, count }))
+    .sort((a, b) => {
+      const ia = frameSizeOrder.indexOf(a.range);
+      const ib = frameSizeOrder.indexOf(b.range);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    });
+
   return (
     <>
       {/* Timeline area chart */}
@@ -252,16 +269,13 @@ function TrafficTab({ data }: { data: IPcapAnalysisData }) {
             <AreaChart data={data.time_buckets}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(31,31,31,0.1)" />
               <XAxis
-                dataKey="timestamp"
+                dataKey="time_offset"
                 tick={{ fontSize: 11 }}
-                tickFormatter={(v: string) => {
-                  const d = new Date(v);
-                  return `${d.getMinutes()}:${String(d.getSeconds()).padStart(2, '0')}`;
-                }}
+                tickFormatter={(v: number) => `${v.toFixed(0)}s`}
               />
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip
-                labelFormatter={(v: unknown) => new Date(v as string).toLocaleTimeString()}
+                labelFormatter={(v: unknown) => `${Number(v).toFixed(1)}s`}
                 formatter={(value: unknown, name: unknown) =>
                   name === 'bytes' ? formatBytes(value as number) : (value as number)
                 }
@@ -272,6 +286,15 @@ function TrafficTab({ data }: { data: IPcapAnalysisData }) {
                 stroke="#81d742"
                 fill="rgba(129,215,66,0.2)"
                 strokeWidth={2}
+                name="Pacotes"
+              />
+              <Area
+                type="monotone"
+                dataKey="bytes"
+                stroke="#1665cf"
+                fill="rgba(22,101,207,0.1)"
+                strokeWidth={1}
+                name="bytes"
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -279,16 +302,22 @@ function TrafficTab({ data }: { data: IPcapAnalysisData }) {
       )}
 
       {/* Frame sizes bar */}
-      {data.frame_sizes && data.frame_sizes.length > 0 && (
+      {frameSizes.length > 0 && (
         <div className="pcap-card">
           <h3 className="pcap-card__title">Distribuicao de Frame Sizes</h3>
+          {data.frame_size_stats && (
+            <p className="pcap-card__detail" style={{ marginTop: 0, marginBottom: 12 }}>
+              Min: {data.frame_size_stats.min}B | Max: {data.frame_size_stats.max}B |
+              Avg: {data.frame_size_stats.avg?.toFixed(1)}B | Mediana: {data.frame_size_stats.median}B
+            </p>
+          )}
           <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={data.frame_sizes}>
+            <BarChart data={frameSizes}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(31,31,31,0.1)" />
               <XAxis dataKey="range" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip />
-              <Bar dataKey="count" fill="#4ec9b0" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="count" fill="#4ec9b0" radius={[4, 4, 0, 0]} name="Pacotes" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -304,7 +333,6 @@ function TrafficTab({ data }: { data: IPcapAnalysisData }) {
                 <tr>
                   <th>Origem</th>
                   <th>Destino</th>
-                  <th>Protocolo</th>
                   <th>Pacotes</th>
                   <th>Bytes</th>
                 </tr>
@@ -314,7 +342,6 @@ function TrafficTab({ data }: { data: IPcapAnalysisData }) {
                   <tr key={i}>
                     <td className="pcap-table__mono">{c.src}</td>
                     <td className="pcap-table__mono">{c.dst}</td>
-                    <td>{c.protocol}</td>
                     <td>{c.packets}</td>
                     <td>{formatBytes(c.bytes)}</td>
                   </tr>
@@ -332,18 +359,37 @@ function TrafficTab({ data }: { data: IPcapAnalysisData }) {
           <div className="pcap-table-wrapper">
             <table className="pcap-table">
               <thead>
+                <tr><th>Query</th></tr>
+              </thead>
+              <tbody>
+                {data.dns_queries.slice(0, 30).map((q, i) => (
+                  <tr key={i}><td className="pcap-table__mono">{q}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TCP Issues */}
+      {data.tcp_issues && data.tcp_issues.length > 0 && (
+        <div className="pcap-card">
+          <h3 className="pcap-card__title">TCP Issues</h3>
+          <div className="pcap-table-wrapper">
+            <table className="pcap-table">
+              <thead>
                 <tr>
-                  <th>Query</th>
                   <th>Tipo</th>
-                  <th>Count</th>
+                  <th>Origem</th>
+                  <th>Destino</th>
                 </tr>
               </thead>
               <tbody>
-                {data.dns_queries.slice(0, 20).map((d, i) => (
+                {data.tcp_issues.slice(0, 20).map((t, i) => (
                   <tr key={i}>
-                    <td className="pcap-table__mono">{d.query}</td>
-                    <td>{d.type}</td>
-                    <td>{d.count}</td>
+                    <td>{t.type}</td>
+                    <td className="pcap-table__mono">{t.src}</td>
+                    <td className="pcap-table__mono">{t.dst}</td>
                   </tr>
                 ))}
               </tbody>
@@ -360,21 +406,25 @@ function TrafficTab({ data }: { data: IPcapAnalysisData }) {
 /* ------------------------------------------------------------------ */
 
 function SecurityTab({ data }: { data: IPcapAnalysisData }) {
+  const hasHttp = hasData(data.http_methods) || hasData(data.http_status_codes);
+  const hasTls = hasData(data.tls_versions) || (data.tls_sni_hosts?.length > 0);
+  const hasVoip = hasData(data.voip_sip_methods) || data.voip_rtp_streams > 0;
+
   return (
     <>
       {/* HTTP */}
-      {data.http && (
+      {hasHttp && (
         <div className="pcap-card">
           <h3 className="pcap-card__title">HTTP Analysis</h3>
           <div className="pcap-security-grid">
-            {data.http.methods && Object.keys(data.http.methods).length > 0 && (
+            {hasData(data.http_methods) && (
               <div>
                 <h4 className="pcap-card__subtitle">Methods</h4>
                 <div className="pcap-table-wrapper">
                   <table className="pcap-table pcap-table--compact">
                     <thead><tr><th>Method</th><th>Count</th></tr></thead>
                     <tbody>
-                      {Object.entries(data.http.methods).map(([m, c]) => (
+                      {Object.entries(data.http_methods).map(([m, c]) => (
                         <tr key={m}><td>{m}</td><td>{c}</td></tr>
                       ))}
                     </tbody>
@@ -382,14 +432,14 @@ function SecurityTab({ data }: { data: IPcapAnalysisData }) {
                 </div>
               </div>
             )}
-            {data.http.status_codes && Object.keys(data.http.status_codes).length > 0 && (
+            {hasData(data.http_status_codes) && (
               <div>
                 <h4 className="pcap-card__subtitle">Status Codes</h4>
                 <div className="pcap-table-wrapper">
                   <table className="pcap-table pcap-table--compact">
                     <thead><tr><th>Code</th><th>Count</th></tr></thead>
                     <tbody>
-                      {Object.entries(data.http.status_codes).map(([s, c]) => (
+                      {Object.entries(data.http_status_codes).map(([s, c]) => (
                         <tr key={s}><td>{s}</td><td>{c}</td></tr>
                       ))}
                     </tbody>
@@ -398,30 +448,30 @@ function SecurityTab({ data }: { data: IPcapAnalysisData }) {
               </div>
             )}
           </div>
-          {data.http.top_urls && data.http.top_urls.length > 0 && (
+          {data.http_urls && data.http_urls.length > 0 && (
             <>
-              <h4 className="pcap-card__subtitle">Top URLs</h4>
+              <h4 className="pcap-card__subtitle">URLs</h4>
               <div className="pcap-table-wrapper">
                 <table className="pcap-table pcap-table--compact">
-                  <thead><tr><th>URL</th><th>Count</th></tr></thead>
+                  <thead><tr><th>URL</th></tr></thead>
                   <tbody>
-                    {data.http.top_urls.slice(0, 15).map((u, i) => (
-                      <tr key={i}><td className="pcap-table__mono">{u.url}</td><td>{u.count}</td></tr>
+                    {data.http_urls.slice(0, 20).map((u, i) => (
+                      <tr key={i}><td className="pcap-table__mono">{u}</td></tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </>
           )}
-          {data.http.top_hosts && data.http.top_hosts.length > 0 && (
+          {data.http_hosts && data.http_hosts.length > 0 && (
             <>
-              <h4 className="pcap-card__subtitle">Top Hosts</h4>
+              <h4 className="pcap-card__subtitle">Hosts</h4>
               <div className="pcap-table-wrapper">
                 <table className="pcap-table pcap-table--compact">
-                  <thead><tr><th>Host</th><th>Count</th></tr></thead>
+                  <thead><tr><th>Host</th></tr></thead>
                   <tbody>
-                    {data.http.top_hosts.slice(0, 15).map((h, i) => (
-                      <tr key={i}><td className="pcap-table__mono">{h.host}</td><td>{h.count}</td></tr>
+                    {data.http_hosts.slice(0, 20).map((h, i) => (
+                      <tr key={i}><td className="pcap-table__mono">{h}</td></tr>
                     ))}
                   </tbody>
                 </table>
@@ -432,18 +482,18 @@ function SecurityTab({ data }: { data: IPcapAnalysisData }) {
       )}
 
       {/* TLS */}
-      {data.tls && (
+      {hasTls && (
         <div className="pcap-card">
           <h3 className="pcap-card__title">TLS/SSL Analysis</h3>
           <div className="pcap-security-grid">
-            {data.tls.versions && Object.keys(data.tls.versions).length > 0 && (
+            {hasData(data.tls_versions) && (
               <div>
                 <h4 className="pcap-card__subtitle">TLS Versions</h4>
                 <div className="pcap-table-wrapper">
                   <table className="pcap-table pcap-table--compact">
                     <thead><tr><th>Version</th><th>Count</th></tr></thead>
                     <tbody>
-                      {Object.entries(data.tls.versions).map(([v, c]) => (
+                      {Object.entries(data.tls_versions).map(([v, c]) => (
                         <tr key={v}><td>{v}</td><td>{c}</td></tr>
                       ))}
                     </tbody>
@@ -451,15 +501,15 @@ function SecurityTab({ data }: { data: IPcapAnalysisData }) {
                 </div>
               </div>
             )}
-            {data.tls.sni_hosts && data.tls.sni_hosts.length > 0 && (
+            {data.tls_sni_hosts && data.tls_sni_hosts.length > 0 && (
               <div>
                 <h4 className="pcap-card__subtitle">SNI Hosts</h4>
                 <div className="pcap-table-wrapper">
                   <table className="pcap-table pcap-table--compact">
-                    <thead><tr><th>Host</th><th>Count</th></tr></thead>
+                    <thead><tr><th>Host</th></tr></thead>
                     <tbody>
-                      {data.tls.sni_hosts.slice(0, 15).map((h, i) => (
-                        <tr key={i}><td className="pcap-table__mono">{h.host}</td><td>{h.count}</td></tr>
+                      {data.tls_sni_hosts.slice(0, 20).map((h, i) => (
+                        <tr key={i}><td className="pcap-table__mono">{h}</td></tr>
                       ))}
                     </tbody>
                   </table>
@@ -467,15 +517,15 @@ function SecurityTab({ data }: { data: IPcapAnalysisData }) {
               </div>
             )}
           </div>
-          {data.tls.cipher_suites && data.tls.cipher_suites.length > 0 && (
+          {data.tls_cipher_suites && data.tls_cipher_suites.length > 0 && (
             <>
               <h4 className="pcap-card__subtitle">Cipher Suites</h4>
               <div className="pcap-table-wrapper">
                 <table className="pcap-table pcap-table--compact">
-                  <thead><tr><th>Cipher</th><th>Count</th></tr></thead>
+                  <thead><tr><th>Cipher</th></tr></thead>
                   <tbody>
-                    {data.tls.cipher_suites.slice(0, 15).map((c, i) => (
-                      <tr key={i}><td className="pcap-table__mono">{c.cipher}</td><td>{c.count}</td></tr>
+                    {data.tls_cipher_suites.slice(0, 15).map((c, i) => (
+                      <tr key={i}><td className="pcap-table__mono">{c}</td></tr>
                     ))}
                   </tbody>
                 </table>
@@ -486,18 +536,18 @@ function SecurityTab({ data }: { data: IPcapAnalysisData }) {
       )}
 
       {/* VoIP */}
-      {data.voip && (
+      {hasVoip && (
         <div className="pcap-card">
           <h3 className="pcap-card__title">VoIP / SIP Analysis</h3>
           <div className="pcap-security-grid">
-            {data.voip.sip_methods && Object.keys(data.voip.sip_methods).length > 0 && (
+            {hasData(data.voip_sip_methods) && (
               <div>
                 <h4 className="pcap-card__subtitle">SIP Methods</h4>
                 <div className="pcap-table-wrapper">
                   <table className="pcap-table pcap-table--compact">
                     <thead><tr><th>Method</th><th>Count</th></tr></thead>
                     <tbody>
-                      {Object.entries(data.voip.sip_methods).map(([m, c]) => (
+                      {Object.entries(data.voip_sip_methods).map(([m, c]) => (
                         <tr key={m}><td>{m}</td><td>{c}</td></tr>
                       ))}
                     </tbody>
@@ -505,14 +555,14 @@ function SecurityTab({ data }: { data: IPcapAnalysisData }) {
                 </div>
               </div>
             )}
-            {data.voip.sip_responses && Object.keys(data.voip.sip_responses).length > 0 && (
+            {hasData(data.voip_sip_responses) && (
               <div>
                 <h4 className="pcap-card__subtitle">SIP Responses</h4>
                 <div className="pcap-table-wrapper">
                   <table className="pcap-table pcap-table--compact">
                     <thead><tr><th>Response</th><th>Count</th></tr></thead>
                     <tbody>
-                      {Object.entries(data.voip.sip_responses).map(([r, c]) => (
+                      {Object.entries(data.voip_sip_responses).map(([r, c]) => (
                         <tr key={r}><td>{r}</td><td>{c}</td></tr>
                       ))}
                     </tbody>
@@ -522,8 +572,8 @@ function SecurityTab({ data }: { data: IPcapAnalysisData }) {
             )}
           </div>
           <p className="pcap-card__detail">
-            RTP Streams: {data.voip.rtp_streams}
-            {data.voip.rtp_codecs?.length > 0 && ` | Codecs: ${data.voip.rtp_codecs.join(', ')}`}
+            RTP Streams: {data.voip_rtp_streams}
+            {data.voip_rtp_codecs?.length > 0 && ` | Codecs: ${data.voip_rtp_codecs.join(', ')}`}
           </p>
         </div>
       )}
@@ -536,61 +586,68 @@ function SecurityTab({ data }: { data: IPcapAnalysisData }) {
 /* ------------------------------------------------------------------ */
 
 function WirelessTab({ data }: { data: IPcapAnalysisData }) {
-  const w = data.wireless!;
+  // Convert wireless_frame_types dict to array for PieChart
+  const frameTypeData = Object.entries(data.wireless_frame_types || {})
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
 
-  const frameTypeData = w.frame_types ? [
-    { name: 'Management', value: w.frame_types.management },
-    { name: 'Control', value: w.frame_types.control },
-    { name: 'Data', value: w.frame_types.data },
-  ] : [];
+  const channelData = Object.entries(data.channels || {})
+    .map(([ch, count]) => ({ channel: `Ch ${ch}`, count }))
+    .sort((a, b) => b.count - a.count);
 
-  const channelData = w.channels
-    ? Object.entries(w.channels).map(([ch, count]) => ({ channel: `Ch ${ch}`, count }))
-    : [];
+  const retryRate = data.retry_stats?.rate_pct ?? 0;
 
   return (
     <>
       {/* Wireless stats */}
       <div className="pcap-stats-grid">
-        {w.signal_stats && (
+        {data.signal_stats && (
           <>
             <div className="pcap-stat-card">
               <p className="pcap-stat-card__label">Signal Avg</p>
-              <p className="pcap-stat-card__value">{w.signal_stats.avg_dbm} dBm</p>
+              <p className="pcap-stat-card__value">{data.signal_stats.avg_dBm?.toFixed(1)} dBm</p>
             </div>
             <div className="pcap-stat-card">
               <p className="pcap-stat-card__label">Signal Min</p>
-              <p className="pcap-stat-card__value">{w.signal_stats.min_dbm} dBm</p>
+              <p className="pcap-stat-card__value">{data.signal_stats.min_dBm} dBm</p>
             </div>
             <div className="pcap-stat-card">
               <p className="pcap-stat-card__label">Signal Max</p>
-              <p className="pcap-stat-card__value">{w.signal_stats.max_dbm} dBm</p>
+              <p className="pcap-stat-card__value">{data.signal_stats.max_dBm} dBm</p>
             </div>
           </>
         )}
         <div className="pcap-stat-card">
           <p className="pcap-stat-card__label">Retry Rate</p>
-          <p className="pcap-stat-card__value">{(w.retry_rate * 100).toFixed(1)}%</p>
+          <p className="pcap-stat-card__value">{retryRate.toFixed(1)}%</p>
         </div>
+        {data.signal_stats?.samples != null && (
+          <div className="pcap-stat-card">
+            <p className="pcap-stat-card__label">Samples</p>
+            <p className="pcap-stat-card__value">{data.signal_stats.samples.toLocaleString()}</p>
+          </div>
+        )}
       </div>
 
       <div className="pcap-charts-row">
         {/* Frame types pie */}
         {frameTypeData.length > 0 && (
           <div className="pcap-card">
-            <h3 className="pcap-card__title">Frame Types</h3>
-            <ResponsiveContainer width="100%" height={280}>
+            <h3 className="pcap-card__title">Frame Types (802.11)</h3>
+            <ResponsiveContainer width="100%" height={320}>
               <PieChart>
                 <Pie
-                  data={frameTypeData}
+                  data={frameTypeData.slice(0, 10)}
                   dataKey="value"
                   nameKey="name"
                   cx="50%"
                   cy="50%"
-                  outerRadius={90}
-                  label={({ name, value }) => `${name}: ${value}`}
+                  outerRadius={100}
+                  label={({ name, percent }: { name?: string; percent?: number }) =>
+                    `${name ?? ''} (${((percent ?? 0) * 100).toFixed(1)}%)`
+                  }
                 >
-                  {frameTypeData.map((_e, i) => (
+                  {frameTypeData.slice(0, 10).map((_e, i) => (
                     <Cell key={i} fill={COLORS[i % COLORS.length]} />
                   ))}
                 </Pie>
@@ -605,13 +662,13 @@ function WirelessTab({ data }: { data: IPcapAnalysisData }) {
         {channelData.length > 0 && (
           <div className="pcap-card">
             <h3 className="pcap-card__title">Channels</h3>
-            <ResponsiveContainer width="100%" height={280}>
+            <ResponsiveContainer width="100%" height={320}>
               <BarChart data={channelData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(31,31,31,0.1)" />
                 <XAxis dataKey="channel" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip />
-                <Bar dataKey="count" fill="#e6a817" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="count" fill="#e6a817" radius={[4, 4, 0, 0]} name="Pacotes" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -619,40 +676,117 @@ function WirelessTab({ data }: { data: IPcapAnalysisData }) {
       </div>
 
       {/* SSIDs */}
-      {w.ssids && w.ssids.length > 0 && (
+      {data.ssids && data.ssids.length > 0 && (
         <div className="pcap-card">
           <h3 className="pcap-card__title">SSIDs Detectados</h3>
           <div className="pcap-ssid-list">
-            {w.ssids.map((ssid, i) => (
-              <span key={i} className="pcap-ssid-chip">{ssid}</span>
+            {data.ssids.map((ssid, i) => (
+              <span key={i} className="pcap-ssid-chip">{ssid || '(hidden)'}</span>
             ))}
           </div>
         </div>
       )}
 
-      {/* Deauth events */}
-      {w.deauth_events && w.deauth_events.length > 0 && (
+      {/* Frame types table (full) */}
+      {frameTypeData.length > 0 && (
         <div className="pcap-card">
-          <h3 className="pcap-card__title">Deauth/Disassoc Events</h3>
+          <h3 className="pcap-card__title">Todos os Frame Types</h3>
+          <div className="pcap-table-wrapper">
+            <table className="pcap-table">
+              <thead>
+                <tr><th>Tipo</th><th>Count</th><th>%</th></tr>
+              </thead>
+              <tbody>
+                {frameTypeData.map((f) => (
+                  <tr key={f.name}>
+                    <td>{f.name}</td>
+                    <td>{f.value.toLocaleString()}</td>
+                    <td>{((f.value / data.total_packets) * 100).toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Deauth events */}
+      {data.deauth_events && data.deauth_events.length > 0 && (
+        <div className="pcap-card">
+          <h3 className="pcap-card__title">Deauth Events</h3>
           <div className="pcap-table-wrapper">
             <table className="pcap-table">
               <thead>
                 <tr>
                   <th>Source</th>
                   <th>Destination</th>
-                  <th>Reason Code</th>
                   <th>Reason</th>
-                  <th>Count</th>
+                  <th>Time (s)</th>
                 </tr>
               </thead>
               <tbody>
-                {w.deauth_events.map((e, i) => (
+                {data.deauth_events.map((e, i) => (
                   <tr key={i}>
                     <td className="pcap-table__mono">{e.src}</td>
                     <td className="pcap-table__mono">{e.dst}</td>
-                    <td>{e.reason_code}</td>
-                    <td>{e.reason_text}</td>
-                    <td>{e.count}</td>
+                    <td>{e.reason_text} ({e.reason})</td>
+                    <td>{e.timestamp?.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Disassoc events */}
+      {data.disassoc_events && data.disassoc_events.length > 0 && (
+        <div className="pcap-card">
+          <h3 className="pcap-card__title">Disassoc Events</h3>
+          <div className="pcap-table-wrapper">
+            <table className="pcap-table">
+              <thead>
+                <tr>
+                  <th>Source</th>
+                  <th>Destination</th>
+                  <th>Reason</th>
+                  <th>Time (s)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.disassoc_events.map((e, i) => (
+                  <tr key={i}>
+                    <td className="pcap-table__mono">{e.src}</td>
+                    <td className="pcap-table__mono">{e.dst}</td>
+                    <td>{e.reason_text} ({e.reason})</td>
+                    <td>{e.timestamp?.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Wireless devices */}
+      {data.wireless_devices && data.wireless_devices.length > 0 && (
+        <div className="pcap-card">
+          <h3 className="pcap-card__title">Top Wireless Devices</h3>
+          <div className="pcap-table-wrapper">
+            <table className="pcap-table">
+              <thead>
+                <tr>
+                  <th>MAC</th>
+                  <th>Pacotes</th>
+                  <th>Bytes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.wireless_devices.map((d, i) => (
+                  <tr key={i}>
+                    <td className="pcap-table__mono">{d.mac}</td>
+                    <td>{d.packets}</td>
+                    <td>{formatBytes(d.bytes)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -1,12 +1,7 @@
 /**
  * Tipos para dados estruturados de analise PCAP retornados pelo backend.
+ * Estrutura espelha exatamente o dict retornado pela Celery task.
  */
-
-export interface IProtocolEntry {
-  protocol: string;
-  count: number;
-  percentage: number;
-}
 
 export interface ITopTalker {
   ip: string;
@@ -17,118 +12,103 @@ export interface ITopTalker {
 export interface IConversation {
   src: string;
   dst: string;
-  protocol: string;
   packets: number;
   bytes: number;
-}
-
-export interface IAnomaly {
-  type: string;
-  severity: 'info' | 'warning' | 'critical';
-  description: string;
-  details?: string;
 }
 
 export interface ITimeBucket {
-  timestamp: string;
+  time_offset: number;
   packets: number;
   bytes: number;
+  top_protocols: Record<string, number>;
 }
 
-export interface IFrameSize {
-  range: string;
-  count: number;
-}
-
-export interface IDnsQuery {
-  query: string;
+export interface ITcpIssue {
   type: string;
-  count: number;
-}
-
-export interface ITcpIssues {
-  retransmissions: number;
-  rst_count: number;
-  zero_window: number;
-}
-
-export interface IRoutingProtocols {
-  ospf: number;
-  bgp: number;
-  eigrp: number;
-  hsrp: number;
-}
-
-export interface IBandwidthStats {
-  total_bytes: number;
-  duration_seconds: number;
-  avg_bps: number;
-  peak_bps: number;
-}
-
-export interface IHttpAnalysis {
-  methods: Record<string, number>;
-  status_codes: Record<string, number>;
-  top_urls: Array<{ url: string; count: number }>;
-  top_hosts: Array<{ host: string; count: number }>;
-}
-
-export interface ITlsAnalysis {
-  versions: Record<string, number>;
-  sni_hosts: Array<{ host: string; count: number }>;
-  cipher_suites: Array<{ cipher: string; count: number }>;
-}
-
-export interface IVoipAnalysis {
-  sip_methods: Record<string, number>;
-  sip_responses: Record<string, number>;
-  rtp_streams: number;
-  rtp_codecs: string[];
-}
-
-export interface IWirelessFrameTypes {
-  management: number;
-  control: number;
-  data: number;
+  src: string;
+  dst: string;
+  seq?: number;
 }
 
 export interface IDeauthEvent {
   src: string;
   dst: string;
-  reason_code: number;
+  reason: number;
   reason_text: string;
-  count: number;
+  timestamp: number;
 }
 
-export interface IWirelessAnalysis {
-  frame_types: IWirelessFrameTypes;
-  deauth_events: IDeauthEvent[];
-  retry_rate: number;
-  signal_stats: {
-    min_dbm: number;
-    max_dbm: number;
-    avg_dbm: number;
-  };
-  channels: Record<string, number>;
-  ssids: string[];
+export interface IWirelessDevice {
+  mac: string;
+  packets: number;
+  bytes: number;
+  type: string;
 }
 
 export interface IPcapAnalysisData {
+  // Basic stats
   total_packets: number;
-  capture_duration: number;
-  is_wireless: boolean;
-  protocols: IProtocolEntry[];
+  duration_seconds: number;
+  protocols: Record<string, number>;
   top_talkers: ITopTalker[];
   conversations: IConversation[];
-  anomalies: IAnomaly[];
+  anomalies: string[];
+  dns_queries: string[];
+  tcp_issues: ITcpIssue[];
+  network_protocols: string[];
+
+  // Bandwidth & time-series
+  total_bytes: number;
+  avg_throughput_bps: number;
+  peak_throughput_bps: number;
+  frame_size_stats: {
+    min: number;
+    max: number;
+    avg: number;
+    median: number;
+  };
+  frame_size_distribution: Record<string, number>;
   time_buckets: ITimeBucket[];
-  frame_sizes: IFrameSize[];
-  dns_queries: IDnsQuery[];
-  tcp_issues: ITcpIssues;
-  routing_protocols: IRoutingProtocols;
-  bandwidth: IBandwidthStats;
-  http?: IHttpAnalysis;
-  tls?: ITlsAnalysis;
-  voip?: IVoipAnalysis;
-  wireless?: IWirelessAnalysis;
+  bucket_width_seconds: number;
+
+  // HTTP
+  http_methods: Record<string, number>;
+  http_status_codes: Record<string, number>;
+  http_urls: string[];
+  http_hosts: string[];
+  http_request_count: number;
+  http_response_count: number;
+
+  // TLS
+  tls_versions: Record<string, number>;
+  tls_sni_hosts: string[];
+  tls_cipher_suites: string[];
+  tls_handshakes: Record<string, number>;
+
+  // VoIP/SIP
+  voip_sip_methods: Record<string, number>;
+  voip_sip_responses: Record<string, number>;
+  voip_rtp_streams: number;
+  voip_rtp_codecs: string[];
+
+  // Wireless (802.11)
+  is_wireless: boolean;
+  wireless_frame_types: Record<string, number>;
+  deauth_events: IDeauthEvent[];
+  disassoc_events: IDeauthEvent[];
+  retry_stats: {
+    total_frames: number;
+    retries: number;
+    rate_pct: number;
+  };
+  signal_stats: {
+    min_dBm: number;
+    max_dBm: number;
+    avg_dBm: number;
+    median_dBm: number;
+    samples: number;
+  };
+  channels: Record<string, number>;
+  ssids: string[];
+  wireless_devices: IWirelessDevice[];
 }
