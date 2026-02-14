@@ -7,22 +7,27 @@ import { useSearchParams } from 'react-router-dom';
 import {
   deleteRagDocument,
   fetchRagDocuments,
+  fetchRagGaps,
+  fetchRagGapStats,
   fetchRagStats,
   ingestRagUrl,
   reprocessRagDocument,
   uploadRagDocument,
   type IPaginationMeta,
   type IRagDocument,
+  type IRagGapItem,
+  type IRagGapStats,
   type IRagStats,
 } from '../../services/adminApi';
 import { getErrorMessage } from '../../services/api';
 
-type TabKey = 'global' | 'local' | 'stats';
+type TabKey = 'global' | 'local' | 'stats' | 'gaps';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'global', label: 'RAG Global' },
   { key: 'local', label: 'RAG Local' },
   { key: 'stats', label: 'Estatisticas' },
+  { key: 'gaps', label: 'Lacunas' },
 ];
 
 function formatBytes(bytes: number): string {
@@ -232,6 +237,207 @@ function DocumentTable({
 }
 
 // ---------------------------------------------------------------------------
+// Gaps Tab
+// ---------------------------------------------------------------------------
+
+function GapsTab() {
+  const [gapStats, setGapStats] = useState<IRagGapStats | null>(null);
+  const [gapItems, setGapItems] = useState<IRagGapItem[]>([]);
+  const [gapPagination, setGapPagination] = useState<IPaginationMeta | null>(null);
+  const [gapPage, setGapPage] = useState(1);
+  const [gapLoading, setGapLoading] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [toolFilter, setToolFilter] = useState<string>('');
+  const [searchFilter, setSearchFilter] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+
+  async function loadGapStats() {
+    setStatsLoading(true);
+    try {
+      const data = await fetchRagGapStats();
+      setGapStats(data);
+    } catch (e) {
+      setError(getErrorMessage(e));
+    } finally {
+      setStatsLoading(false);
+    }
+  }
+
+  async function loadGaps(p: number = gapPage) {
+    setGapLoading(true);
+    setError(null);
+    try {
+      const params: Record<string, unknown> = { page: p, limit: 20 };
+      if (toolFilter) params.tool_name = toolFilter;
+      if (searchFilter.trim()) params.search = searchFilter.trim();
+      const data = await fetchRagGaps(params as Parameters<typeof fetchRagGaps>[0]);
+      setGapItems(data.items);
+      setGapPagination(data.pagination);
+    } catch (e) {
+      setError(getErrorMessage(e));
+    } finally {
+      setGapLoading(false);
+    }
+  }
+
+  function handleGapPageChange(newPage: number) {
+    setGapPage(newPage);
+    void loadGaps(newPage);
+  }
+
+  function handleFilterApply() {
+    setGapPage(1);
+    void loadGaps(1);
+  }
+
+  useEffect(() => {
+    void loadGapStats();
+    void loadGaps(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const toolLabel = (name: string) =>
+    name === 'search_rag_global' ? 'Global' : name === 'search_rag_local' ? 'Local' : name;
+
+  return (
+    <div>
+      {error && <div className="admin-error">{error}</div>}
+
+      {/* Stats cards */}
+      {statsLoading ? (
+        <p className="admin-loading">Carregando estatisticas de lacunas...</p>
+      ) : gapStats ? (
+        <div className="admin-cards-grid" style={{ marginBottom: 24 }}>
+          <div className="admin-stat-card">
+            <span className="admin-stat-card__label">Total Gaps</span>
+            <span className="admin-stat-card__value">{gapStats.total_gaps}</span>
+          </div>
+          <div className="admin-stat-card">
+            <span className="admin-stat-card__label">Global Gaps</span>
+            <span className="admin-stat-card__value">{gapStats.global_gaps}</span>
+          </div>
+          <div className="admin-stat-card">
+            <span className="admin-stat-card__label">Local Gaps</span>
+            <span className="admin-stat-card__value">{gapStats.local_gaps}</span>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Top queries table */}
+      {gapStats && gapStats.top_queries.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <h4 style={{ marginBottom: 8 }}>Top Queries sem Resposta</h4>
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Query</th>
+                <th>Ocorrencias</th>
+                <th>Ultima vez</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gapStats.top_queries.map((tq, idx) => (
+                <tr key={idx}>
+                  <td title={tq.query}>
+                    {tq.query.length > 80 ? tq.query.slice(0, 77) + '...' : tq.query}
+                  </td>
+                  <td>{tq.count}</td>
+                  <td>{formatDate(tq.last_seen)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
+        <select
+          value={toolFilter}
+          onChange={(e) => setToolFilter(e.target.value)}
+          style={{ padding: '6px 10px' }}
+        >
+          <option value="">Todos os tools</option>
+          <option value="search_rag_global">Global</option>
+          <option value="search_rag_local">Local</option>
+        </select>
+        <input
+          type="text"
+          placeholder="Buscar por query..."
+          value={searchFilter}
+          onChange={(e) => setSearchFilter(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleFilterApply()}
+          style={{ padding: '6px 10px', minWidth: 220 }}
+        />
+        <button
+          type="button"
+          className="btn btn-secondary btn--sm"
+          onClick={handleFilterApply}
+        >
+          Filtrar
+        </button>
+      </div>
+
+      {/* Gap events table */}
+      {gapLoading ? (
+        <p className="admin-loading">Carregando eventos...</p>
+      ) : gapItems.length === 0 ? (
+        <p className="admin-empty">Nenhum gap registrado.</p>
+      ) : (
+        <>
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Query</th>
+                <th>Tool</th>
+                <th>Usuario</th>
+                <th>Data</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gapItems.map((gap) => (
+                <tr key={gap.id}>
+                  <td title={gap.query}>
+                    {gap.query.length > 60 ? gap.query.slice(0, 57) + '...' : gap.query}
+                  </td>
+                  <td>{toolLabel(gap.tool_name)}</td>
+                  <td>{gap.user_email || '-'}</td>
+                  <td>{formatDate(gap.created_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {gapPagination && gapPagination.pages > 1 && (
+            <div className="admin-pagination">
+              <button
+                type="button"
+                className="btn btn-secondary btn--sm"
+                disabled={gapPagination.page <= 1}
+                onClick={() => handleGapPageChange(gapPagination.page - 1)}
+              >
+                Anterior
+              </button>
+              <span className="text-muted">
+                Pagina {gapPagination.page} de {gapPagination.pages} ({gapPagination.total} total)
+              </span>
+              <button
+                type="button"
+                className="btn btn-secondary btn--sm"
+                disabled={gapPagination.page >= gapPagination.pages}
+                onClick={() => handleGapPageChange(gapPagination.page + 1)}
+              >
+                Proxima
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
 
@@ -391,6 +597,8 @@ function AdminRagPage() {
   useEffect(() => {
     if (activeTab === 'stats') {
       void loadStats();
+    } else if (activeTab === 'gaps') {
+      // GapsTab manages its own data loading
     } else {
       setPage(1);
       void loadDocuments(1);
@@ -402,7 +610,7 @@ function AdminRagPage() {
     <section className="admin-page">
       <div className="admin-page-header">
         <h2 className="admin-page-title">Gestao RAG</h2>
-        {activeTab !== 'stats' && (
+        {(activeTab === 'global' || activeTab === 'local') && (
           <button
             type="button"
             className="btn btn-secondary"
@@ -536,6 +744,9 @@ function AdminRagPage() {
           )}
         </div>
       )}
+
+      {/* Gaps Tab */}
+      {activeTab === 'gaps' && <GapsTab />}
     </section>
   );
 }

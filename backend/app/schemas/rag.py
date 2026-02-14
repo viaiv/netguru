@@ -99,3 +99,39 @@ class RagReprocessResponse(BaseModel):
     id: UUID
     status: str
     message: str
+
+
+# ---------------------------------------------------------------------------
+# RAG Gap Tracking
+# ---------------------------------------------------------------------------
+
+class TopGapQuery(BaseModel):
+    query: str
+    count: int
+    last_seen: datetime
+
+
+class RagGapItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    user_id: Optional[UUID] = None
+    user_email: Optional[str] = None
+    conversation_id: Optional[UUID] = None
+    tool_name: str
+    query: str
+    gap_type: str
+    result_preview: Optional[str] = None
+    created_at: datetime
+
+
+class RagGapListResponse(BaseModel):
+    items: list[RagGapItem]
+    pagination: PaginationMeta
+
+
+class RagGapStatsResponse(BaseModel):
+    total_gaps: int = 0
+    global_gaps: int = 0
+    local_gaps: int = 0
+    top_queries: list[TopGapQuery] = []

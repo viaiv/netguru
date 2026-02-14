@@ -4,12 +4,12 @@ Admin endpoints — dashboard, user management, plans, audit log, system health,
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy import delete, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +33,6 @@ from app.schemas.admin import (
     AdminUserUpdate,
     AuditLogListResponse,
     AuditLogResponse,
-    ByoLlmUsageReportResponse,
     CeleryTaskEventListResponse,
     CeleryTaskEventResponse,
     DashboardStats,
@@ -49,16 +48,19 @@ from app.schemas.rag import (
     FileTypeDistribution,
     RagDocumentItem,
     RagDocumentListResponse,
+    RagGapItem,
+    RagGapListResponse,
+    RagGapStatsResponse,
     RagIngestUrlRequest,
     RagIngestUrlResponse,
     RagReprocessResponse,
     RagStatsResponse,
     RagUploadResponse,
     StatusDistribution,
+    TopGapQuery,
 )
 from app.services.admin_dashboard_service import AdminDashboardService
 from app.services.audit_log_service import AuditLogService
-from app.services.byollm_usage_service import ByoLlmUsageService
 from app.services.memory_service import MemoryService, MemoryServiceError
 from app.services.url_ingestion_service import UrlIngestionError, UrlIngestionService
 from app.services.usage_tracking_service import UsageTrackingService
@@ -102,47 +104,6 @@ async def get_dashboard(
     """Aggregated dashboard statistics."""
     stats = await AdminDashboardService.get_stats(db)
     return DashboardStats(**stats)
-
-
-@router.get("/usage/byollm", response_model=ByoLlmUsageReportResponse)
-async def get_byollm_usage(
-    start_date: date | None = Query(default=None),
-    end_date: date | None = Query(default=None),
-    provider: Optional[str] = Query(default=None, max_length=50),
-    user_id: UUID | None = Query(default=None),
-    export: str = Query(default="json", pattern="^(json|csv)$"),
-    _current_user: User = Depends(require_permissions(Permission.ADMIN_DASHBOARD)),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    BYO-LLM usage dashboard data with optional CSV export.
-    """
-    effective_end = end_date or date.today()
-    effective_start = start_date or (effective_end - timedelta(days=6))
-    if effective_start > effective_end:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="start_date deve ser menor ou igual a end_date",
-        )
-
-    report = await ByoLlmUsageService.build_report(
-        db=db,
-        start_date=effective_start,
-        end_date=effective_end,
-        provider_filter=provider.lower().strip() if provider else None,
-        user_id=user_id,
-    )
-
-    if export == "csv":
-        csv_payload = ByoLlmUsageService.report_to_csv(report)
-        filename = f"byollm-usage-{effective_start.isoformat()}-{effective_end.isoformat()}.csv"
-        return Response(
-            content=csv_payload,
-            media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
-
-    return ByoLlmUsageReportResponse(**report)
 
 
 @router.get("/system-health", response_model=SystemHealthResponse)
@@ -1126,3 +1087,125 @@ async def delete_rag_document(
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# RAG Gap Tracking
+# ---------------------------------------------------------------------------
+
+@router.get("/rag/gaps", response_model=RagGapListResponse)
+async def list_rag_gaps(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    tool_name: Optional[str] = Query(default=None, pattern="^(search_rag_global|search_rag_local)$"),
+    gap_type: Optional[str] = Query(default=None),
+    date_from: Optional[datetime] = Query(default=None),
+    date_to: Optional[datetime] = Query(default=None),
+    search: Optional[str] = Query(default=None, max_length=255),
+    _current_user: User = Depends(require_permissions(Permission.ADMIN_RAG_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> RagGapListResponse:
+    """Lista paginada de gaps detectados nas buscas RAG."""
+    from app.models.rag_gap_event import RagGapEvent
+
+    filters = []
+    if tool_name:
+        filters.append(RagGapEvent.tool_name == tool_name)
+    if gap_type:
+        filters.append(RagGapEvent.gap_type == gap_type)
+    if date_from:
+        filters.append(RagGapEvent.created_at >= date_from)
+    if date_to:
+        filters.append(RagGapEvent.created_at <= date_to)
+    if search:
+        filters.append(RagGapEvent.query.ilike(f"%{search}%"))
+
+    # Count
+    count_q = select(func.count()).select_from(RagGapEvent)
+    if filters:
+        count_q = count_q.where(*filters)
+    total = int((await db.execute(count_q)).scalar_one())
+
+    # Fetch with user email join
+    offset = (page - 1) * limit
+    q = (
+        select(RagGapEvent, User.email.label("user_email"))
+        .outerjoin(User, RagGapEvent.user_id == User.id)
+        .order_by(desc(RagGapEvent.created_at))
+        .offset(offset)
+        .limit(limit)
+    )
+    if filters:
+        q = q.where(*filters)
+
+    rows = (await db.execute(q)).all()
+
+    items = []
+    for row in rows:
+        gap = row[0]
+        user_email = row[1]
+        items.append(
+            RagGapItem(
+                id=gap.id,
+                user_id=gap.user_id,
+                user_email=user_email,
+                conversation_id=gap.conversation_id,
+                tool_name=gap.tool_name,
+                query=gap.query,
+                gap_type=gap.gap_type,
+                result_preview=gap.result_preview,
+                created_at=gap.created_at,
+            )
+        )
+
+    pages = (total + limit - 1) // limit if total else 0
+    return RagGapListResponse(
+        items=items,
+        pagination=PaginationMeta(total=total, page=page, pages=pages, limit=limit),
+    )
+
+
+@router.get("/rag/gaps/stats", response_model=RagGapStatsResponse)
+async def get_rag_gap_stats(
+    _current_user: User = Depends(require_permissions(Permission.ADMIN_RAG_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> RagGapStatsResponse:
+    """Estatisticas agregadas de gaps RAG: totais e top queries sem resposta."""
+    from app.models.rag_gap_event import RagGapEvent
+
+    # Total gaps
+    total_gaps = int(
+        (await db.execute(select(func.count()).select_from(RagGapEvent))).scalar_one()
+    )
+    global_gaps = int(
+        (await db.execute(
+            select(func.count())
+            .select_from(RagGapEvent)
+            .where(RagGapEvent.tool_name == "search_rag_global")
+        )).scalar_one()
+    )
+    local_gaps = total_gaps - global_gaps
+
+    # Top queries (GROUP BY query, COUNT, ORDER BY count DESC LIMIT 20)
+    top_q = (
+        select(
+            RagGapEvent.query,
+            func.count().label("cnt"),
+            func.max(RagGapEvent.created_at).label("last_seen"),
+        )
+        .group_by(RagGapEvent.query)
+        .order_by(func.count().desc())
+        .limit(20)
+    )
+    top_rows = (await db.execute(top_q)).all()
+    top_queries = [
+        TopGapQuery(query=row[0], count=row[1], last_seen=row[2])
+        for row in top_rows
+    ]
+
+    return RagGapStatsResponse(
+        total_gaps=total_gaps,
+        global_gaps=global_gaps,
+        local_gaps=local_gaps,
+        top_queries=top_queries,
+    )

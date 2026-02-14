@@ -17,6 +17,7 @@ from app.models.celery_task_event import CeleryTaskEvent
 from app.models.stripe_event import StripeEvent
 from app.models.network_memory import NetworkMemory
 from app.models.system_memory import SystemMemory
+from app.models.rag_gap_event import RagGapEvent
 
 __all__ = [
     "User",
@@ -35,4 +36,5 @@ __all__ = [
     "StripeEvent",
     "NetworkMemory",
     "SystemMemory",
+    "RagGapEvent",
 ]

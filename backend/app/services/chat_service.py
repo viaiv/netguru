@@ -16,6 +16,7 @@ from app.agents.tools import get_agent_tools
 from app.core.config import settings
 from app.core.security import decrypt_api_key
 from app.models.conversation import Conversation, Message
+from app.models.rag_gap_event import RagGapEvent
 from app.models.user import User
 from app.services.attachment_context_service import (
     AttachmentContextResolution,
@@ -468,6 +469,31 @@ class ChatService:
                                 "Tool reportou erro/timeout. Revise parâmetros e tente novamente."
                             )
                         yield state_event
+
+                        # -- RAG Gap Tracking --
+                        if tool_name in ("search_rag_global", "search_rag_local"):
+                            _gap_text = str(full_result or result_preview).lower()
+                            if "no relevant" in _gap_text:
+                                _tc_gap = self._find_tool_call_log(
+                                    tool_calls_log=tool_calls_log,
+                                    tool_call_id=tool_call_id,
+                                    tool_name=tool_name,
+                                )
+                                _gap_query = (
+                                    str(_tc_gap.get("input", ""))
+                                    if _tc_gap
+                                    else ""
+                                )
+                                self._db.add(
+                                    RagGapEvent(
+                                        user_id=user.id,
+                                        conversation_id=conversation_id,
+                                        tool_name=tool_name,
+                                        query=_gap_query[:2000],
+                                        gap_type="no_results",
+                                        result_preview=result_preview[:500],
+                                    )
+                                )
 
                 attempt_duration_ms = int((time.monotonic() - attempt_started_at) * 1000)
                 llm_attempt_audit.append(

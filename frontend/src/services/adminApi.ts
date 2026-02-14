@@ -627,6 +627,53 @@ export async function deleteRagDocument(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// RAG Gap Tracking
+// ---------------------------------------------------------------------------
+
+export interface IRagGapItem {
+  id: string;
+  user_id: string | null;
+  user_email: string | null;
+  conversation_id: string | null;
+  tool_name: string;
+  query: string;
+  gap_type: string;
+  result_preview: string | null;
+  created_at: string;
+}
+
+export interface ITopGapQuery {
+  query: string;
+  count: number;
+  last_seen: string;
+}
+
+export interface IRagGapStats {
+  total_gaps: number;
+  global_gaps: number;
+  local_gaps: number;
+  top_queries: ITopGapQuery[];
+}
+
+export async function fetchRagGaps(params: {
+  page?: number;
+  limit?: number;
+  tool_name?: string;
+  gap_type?: string;
+  date_from?: string;
+  date_to?: string;
+  search?: string;
+}): Promise<{ items: IRagGapItem[]; pagination: IPaginationMeta }> {
+  const r = await api.get('/admin/rag/gaps', { params });
+  return r.data;
+}
+
+export async function fetchRagGapStats(): Promise<IRagGapStats> {
+  const r = await api.get<IRagGapStats>('/admin/rag/gaps/stats');
+  return r.data;
+}
+
+// ---------------------------------------------------------------------------
 // Celery Task Events
 // ---------------------------------------------------------------------------
 
