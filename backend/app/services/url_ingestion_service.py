@@ -19,17 +19,47 @@ logger = logging.getLogger(__name__)
 # Limite de download (10 MB)
 MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024
 
-# Tipos de conteudo suportados
-SUPPORTED_CONTENT_TYPES = {
-    "text/html",
-    "text/plain",
-    "application/pdf",
-    "text/markdown",
+MIME_MAP = {
+    "txt": "text/plain",
+    "pdf": "application/pdf",
+    "md": "text/markdown",
+    "conf": "text/plain",
+    "cfg": "text/plain",
+    "log": "text/plain",
 }
 
 
 class UrlIngestionError(Exception):
     """Erro durante ingestao de URL."""
+
+
+async def _store_file(
+    db: AsyncSession,
+    object_key: str,
+    file_bytes: bytes,
+    content_type: str,
+) -> str:
+    """
+    Armazena bytes no R2 (preferencial) ou disco local (fallback).
+
+    Returns:
+        storage_path: chave R2 relativa ou path absoluto local.
+    """
+    from app.services.r2_storage_service import R2NotConfiguredError, R2StorageService
+
+    try:
+        r2 = await R2StorageService.from_settings(db)
+        r2.upload_object(object_key, file_bytes, content_type)
+        logger.info("Arquivo armazenado no R2: %s", object_key)
+        return object_key  # ex: "uploads/global/uuid.txt"
+    except R2NotConfiguredError:
+        logger.info("R2 nao configurado, salvando localmente")
+
+    # Fallback: disco local
+    local_path = Path(settings.UPLOAD_DIR) / object_key.replace("uploads/", "", 1)
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.write_bytes(file_bytes)
+    return str(local_path)
 
 
 class UrlIngestionService:
@@ -82,13 +112,13 @@ class UrlIngestionService:
             path_name = Path(parsed.path).stem or "documento"
             original_filename = f"{path_name}.{ext}"
 
-        # Salvar no disco
+        # Armazenar (R2 ou local)
         doc_uuid = uuid4()
-        global_dir = Path(settings.UPLOAD_DIR) / "global"
-        global_dir.mkdir(parents=True, exist_ok=True)
         stored_filename = f"{doc_uuid}.{ext}"
-        stored_path = global_dir / stored_filename
-        stored_path.write_bytes(file_bytes)
+        object_key = f"uploads/global/{stored_filename}"
+        mime = MIME_MAP.get(ext, content_type)
+
+        storage_path = await _store_file(self._db, object_key, file_bytes, mime)
 
         # Criar Document
         document = Document(
@@ -98,8 +128,8 @@ class UrlIngestionService:
             original_filename=original_filename,
             file_type=file_type,
             file_size_bytes=len(file_bytes),
-            storage_path=str(stored_path),
-            mime_type=content_type,
+            storage_path=storage_path,
+            mime_type=mime,
             status="uploaded",
             document_metadata={"source_url": url, "ingestion_method": "url"},
         )

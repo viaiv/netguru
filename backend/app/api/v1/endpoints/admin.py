@@ -4,12 +4,12 @@ Admin endpoints — dashboard, user management, plans, audit log, system health,
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import delete, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +33,7 @@ from app.schemas.admin import (
     AdminUserUpdate,
     AuditLogListResponse,
     AuditLogResponse,
+    ByoLlmUsageReportResponse,
     CeleryTaskEventListResponse,
     CeleryTaskEventResponse,
     DashboardStats,
@@ -57,6 +58,7 @@ from app.schemas.rag import (
 )
 from app.services.admin_dashboard_service import AdminDashboardService
 from app.services.audit_log_service import AuditLogService
+from app.services.byollm_usage_service import ByoLlmUsageService
 from app.services.memory_service import MemoryService, MemoryServiceError
 from app.services.url_ingestion_service import UrlIngestionError, UrlIngestionService
 from app.services.usage_tracking_service import UsageTrackingService
@@ -100,6 +102,47 @@ async def get_dashboard(
     """Aggregated dashboard statistics."""
     stats = await AdminDashboardService.get_stats(db)
     return DashboardStats(**stats)
+
+
+@router.get("/usage/byollm", response_model=ByoLlmUsageReportResponse)
+async def get_byollm_usage(
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    provider: Optional[str] = Query(default=None, max_length=50),
+    user_id: UUID | None = Query(default=None),
+    export: str = Query(default="json", pattern="^(json|csv)$"),
+    _current_user: User = Depends(require_permissions(Permission.ADMIN_DASHBOARD)),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    BYO-LLM usage dashboard data with optional CSV export.
+    """
+    effective_end = end_date or date.today()
+    effective_start = start_date or (effective_end - timedelta(days=6))
+    if effective_start > effective_end:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="start_date deve ser menor ou igual a end_date",
+        )
+
+    report = await ByoLlmUsageService.build_report(
+        db=db,
+        start_date=effective_start,
+        end_date=effective_end,
+        provider_filter=provider.lower().strip() if provider else None,
+        user_id=user_id,
+    )
+
+    if export == "csv":
+        csv_payload = ByoLlmUsageService.report_to_csv(report)
+        filename = f"byollm-usage-{effective_start.isoformat()}-{effective_end.isoformat()}.csv"
+        return Response(
+            content=csv_payload,
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    return ByoLlmUsageReportResponse(**report)
 
 
 @router.get("/system-health", response_model=SystemHealthResponse)
@@ -863,13 +906,13 @@ async def upload_rag_document(
             detail=f"Arquivo excede limite de {settings.MAX_FILE_SIZE_MB} MB",
         )
 
-    # Salvar no disco
+    # Armazenar (R2 ou local)
+    from app.services.url_ingestion_service import _store_file
+
     doc_uuid = uuid4()
-    global_dir = Path(settings.UPLOAD_DIR) / "global"
-    global_dir.mkdir(parents=True, exist_ok=True)
     stored_filename = f"{doc_uuid}.{ext}"
-    stored_path = global_dir / stored_filename
-    stored_path.write_bytes(content)
+    object_key = f"uploads/global/{stored_filename}"
+    storage_path = await _store_file(db, object_key, content, file.content_type or "application/octet-stream")
 
     document = Document(
         id=doc_uuid,
@@ -878,7 +921,7 @@ async def upload_rag_document(
         original_filename=file.filename,
         file_type=ext,
         file_size_bytes=len(content),
-        storage_path=str(stored_path),
+        storage_path=storage_path,
         mime_type=file.content_type,
         status="uploaded",
         document_metadata={"ingestion_method": "upload"},
@@ -1055,13 +1098,22 @@ async def delete_rag_document(
     await db.delete(document)
     await db.commit()
 
-    # Limpar arquivo do disco
-    try:
-        file_path = Path(storage_path)
-        if file_path.is_file():
-            file_path.unlink()
-    except OSError:
-        logger.warning("Falha ao deletar arquivo: %s", storage_path)
+    # Limpar arquivo (R2 ou disco)
+    _is_r2 = storage_path.startswith("uploads/") and not Path(storage_path).is_absolute()
+    if _is_r2:
+        try:
+            from app.services.r2_storage_service import R2NotConfiguredError, R2StorageService
+            r2 = await R2StorageService.from_settings(db)
+            r2.delete_object(storage_path)
+        except (R2NotConfiguredError, Exception):
+            logger.warning("Falha ao deletar objeto R2: %s", storage_path)
+    else:
+        try:
+            file_path = Path(storage_path)
+            if file_path.is_file():
+                file_path.unlink()
+        except OSError:
+            logger.warning("Falha ao deletar arquivo local: %s", storage_path)
 
     await AuditLogService.record(
         db,

@@ -272,6 +272,33 @@ class R2StorageService:
         except (BotoCoreError, ClientError) as e:
             raise R2OperationError(f"Falha ao baixar objeto: {e}") from e
 
+    def upload_object(
+        self,
+        object_key: str,
+        data: bytes,
+        content_type: str = "application/octet-stream",
+    ) -> None:
+        """
+        Faz upload de bytes diretamente para o R2.
+
+        Args:
+            object_key: Chave do objeto no bucket.
+            data: Bytes do conteudo.
+            content_type: MIME type do arquivo.
+
+        Raises:
+            R2OperationError: Se falhar ao fazer upload.
+        """
+        try:
+            self._client.put_object(
+                Bucket=self._bucket,
+                Key=object_key,
+                Body=data,
+                ContentType=content_type,
+            )
+        except (BotoCoreError, ClientError) as e:
+            raise R2OperationError(f"Falha ao fazer upload: {e}") from e
+
     def delete_object(self, object_key: str) -> None:
         """
         Deleta objeto do R2.
