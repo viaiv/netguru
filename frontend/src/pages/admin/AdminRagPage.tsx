@@ -254,6 +254,7 @@ function AdminRagPage() {
   const [ingesting, setIngesting] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [titleInput, setTitleInput] = useState('');
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // General
@@ -316,6 +317,7 @@ function AdminRagPage() {
       const result = await uploadRagDocument(files[0]);
       setMessage(`Documento "${result.filename}" enviado para processamento.`);
       if (fileRef.current) fileRef.current.value = '';
+      setSelectedFileName(null);
       void loadDocuments(1);
       setPage(1);
     } catch (e) {
@@ -450,9 +452,24 @@ function AdminRagPage() {
             <form className="auth-form" onSubmit={(e) => void handleUpload(e)}>
               <h4>Upload de arquivo</h4>
               <div className="field">
-                <input ref={fileRef} type="file" required />
+                <input
+                  ref={fileRef}
+                  type="file"
+                  className="file-input-hidden"
+                  id="rag-file-input"
+                  required
+                  onChange={(e) => setSelectedFileName(e.target.files?.[0]?.name ?? null)}
+                />
+                <div className="file-input-row">
+                  <label htmlFor="rag-file-input" className="btn btn-secondary">
+                    Escolher arquivo
+                  </label>
+                  <span className="file-input-name">
+                    {selectedFileName || 'Nenhum arquivo selecionado'}
+                  </span>
+                </div>
               </div>
-              <button type="submit" className="btn btn-primary" disabled={uploading}>
+              <button type="submit" className="btn btn-primary" disabled={uploading || !selectedFileName}>
                 {uploading ? 'Enviando...' : 'Upload'}
               </button>
             </form>

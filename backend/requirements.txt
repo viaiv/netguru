@@ -1,8 +1,8 @@
 # FastAPI Core
-fastapi>=0.110.0,<1.0.0
-uvicorn[standard]>=0.24.0,<1.0.0
-pydantic>=2.7.4,<3.0.0
-pydantic-settings>=2.1.0,<3.0.0
+fastapi==0.129.0
+uvicorn[standard]==0.40.0
+pydantic==2.12.5
+pydantic-settings==2.12.0
 
 # Database
 sqlalchemy==2.0.23
@@ -21,27 +21,28 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 email-validator==2.2.0
 python-multipart==0.0.6
-cryptography>=42.0.0
-# Task Queue (for future phases)
+cryptography==46.0.5
+
+# Task Queue
 celery==5.3.4
 flower==2.0.1
 
 # AI/ML Stack
-langchain>=1.2.0
-langgraph>=1.0.0
-langchain-core>=1.2.0
-langchain-community>=0.4.0
-langchain-openai>=1.1.0
-langchain-anthropic>=1.3.0
-langchain-google-genai>=2.0.0
-google-generativeai>=0.8.0
-sentence-transformers>=2.2.0
-pymupdf>=1.23.0
-langchain-text-splitters>=0.2.0
-openai>=2.0.0
-anthropic>=0.40.0
+langchain==1.2.10
+langgraph==1.0.8
+langchain-core==1.2.12
+langchain-community==0.4.1
+langchain-openai==1.1.9
+langchain-anthropic==1.3.3
+langchain-google-genai==4.2.0
+google-generativeai==0.8.6
+sentence-transformers==5.2.2
+pymupdf==1.27.1
+langchain-text-splitters==1.1.0
+openai==2.20.0
+anthropic==0.79.0
 
-# Network Engineering Tools (for future phases)
+# Network Engineering Tools
 scapy==2.5.0
 pyshark==0.6
 ciscoconfparse==1.9.41
@@ -49,21 +50,21 @@ textfsm==1.1.3
 ttp==0.9.4
 
 # Cloud Storage
-boto3>=1.34.0
+boto3==1.42.49
 
 # Email
-mailtrap>=2.0.0
+mailtrap==2.4.0
 
 # Payments
-stripe>=8.0.0
+stripe==14.3.0
 
 # HTML Parsing
-beautifulsoup4>=4.12.0
-lxml>=5.0.0
+beautifulsoup4==4.14.3
+lxml==6.0.2
 
 # Utilities
 python-dotenv==1.0.0
-httpx==0.25.2
+httpx==0.28.1
 aiofiles==23.2.1
 structlog==23.2.0
 

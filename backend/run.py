@@ -170,7 +170,7 @@ def validate_requirements(
         cwd=cwd,
     )
     run_step(
-        [str(python_executable), "-m", "pip", "install", "-r", str(requirements_file)],
+        [str(python_executable), "-m", "pip", "install", "--no-deps", "-r", str(requirements_file)],
         "Instalando requirements",
         env,
         cwd=cwd,

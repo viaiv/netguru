@@ -4172,6 +4172,37 @@ html:has(.pcap-dashboard) #root {
   padding: 8px 0;
 }
 
+/* File input custom */
+.file-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.file-input-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.file-input-row label {
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.file-input-name {
+  font-size: 0.84rem;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 768px) {
   .admin-cards-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
