@@ -244,7 +244,13 @@ class ChatService:
                 model_override = (
                     await SystemSettingsService.get(self._db, "free_llm_model")
                 ) or settings.DEFAULT_LLM_MODEL_GOOGLE
-            tools = get_agent_tools(db=self._db, user_id=user.id)
+            tools = get_agent_tools(
+                db=self._db,
+                user_id=user.id,
+                user_role=getattr(user, "role", None),
+                plan_tier=getattr(user, "plan_tier", None),
+                user_message=content,
+            )
             agent = NetworkEngineerAgent(
                 provider_name=provider_name,
                 api_key=api_key,

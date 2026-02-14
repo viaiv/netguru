@@ -20,17 +20,28 @@ from app.agents.tools.config_tools import (
 )
 from app.agents.tools.show_command_tools import create_parse_show_commands_tool
 from app.agents.tools.pcap_tools import create_analyze_pcap_tool
+from app.services.tool_guardrail_service import ToolGuardrailService
 
 
-def get_agent_tools(db: AsyncSession, user_id: UUID) -> list[BaseTool]:
+def get_agent_tools(
+    db: AsyncSession,
+    user_id: UUID,
+    *,
+    user_role: str | None = None,
+    plan_tier: str | None = None,
+    user_message: str = "",
+) -> list[BaseTool]:
     """
     Retorna lista de tools disponiveis para o agent.
 
     Args:
         db: Sessao async do banco (compartilhada com o request).
         user_id: UUID do usuario autenticado.
+        user_role: Role atual do usuario (owner|admin|member|viewer).
+        plan_tier: Plano atual do usuario (solo|team|enterprise).
+        user_message: Ultima mensagem do usuario para regras de confirmacao.
     """
-    return [
+    tools: list[BaseTool] = [
         # RAG (Phase 3-4)
         create_search_rag_global_tool(db),
         create_search_rag_local_tool(db, user_id),
@@ -44,3 +55,11 @@ def get_agent_tools(db: AsyncSession, user_id: UUID) -> list[BaseTool]:
         # PCAP Analysis (Phase 5-6)
         create_analyze_pcap_tool(db, user_id),
     ]
+    guardrails = ToolGuardrailService(
+        db=db,
+        user_id=user_id,
+        user_role=user_role,
+        plan_tier=plan_tier,
+        user_message=user_message,
+    )
+    return guardrails.wrap_tools(tools)
