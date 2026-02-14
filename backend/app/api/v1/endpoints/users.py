@@ -3,7 +3,7 @@ User profile endpoints.
 """
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -73,7 +73,7 @@ async def update_me(
     if user_update.llm_provider is not None:
         current_user.llm_provider = user_update.llm_provider
 
-    current_user.updated_at = datetime.now(UTC)
+    current_user.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(current_user)
 
@@ -158,7 +158,7 @@ async def update_user_role(
         )
 
     target_user.role = role_update.role.value
-    target_user.updated_at = datetime.now(UTC)
+    target_user.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(target_user)
     return _build_user_response(target_user)
@@ -197,7 +197,7 @@ async def update_user_status(
         )
 
     target_user.is_active = status_update.is_active
-    target_user.updated_at = datetime.now(UTC)
+    target_user.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(target_user)
     return _build_user_response(target_user)

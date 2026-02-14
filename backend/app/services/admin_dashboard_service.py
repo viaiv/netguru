@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any, Optional
 
 from sqlalchemy import distinct, func, select, text
@@ -73,7 +73,7 @@ class AdminDashboardService:
             return {row[0]: row[1] for row in r.all()}
 
         async def _recent_signups() -> int:
-            cutoff = datetime.now(UTC) - timedelta(days=7)
+            cutoff = datetime.utcnow() - timedelta(days=7)
             r = await db.execute(
                 select(func.count())
                 .select_from(User)
@@ -82,7 +82,7 @@ class AdminDashboardService:
             return int(r.scalar_one())
 
         async def _messages_today() -> int:
-            today = datetime.now(UTC).date()
+            today = datetime.utcnow().date()
             r = await db.execute(
                 select(func.coalesce(func.sum(UsageMetric.messages_count), 0))
                 .where(UsageMetric.metric_date == today)

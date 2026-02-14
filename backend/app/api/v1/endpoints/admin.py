@@ -3,7 +3,7 @@ Admin endpoints — dashboard, user management, plans, audit log, system health.
 """
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -240,7 +240,7 @@ async def update_user(
         target.plan_tier = body.plan_tier
 
     if changes:
-        target.updated_at = datetime.now(UTC)
+        target.updated_at = datetime.utcnow()
         await AuditLogService.record(
             db,
             actor_id=current_user.id,
@@ -400,7 +400,7 @@ async def update_plan(
             setattr(plan, field, value)
 
     if changes:
-        plan.updated_at = datetime.now(UTC)
+        plan.updated_at = datetime.utcnow()
         await AuditLogService.record(
             db,
             actor_id=current_user.id,
@@ -431,7 +431,7 @@ async def delete_plan(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
     plan.is_active = False
-    plan.updated_at = datetime.now(UTC)
+    plan.updated_at = datetime.utcnow()
 
     await AuditLogService.record(
         db,

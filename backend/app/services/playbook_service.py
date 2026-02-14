@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from uuid import UUID
 
 from app.core.config import settings
@@ -461,7 +461,7 @@ class PlaybookService:
                     metadata={"playbook_id": state.playbook_id, "action": "already_paused"},
                 )
             state.status = "paused"
-            state.updated_at = datetime.now(UTC).isoformat()
+            state.updated_at = datetime.utcnow().isoformat()
             await self._save_state(conversation_id, state)
             return PlaybookResponse(
                 content=(
@@ -478,7 +478,7 @@ class PlaybookService:
                     metadata={"playbook_id": state.playbook_id, "action": "already_active"},
                 )
             state.status = "active"
-            state.updated_at = datetime.now(UTC).isoformat()
+            state.updated_at = datetime.utcnow().isoformat()
             await self._save_state(conversation_id, state)
             return PlaybookResponse(
                 content=self._render_step(PLAYBOOKS[state.playbook_id], state.current_step),
@@ -506,7 +506,7 @@ class PlaybookService:
         conversation_id: UUID,
         playbook_id: str,
     ) -> PlaybookResponse:
-        now = datetime.now(UTC).isoformat()
+        now = datetime.utcnow().isoformat()
         state = PlaybookState(
             playbook_id=playbook_id,
             current_step=0,
@@ -542,7 +542,7 @@ class PlaybookService:
             )
 
         state.current_step = next_step
-        state.updated_at = datetime.now(UTC).isoformat()
+        state.updated_at = datetime.utcnow().isoformat()
         await self._save_state(conversation_id, state)
         return PlaybookResponse(
             content=self._render_step(pb, next_step),

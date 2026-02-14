@@ -1,7 +1,7 @@
 """
 Security utilities for authentication, password hashing, and API key encryption.
 """
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from uuid import uuid4
 from typing import Optional
 from jose import JWTError, jwt
@@ -68,9 +68,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode = data.copy()
     
     if expires_delta:
-        expire = datetime.now(UTC) + expires_delta
+        expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.now(UTC) + timedelta(
+        expire = datetime.utcnow() + timedelta(
             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
         )
     
@@ -91,7 +91,7 @@ def create_refresh_token(data: dict) -> str:
         Encoded JWT refresh token
     """
     to_encode = data.copy()
-    expire = datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update(
         {
             "exp": expire,

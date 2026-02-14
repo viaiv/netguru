@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -126,7 +126,7 @@ async def update_conversation(
         db=db,
     )
     conversation.title = payload.title
-    conversation.updated_at = datetime.now(UTC)
+    conversation.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(conversation)
     return _build_conversation_response(conversation)
@@ -229,7 +229,7 @@ async def create_message(
         message_metadata=payload.metadata,
     )
     db.add(message)
-    conversation.updated_at = datetime.now(UTC)
+    conversation.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(message)
     return _build_message_response(message)

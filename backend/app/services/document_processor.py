@@ -4,7 +4,7 @@ DocumentProcessor — Chunking + embedding de documentos uploadados.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,7 +47,7 @@ class DocumentProcessor:
 
             if not chunks:
                 document.status = "completed"
-                document.processed_at = datetime.now(UTC)
+                document.processed_at = datetime.utcnow()
                 await self._db.commit()
                 return 0
 
@@ -70,7 +70,7 @@ class DocumentProcessor:
                 self._db.add(embedding)
 
             document.status = "completed"
-            document.processed_at = datetime.now(UTC)
+            document.processed_at = datetime.utcnow()
             await self._db.commit()
 
             logger.info(
