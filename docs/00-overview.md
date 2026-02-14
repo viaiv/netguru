@@ -21,6 +21,8 @@
 | **[08-phase3-agents.md](08-phase3-agents.md)** | Sprint 5-6: Agents | Diferenciadores |
 | **[09-deployment.md](09-deployment.md)** | Docker e CI/CD | Deploy e produção |
 | **[10-testing-strategy.md](10-testing-strategy.md)** | Testes automatizados | Durante todo desenvolvimento |
+| **[11-agent-architecture.md](11-agent-architecture.md)** | Arquitetura detalhada do agent | Evolução do orchestration |
+| **[12-roadmap-funcional-2-sprints.md](12-roadmap-funcional-2-sprints.md)** | Roadmap funcional consolidado | Priorização e dependências |
 
 ---
 
