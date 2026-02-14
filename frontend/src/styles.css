@@ -44,6 +44,7 @@ body,
   overflow: auto;
 }
 
+
 body {
   margin: 0;
   font-family: 'Lato', 'Segoe UI', sans-serif;
@@ -3642,6 +3643,13 @@ select:focus {
 /* ====================================================================
    PCAP Dashboard
    ==================================================================== */
+
+html:has(.pcap-dashboard),
+html:has(.pcap-dashboard) body,
+html:has(.pcap-dashboard) #root {
+  height: auto;
+  overflow: auto;
+}
 
 .pcap-dashboard {
   min-height: 100vh;
