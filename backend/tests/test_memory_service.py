@@ -139,3 +139,158 @@ def test_select_relevant_candidates_uses_system_when_no_user_context_exists() ->
     assert selected[0].origin == "system"
     assert selected[0].scope == "system"
     assert selected[0].memory_value == "corp.example"
+
+
+def test_select_relevant_candidates_skips_vendor_memory_without_vendor_signal() -> None:
+    """
+    Vendor-tagged memory should not be applied when user message has no vendor hint.
+    """
+    cisco_memory = _memory_row(
+        scope="system",
+        scope_name=None,
+        key="uplink_description_pattern",
+        value="description UPLINK_TO_<DESTINO>",
+        tags=["cisco", "interfaces", "uplink"],
+    )
+
+    selected = MemoryService.select_relevant_from_candidates(
+        candidates=[(cisco_memory, "system")],
+        message_content="gere uma sugestao de descricao de uplink para o RTR002",
+        limit=8,
+    )
+    ambiguous_vendors = MemoryService.detect_ambiguous_vendors_from_candidates(
+        candidates=[(cisco_memory, "system")],
+        message_content="gere uma sugestao de descricao de uplink para o RTR002",
+        limit=8,
+    )
+
+    assert selected == []
+    assert ambiguous_vendors == ["cisco"]
+
+
+def test_select_relevant_candidates_applies_vendor_memory_with_vendor_signal() -> None:
+    """
+    Vendor-tagged memory should be applied when message contains matching vendor hint.
+    """
+    cisco_memory = _memory_row(
+        scope="system",
+        scope_name=None,
+        key="uplink_description_pattern",
+        value="description UPLINK_TO_<DESTINO>",
+        tags=["cisco", "interfaces", "uplink"],
+    )
+
+    selected = MemoryService.select_relevant_from_candidates(
+        candidates=[(cisco_memory, "system")],
+        message_content="no Cisco RTR002, gere a descricao de uplink",
+        limit=8,
+    )
+    ambiguous_vendors = MemoryService.detect_ambiguous_vendors_from_candidates(
+        candidates=[(cisco_memory, "system")],
+        message_content="no Cisco RTR002, gere a descricao de uplink",
+        limit=8,
+    )
+
+    assert len(selected) == 1
+    assert selected[0].memory_key == "uplink_description_pattern"
+    assert ambiguous_vendors == []
+
+
+def test_vendor_ambiguity_detects_singular_plural_and_accents() -> None:
+    """
+    Ambiguity should trigger even with singular/plural differences and accent variations.
+    """
+    cisco_memory = _memory_row(
+        scope="system",
+        scope_name=None,
+        key="padrão_naming_interfaces",
+        value="description UPLINK_TO_<NOME_DO_DISPOSITIVO_DESTINO>",
+        tags=["cisco", "standards", "naming", "interfaces"],
+    )
+
+    selected = MemoryService.select_relevant_from_candidates(
+        candidates=[(cisco_memory, "system")],
+        message_content="gere uma sugestão de descrição para interface de uplink no LDL003",
+        limit=8,
+    )
+    ambiguous_vendors = MemoryService.detect_ambiguous_vendors_from_candidates(
+        candidates=[(cisco_memory, "system")],
+        message_content="gere uma sugestão de descrição para interface de uplink no LDL003",
+        limit=8,
+    )
+
+    assert selected == []
+    assert ambiguous_vendors == ["cisco"]
+
+
+def test_select_relevant_candidates_applies_preferred_vendor_without_explicit_signal() -> None:
+    """
+    Preferred vendor context should allow applying vendor memory even without vendor text in message.
+    """
+    cisco_memory = _memory_row(
+        scope="system",
+        scope_name=None,
+        key="uplink_description_pattern",
+        value="description UPLINK_TO_<DESTINO>",
+        tags=["cisco", "interfaces", "uplink"],
+    )
+
+    selected = MemoryService.select_relevant_from_candidates(
+        candidates=[(cisco_memory, "system")],
+        message_content="gere descricao de uplink para RTR002",
+        preferred_vendor="cisco",
+        limit=8,
+    )
+    ambiguous_vendors = MemoryService.detect_ambiguous_vendors_from_candidates(
+        candidates=[(cisco_memory, "system")],
+        message_content="gere descricao de uplink para RTR002",
+        preferred_vendor="cisco",
+        limit=8,
+    )
+
+    assert len(selected) == 1
+    assert selected[0].memory_key == "uplink_description_pattern"
+    assert ambiguous_vendors == []
+
+
+def test_build_vendor_ambiguity_prompt_is_neutral_and_lists_supported_vendors() -> None:
+    """
+    Prompt must ask neutral confirmation and list supported vendor options.
+    """
+    prompt = MemoryService.build_vendor_ambiguity_prompt(["cisco"])
+
+    assert prompt is not None
+    assert "Qual vendor devo considerar?" in prompt
+    assert "Cisco" in prompt
+    assert "Juniper" in prompt
+    assert "Arista" in prompt
+    assert "MikroTik" in prompt
+
+
+def test_vendor_ambiguity_can_be_suppressed_when_vendor_is_unsupported() -> None:
+    """
+    Vendor ambiguity prompts can be disabled when conversation vendor is unsupported.
+    """
+    cisco_memory = _memory_row(
+        scope="system",
+        scope_name=None,
+        key="uplink_description_pattern",
+        value="description UPLINK_TO_<DESTINO>",
+        tags=["cisco", "interfaces", "uplink"],
+    )
+
+    selected = MemoryService.select_relevant_from_candidates(
+        candidates=[(cisco_memory, "system")],
+        message_content="gere uma sugestao de descricao de uplink para o RTR002",
+        allow_vendor_prompt=False,
+        limit=8,
+    )
+    ambiguous_vendors = MemoryService.detect_ambiguous_vendors_from_candidates(
+        candidates=[(cisco_memory, "system")],
+        message_content="gere uma sugestao de descricao de uplink para o RTR002",
+        allow_vendor_prompt=False,
+        limit=8,
+    )
+
+    assert selected == []
+    assert ambiguous_vendors == []

@@ -3,8 +3,9 @@ MemoryService — CRUD and contextual retrieval for user/system persistent memor
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+import unicodedata
 from typing import Any
 from uuid import UUID
 
@@ -27,6 +28,20 @@ SCOPE_PRIORITY: dict[str, int] = {
     MemoryScope.SITE.value: 3,
     MemoryScope.DEVICE.value: 4,
 }
+
+VENDOR_HINTS: dict[str, tuple[str, ...]] = {
+    "cisco": ("cisco", "ios", "ios xe", "ios-xe", "nx os", "nx-os", "catalyst"),
+    "juniper": ("juniper", "junos"),
+    "arista": ("arista", "eos"),
+    "mikrotik": ("mikrotik", "mikro tik", "routeros", "router os", "mtk"),
+}
+
+SUPPORTED_VENDOR_ORDER: tuple[str, ...] = (
+    "cisco",
+    "juniper",
+    "arista",
+    "mikrotik",
+)
 
 
 class MemoryServiceError(Exception):
@@ -58,6 +73,8 @@ class MemoryContextResolution:
 
     entries: list[AppliedMemory]
     context_block: str | None
+    vendor_ambiguity_prompt: str | None = None
+    ambiguous_vendors: list[str] = field(default_factory=list)
 
 
 class MemoryService:
@@ -331,6 +348,8 @@ class MemoryService:
         *,
         user_id: UUID,
         message_content: str,
+        preferred_vendor: str | None = None,
+        allow_vendor_prompt: bool = True,
         limit: int = 8,
     ) -> MemoryContextResolution:
         """
@@ -369,13 +388,20 @@ class MemoryService:
         ] + [
             (row, "system") for row in system_rows
         ]
-        entries = self.select_relevant_from_candidates(
+        entries, ambiguous_vendors = self._select_relevant_with_diagnostics(
             candidates=candidates,
             message_content=message_content,
+            preferred_vendor=preferred_vendor,
+            allow_vendor_prompt=allow_vendor_prompt,
             limit=limit,
         )
         context_block = self.build_context_block(entries)
-        return MemoryContextResolution(entries=entries, context_block=context_block)
+        return MemoryContextResolution(
+            entries=entries,
+            context_block=context_block,
+            vendor_ambiguity_prompt=self.build_vendor_ambiguity_prompt(ambiguous_vendors),
+            ambiguous_vendors=ambiguous_vendors,
+        )
 
     @staticmethod
     def build_context_block(entries: list[AppliedMemory]) -> str | None:
@@ -429,6 +455,8 @@ class MemoryService:
         *,
         rows: list[NetworkMemory],
         message_content: str,
+        preferred_vendor: str | None = None,
+        allow_vendor_prompt: bool = True,
         limit: int = 8,
     ) -> list[AppliedMemory]:
         """
@@ -437,6 +465,8 @@ class MemoryService:
         return cls.select_relevant_from_candidates(
             candidates=[(row, "user") for row in rows],
             message_content=message_content,
+            preferred_vendor=preferred_vendor,
+            allow_vendor_prompt=allow_vendor_prompt,
             limit=limit,
         )
 
@@ -446,13 +476,65 @@ class MemoryService:
         *,
         candidates: list[tuple[Any, str]],
         message_content: str,
+        preferred_vendor: str | None = None,
+        allow_vendor_prompt: bool = True,
         limit: int = 8,
     ) -> list[AppliedMemory]:
         """
         Select relevant memories and resolve key conflicts by hierarchy.
         """
+        entries, _ = cls._select_relevant_with_diagnostics(
+            candidates=candidates,
+            message_content=message_content,
+            preferred_vendor=preferred_vendor,
+            allow_vendor_prompt=allow_vendor_prompt,
+            limit=limit,
+        )
+        return entries
+
+    @classmethod
+    def detect_ambiguous_vendors_from_candidates(
+        cls,
+        *,
+        candidates: list[tuple[Any, str]],
+        message_content: str,
+        preferred_vendor: str | None = None,
+        allow_vendor_prompt: bool = True,
+        limit: int = 8,
+    ) -> list[str]:
+        """
+        Return vendor list that requires explicit confirmation in current message.
+        """
+        _, ambiguous_vendors = cls._select_relevant_with_diagnostics(
+            candidates=candidates,
+            message_content=message_content,
+            preferred_vendor=preferred_vendor,
+            allow_vendor_prompt=allow_vendor_prompt,
+            limit=limit,
+        )
+        return ambiguous_vendors
+
+    @classmethod
+    def _select_relevant_with_diagnostics(
+        cls,
+        *,
+        candidates: list[tuple[Any, str]],
+        message_content: str,
+        preferred_vendor: str | None = None,
+        allow_vendor_prompt: bool = True,
+        limit: int = 8,
+    ) -> tuple[list[AppliedMemory], list[str]]:
+        """
+        Select relevant memories and return vendor ambiguity diagnostics.
+        """
         normalized_message = cls._normalize_text(message_content)
+        message_tokens = cls._tokenize_text(message_content)
+        message_vendors = cls.detect_vendors_in_text(message_content)
+        normalized_preferred_vendor = cls.normalize_vendor(preferred_vendor)
+        if normalized_preferred_vendor:
+            message_vendors.add(normalized_preferred_vendor)
         grouped: dict[str, list[tuple[Any, str, int, int]]] = {}
+        ambiguous_vendors: set[str] = set()
 
         for row, origin in candidates:
             scope = str(getattr(row, "scope", ""))
@@ -469,20 +551,58 @@ class MemoryService:
             memory_key = str(getattr(row, "memory_key", ""))
             memory_key_normalized = cls._normalize_key(memory_key)
             key_match = bool(memory_key_normalized and memory_key_normalized in normalized_message)
+            key_token_match_count = cls._token_overlap(
+                message_tokens=message_tokens,
+                candidate_text=memory_key,
+            )
 
             tags = cls._normalize_tags(getattr(row, "tags", None))
             tag_match_count = sum(1 for tag in tags if tag in normalized_message)
+            tag_token_match_count = cls._token_overlap(
+                message_tokens=message_tokens,
+                candidate_tokens=tags,
+            )
+            value_token_match_count = cls._token_overlap(
+                message_tokens=message_tokens,
+                candidate_text=str(getattr(row, "memory_value", "")),
+            )
+            memory_vendors = cls._detect_memory_vendors(
+                memory_key=memory_key,
+                memory_value=str(getattr(row, "memory_value", "")),
+                tags=tags,
+            )
 
             include = scope in {MemoryScope.GLOBAL.value, "system"} or scope_name_match
             if not include:
                 continue
+            if memory_vendors:
+                if message_vendors:
+                    if not (memory_vendors & message_vendors):
+                        continue
+                else:
+                    if (
+                        scope_name_match
+                        or key_match
+                        or key_token_match_count > 0
+                        or tag_match_count > 0
+                        or tag_token_match_count > 0
+                        or value_token_match_count > 0
+                    ):
+                        if allow_vendor_prompt:
+                            ambiguous_vendors.update(memory_vendors)
+                    continue
 
             relevance = scope_priority
             if scope_name_match:
                 relevance += 5
             if key_match:
                 relevance += 3
+            relevance += min(key_token_match_count, 2)
+            relevance += min(value_token_match_count, 1)
             relevance += min(tag_match_count, 2)
+            relevance += min(tag_token_match_count, 2)
+            if memory_vendors and message_vendors and (memory_vendors & message_vendors):
+                relevance += 2
 
             key_group = memory_key.lower()
             grouped.setdefault(key_group, []).append(
@@ -524,7 +644,7 @@ class MemoryService:
             key=lambda item: (item[1], item[2], item[3]),
             reverse=True,
         )
-        return [item[0] for item in selected_with_score[:limit]]
+        return [item[0] for item in selected_with_score[:limit]], sorted(ambiguous_vendors)
 
     async def _ensure_user_identity_is_available(
         self,
@@ -712,3 +832,185 @@ class MemoryService:
             return [cls._normalize_text(str(tag)) for tag in value.keys() if cls._normalize_text(str(tag))]
         normalized = cls._normalize_text(str(value))
         return [normalized] if normalized else []
+
+    @classmethod
+    def build_vendor_ambiguity_prompt(cls, vendors: list[str]) -> str | None:
+        """
+        Build a direct clarification prompt when vendor-specific memory is ambiguous.
+        """
+        if not vendors:
+            return None
+
+        supported = ", ".join(cls.supported_vendor_display_names())
+        return (
+            "Antes de aplicar memorias especificas de vendor, preciso confirmar o fabricante "
+            f"do equipamento. Qual vendor devo considerar? Opcoes suportadas: {supported}."
+        )
+
+    @classmethod
+    def _detect_memory_vendors(
+        cls,
+        *,
+        memory_key: str,
+        memory_value: str,
+        tags: list[str],
+    ) -> set[str]:
+        detected: set[str] = set()
+        for fragment in [memory_key, memory_value, *tags]:
+            detected.update(cls.detect_vendors_in_text(fragment))
+        return detected
+
+    @classmethod
+    def detect_vendors_in_text(cls, value: str | None) -> set[str]:
+        """
+        Detect canonical vendor identifiers from free text.
+        """
+        normalized = cls._normalize_key(value or "")
+        if not normalized:
+            return set()
+
+        tokens = set(normalized.split())
+        detected: set[str] = set()
+        for vendor, hints in VENDOR_HINTS.items():
+            for hint in hints:
+                normalized_hint = cls._normalize_key(hint)
+                if not normalized_hint:
+                    continue
+
+                if " " in normalized_hint:
+                    if normalized_hint in normalized:
+                        detected.add(vendor)
+                        break
+                elif normalized_hint in tokens:
+                    detected.add(vendor)
+                    break
+        return detected
+
+    @classmethod
+    def normalize_vendor(cls, value: str | None) -> str | None:
+        """
+        Normalize one vendor token into canonical value.
+        """
+        if not value:
+            return None
+
+        normalized_value = cls._normalize_key(value)
+        if normalized_value in VENDOR_HINTS:
+            return normalized_value
+
+        detected = cls.detect_vendors_in_text(value)
+        if len(detected) == 1:
+            return next(iter(detected))
+        return None
+
+    @classmethod
+    def supported_vendors(cls) -> list[str]:
+        """
+        Return canonical vendor identifiers supported by vendor-aware memory routing.
+        """
+        return [vendor for vendor in SUPPORTED_VENDOR_ORDER if vendor in VENDOR_HINTS]
+
+    @classmethod
+    def supported_vendor_display_names(cls) -> list[str]:
+        """
+        Return supported vendor labels for user-facing prompts.
+        """
+        return [cls._vendor_display_name(vendor) for vendor in cls.supported_vendors()]
+
+    @staticmethod
+    def _vendor_display_name(vendor: str) -> str:
+        normalized = vendor.strip().lower()
+        if normalized == "cisco":
+            return "Cisco"
+        if normalized == "juniper":
+            return "Juniper"
+        if normalized == "arista":
+            return "Arista"
+        if normalized == "mikrotik":
+            return "MikroTik"
+        return vendor.strip().title()
+
+    @classmethod
+    def _token_overlap(
+        cls,
+        *,
+        message_tokens: set[str],
+        candidate_text: str | None = None,
+        candidate_tokens: list[str] | None = None,
+    ) -> int:
+        """
+        Count token overlaps between user message and candidate memory fragments.
+        """
+        tokens: set[str] = set()
+        if candidate_text is not None:
+            tokens.update(cls._tokenize_text(candidate_text))
+        if candidate_tokens is not None:
+            for candidate in candidate_tokens:
+                tokens.update(cls._tokenize_text(candidate))
+        return len(tokens & message_tokens)
+
+    @classmethod
+    def _tokenize_text(cls, value: str | None) -> set[str]:
+        """
+        Normalize text into comparable tokens with simple plural folding.
+        """
+        normalized = cls._normalize_key(value or "")
+        if not normalized:
+            return set()
+
+        raw_tokens = normalized.split()
+        tokens: set[str] = set()
+        for raw_token in raw_tokens:
+            token = cls._strip_accents(raw_token)
+            if not token or token in cls._stopwords():
+                continue
+
+            tokens.add(token)
+            folded = cls._fold_plural(token)
+            if folded != token:
+                tokens.add(folded)
+        return tokens
+
+    @staticmethod
+    def _strip_accents(value: str) -> str:
+        normalized = unicodedata.normalize("NFKD", value)
+        return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
+    @staticmethod
+    def _fold_plural(token: str) -> str:
+        if len(token) > 4 and token.endswith("s") and not token.endswith("ss"):
+            return token[:-1]
+        return token
+
+    @staticmethod
+    def _stopwords() -> set[str]:
+        return {
+            "a",
+            "o",
+            "os",
+            "as",
+            "de",
+            "do",
+            "da",
+            "dos",
+            "das",
+            "e",
+            "em",
+            "no",
+            "na",
+            "nos",
+            "nas",
+            "para",
+            "por",
+            "com",
+            "sem",
+            "uma",
+            "um",
+            "the",
+            "to",
+            "for",
+            "and",
+            "of",
+            "in",
+            "on",
+        }

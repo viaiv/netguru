@@ -114,13 +114,31 @@ class ChatService:
             content=content,
             attachment_document_ids=attachment_document_ids,
         )
+        active_vendor, vendor_source, suppress_vendor_prompt, raw_vendor = await self._resolve_active_vendor(
+            conversation_id=conversation_id,
+            content=content,
+        )
+        user_vendor_metadata: dict | None = None
+        if vendor_source:
+            user_vendor_metadata = {
+                "vendor_context": {
+                    "active_vendor": active_vendor,
+                    "raw_vendor": raw_vendor or active_vendor,
+                    "supported": bool(active_vendor),
+                    "source": vendor_source,
+                }
+            }
+        user_message_metadata = self._merge_message_metadata(
+            attachment_resolution.user_message_metadata,
+            user_vendor_metadata,
+        )
 
         # 5. Save user message (flush to get ID, no commit yet)
         user_msg = Message(
             conversation_id=conversation_id,
             role="user",
             content=content,
-            message_metadata=attachment_resolution.user_message_metadata,
+            message_metadata=user_message_metadata,
         )
         self._db.add(user_msg)
         await self._db.flush()
@@ -187,7 +205,30 @@ class ChatService:
         memory_resolution = await self._resolve_memory_context(
             user_id=user.id,
             content_for_agent=attachment_resolution.content_for_agent,
+            preferred_vendor=active_vendor,
+            allow_vendor_prompt=not suppress_vendor_prompt,
         )
+        if memory_resolution.vendor_ambiguity_prompt:
+            ambiguity_metadata: dict = {
+                "memory_context": {
+                    "status": "vendor_ambiguous",
+                    "vendors": memory_resolution.ambiguous_vendors,
+                    "supported_vendors": MemoryService.supported_vendors(),
+                }
+            }
+            if attachment_metadata:
+                ambiguity_metadata.update(attachment_metadata)
+            async for event in self._emit_direct_response(
+                conversation=conversation,
+                conversation_id=conversation_id,
+                user=user,
+                content=memory_resolution.vendor_ambiguity_prompt,
+                metadata=ambiguity_metadata,
+                title_event=title_event,
+            ):
+                yield event
+            return
+
         if history and history[-1]["role"] == "user":
             enriched_content = attachment_resolution.content_for_agent
             if memory_resolution.context_block:
@@ -532,6 +573,8 @@ class ChatService:
         *,
         user_id: UUID,
         content_for_agent: str,
+        preferred_vendor: str | None = None,
+        allow_vendor_prompt: bool = True,
     ) -> MemoryContextResolution:
         """
         Resolve persistent memory context for current turn.
@@ -543,9 +586,181 @@ class ChatService:
             return await service.resolve_chat_context(
                 user_id=user_id,
                 message_content=content_for_agent,
+                preferred_vendor=preferred_vendor,
+                allow_vendor_prompt=allow_vendor_prompt,
             )
         except Exception:
-            return MemoryContextResolution(entries=[], context_block=None)
+            return MemoryContextResolution(
+                entries=[],
+                context_block=None,
+                vendor_ambiguity_prompt=None,
+                ambiguous_vendors=[],
+            )
+
+    async def _resolve_active_vendor(
+        self,
+        *,
+        conversation_id: UUID,
+        content: str,
+    ) -> tuple[str | None, str | None, bool, str | None]:
+        """
+        Resolve active vendor for current turn from explicit message or persisted context.
+
+        Returns:
+            preferred_vendor: Canonical supported vendor (or None).
+            source: Metadata source label.
+            suppress_vendor_prompt: Skip vendor clarification prompts for this turn.
+            raw_vendor: Raw user-facing vendor value persisted in metadata.
+        """
+        explicit_vendors = sorted(MemoryService.detect_vendors_in_text(content))
+        if len(explicit_vendors) == 1:
+            return explicit_vendors[0], "explicit", False, explicit_vendors[0]
+        if len(explicit_vendors) > 1:
+            return None, None, False, None
+
+        awaiting_confirmation = await self._is_waiting_vendor_confirmation(
+            conversation_id=conversation_id,
+        )
+        if awaiting_confirmation:
+            raw_vendor = self._extract_vendor_answer(content)
+            if raw_vendor:
+                normalized_vendor = MemoryService.normalize_vendor(raw_vendor)
+                if normalized_vendor:
+                    return normalized_vendor, "explicit", False, raw_vendor
+                return None, "explicit_unsupported", True, raw_vendor
+
+        persisted_vendor = await self._load_persisted_vendor_context(
+            conversation_id=conversation_id,
+        )
+        if persisted_vendor is not None:
+            if persisted_vendor.get("supported") is False:
+                raw_vendor = persisted_vendor.get("raw_vendor")
+                return None, "conversation_unsupported", True, str(raw_vendor) if raw_vendor else None
+
+            vendor = persisted_vendor.get("active_vendor")
+            if isinstance(vendor, str) and vendor:
+                raw_vendor = persisted_vendor.get("raw_vendor")
+                return vendor, "conversation", False, str(raw_vendor) if raw_vendor else vendor
+
+        return None, None, False, None
+
+    async def _load_persisted_vendor_context(
+        self,
+        *,
+        conversation_id: UUID,
+    ) -> dict | None:
+        """
+        Load most recent persisted vendor context from conversation message metadata.
+        """
+        try:
+            stmt = (
+                select(Message)
+                .where(Message.conversation_id == conversation_id)
+                .order_by(Message.created_at.desc())
+                .limit(settings.CHAT_HISTORY_LIMIT)
+            )
+            result = await self._db.execute(stmt)
+            recent_messages = result.scalars().all()
+        except Exception:
+            return None
+
+        for message in recent_messages:
+            metadata = message.message_metadata
+            if not isinstance(metadata, dict):
+                continue
+
+            vendor_context = metadata.get("vendor_context")
+            if not isinstance(vendor_context, dict):
+                continue
+
+            supported = vendor_context.get("supported")
+            if supported is False:
+                raw_vendor = vendor_context.get("raw_vendor")
+                normalized_raw = " ".join(str(raw_vendor).split()) if raw_vendor else None
+                return {
+                    "supported": False,
+                    "raw_vendor": normalized_raw,
+                }
+
+            vendor_raw = vendor_context.get("active_vendor")
+            vendor = MemoryService.normalize_vendor(str(vendor_raw)) if vendor_raw else None
+            if vendor:
+                raw_vendor = vendor_context.get("raw_vendor")
+                normalized_raw = " ".join(str(raw_vendor).split()) if raw_vendor else vendor
+                return {
+                    "supported": True,
+                    "active_vendor": vendor,
+                    "raw_vendor": normalized_raw,
+                }
+        return None
+
+    async def _is_waiting_vendor_confirmation(
+        self,
+        *,
+        conversation_id: UUID,
+    ) -> bool:
+        """
+        Check whether previous assistant turn asked for vendor confirmation.
+        """
+        try:
+            stmt = (
+                select(Message)
+                .where(Message.conversation_id == conversation_id)
+                .order_by(Message.created_at.desc())
+                .limit(1)
+            )
+            result = await self._db.execute(stmt)
+            latest_message = result.scalar_one_or_none()
+        except Exception:
+            return False
+
+        if latest_message is None or getattr(latest_message, "role", "") != "assistant":
+            return False
+
+        metadata = latest_message.message_metadata
+        if not isinstance(metadata, dict):
+            return False
+
+        memory_context = metadata.get("memory_context")
+        if not isinstance(memory_context, dict):
+            return False
+
+        return memory_context.get("status") == "vendor_ambiguous"
+
+    @staticmethod
+    def _extract_vendor_answer(content: str) -> str | None:
+        """
+        Extract a compact vendor answer from a clarification response.
+        """
+        normalized = " ".join(content.strip().split())
+        if not normalized:
+            return None
+        if len(normalized.split()) > 6:
+            return None
+        if len(normalized) > 80:
+            return None
+        return normalized
+
+    @staticmethod
+    def _merge_message_metadata(
+        base: dict | None,
+        extra: dict | None,
+    ) -> dict | None:
+        """
+        Merge two flat metadata payloads while preserving nested dicts by top-level key.
+        """
+        merged: dict = {}
+        if isinstance(base, dict):
+            merged.update(base)
+        if isinstance(extra, dict):
+            for key, value in extra.items():
+                if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                    nested = dict(merged[key])
+                    nested.update(value)
+                    merged[key] = nested
+                else:
+                    merged[key] = value
+        return merged or None
 
     @staticmethod
     def _serialize_resolved_attachment(attachment: ResolvedAttachment) -> dict:
