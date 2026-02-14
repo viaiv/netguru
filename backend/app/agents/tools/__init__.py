@@ -13,6 +13,7 @@ from app.agents.tools.rag_tools import (
     create_search_rag_local_tool,
 )
 from app.agents.tools.config_tools import (
+    create_diff_config_risk_tool,
     create_parse_config_tool,
     create_validate_config_tool,
 )
@@ -35,6 +36,7 @@ def get_agent_tools(db: AsyncSession, user_id: UUID) -> list[BaseTool]:
         # Config Analysis (Phase 5-6)
         create_parse_config_tool(),
         create_validate_config_tool(),
+        create_diff_config_risk_tool(),
         # Show Commands (Phase 5-6)
         create_parse_show_commands_tool(),
         # PCAP Analysis (Phase 5-6)

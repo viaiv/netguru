@@ -63,6 +63,44 @@ async def test_validate_config_tool_returns_validation_report(
 
 
 @pytest.mark.asyncio
+async def test_diff_config_risk_tool_returns_markdown_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """diff_config_risk tool should return formatted report from diff service."""
+
+    class FakeDiffService:
+        def compare_configs(self, running_config: str, golden_config: str):  # noqa: ANN201
+            assert running_config == "running config"
+            assert golden_config == "golden config"
+            return {"changes": 3}
+
+        def format_report(
+            self,
+            report,  # noqa: ANN001
+            running_label: str = "running",
+            golden_label: str = "golden",
+        ) -> str:
+            assert report == {"changes": 3}
+            assert running_label == "R1-running"
+            assert golden_label == "R1-golden"
+            return "## Mudanças detectadas\n- ...\n## Riscos\n- ..."
+
+    monkeypatch.setattr(config_tools, "ConfigDiffService", FakeDiffService)
+
+    tool = config_tools.create_diff_config_risk_tool()
+    result = await tool.ainvoke(
+        {
+            "running_config": "running config",
+            "golden_config": "golden config",
+            "running_label": "R1-running",
+            "golden_label": "R1-golden",
+        },
+    )
+    assert "Mudanças detectadas" in result
+    assert "Riscos" in result
+
+
+@pytest.mark.asyncio
 async def test_parse_show_commands_tool_returns_formatted_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

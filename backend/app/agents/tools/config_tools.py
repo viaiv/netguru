@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from langchain_core.tools import StructuredTool
 
+from app.services.config_diff_service import ConfigDiffService
 from app.services.config_parser_service import ConfigParserService
 from app.services.config_validator_service import ConfigValidatorService
 
@@ -77,5 +78,53 @@ def create_validate_config_tool() -> StructuredTool:
             "Checks for: telnet usage, weak passwords, SNMP security, OSPF/BGP authentication, "
             "NTP, logging, spanning-tree, and more. "
             "Use when the user asks to validate, review, audit, or check a config for issues."
+        ),
+    )
+
+
+def create_diff_config_risk_tool() -> StructuredTool:
+    """Cria tool de diff semantico com analise de risco (running x golden)."""
+
+    async def _diff_config_risk(
+        running_config: str,
+        golden_config: str,
+        running_label: str = "running",
+        golden_label: str = "golden",
+    ) -> str:
+        """
+        Compare current (running) and baseline (golden) configurations.
+        Produces semantic diff by section and risk scoring (security/availability/performance).
+
+        Use this tool when the user asks to compare two configs, assess change risk,
+        detect drift, or prepare pre-change review/rollback guidance.
+
+        Args:
+            running_config: Current device configuration text.
+            golden_config: Baseline/golden configuration text.
+            running_label: Friendly name for running config in the report.
+            golden_label: Friendly name for golden config in the report.
+        """
+        try:
+            svc = ConfigDiffService()
+            report = svc.compare_configs(
+                running_config=running_config,
+                golden_config=golden_config,
+            )
+            return svc.format_report(
+                report=report,
+                running_label=running_label,
+                golden_label=golden_label,
+            )
+        except Exception as e:
+            return f"Error comparing configurations: {e}"
+
+    return StructuredTool.from_function(
+        coroutine=_diff_config_risk,
+        name="diff_config_risk",
+        description=(
+            "Compare running vs golden network configurations and return semantic diff "
+            "by sections (interfaces, routing, ACL, VLAN, services), risk scores "
+            "(security/availability/performance), critical changes, and rollback "
+            "recommendations. Use for pre-change risk analysis and drift detection."
         ),
     )

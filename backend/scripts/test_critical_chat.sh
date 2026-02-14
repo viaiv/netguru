@@ -7,6 +7,7 @@ source venv/bin/activate
 PYTHONPATH=. pytest -q \
   tests/test_playbook_service.py \
   tests/test_chat_playbook_integration.py \
+  tests/test_config_diff_service.py \
   tests/test_chat_cancellation.py \
   tests/test_agent_tool_call_ids.py \
   tests/test_agent_tools.py

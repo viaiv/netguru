@@ -9,6 +9,7 @@ const TOOL_LABELS: Record<string, string> = {
   search_rag_local: 'Buscando seus documentos',
   parse_config: 'Analisando configuracao',
   validate_config: 'Validando configuracao',
+  diff_config_risk: 'Comparando running x golden',
   parse_show_commands: 'Analisando saida de comando',
   analyze_pcap: 'Analisando captura de pacotes',
 };
