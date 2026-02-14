@@ -1329,6 +1329,10 @@ select:focus {
   background: var(--accent);
 }
 
+.tool-call-indicator--failed {
+  background: var(--danger);
+}
+
 .tool-call-name {
   font-size: 0.82rem;
   font-weight: 700;
@@ -1354,6 +1358,37 @@ select:focus {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.tool-call-progress-wrap {
+  margin-top: 8px;
+}
+
+.tool-call-progress-track {
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(var(--ink-rgb), 0.12);
+}
+
+.tool-call-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(var(--signal-rgb), 0.9), rgba(var(--accent-rgb), 0.9));
+  transition: width 250ms ease;
+}
+
+.tool-call-progress-fill--queued {
+  background: linear-gradient(90deg, rgba(var(--ink-rgb), 0.35), rgba(var(--ink-rgb), 0.2));
+}
+
+.tool-call-progress-meta {
+  margin-top: 4px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.7rem;
+  color: var(--ink-soft);
 }
 
 @keyframes pulse-signal {

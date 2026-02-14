@@ -6,7 +6,9 @@ antes de responder, seguindo o padrao ReAct (Reason → Act → Observe).
 """
 from __future__ import annotations
 
+import asyncio
 import time
+from contextlib import suppress
 from typing import AsyncGenerator
 from uuid import uuid4
 
@@ -210,56 +212,119 @@ class NetworkEngineerAgent:
             elif msg["role"] == "system":
                 lc_messages.append(SystemMessage(content=msg["content"]))
 
-        tool_start_times: dict[str, float] = {}
+        tool_state: dict[str, dict] = {}
         tool_ids_by_name: dict[str, list[str]] = {}
-
-        async for event in self._compiled.astream_events(
+        events_iter = self._compiled.astream_events(
             {"messages": lc_messages},
             version="v2",
             config={"recursion_limit": self._recursion_limit},
-        ):
-            kind = event.get("event")
+        ).__aiter__()
+        next_event_task: asyncio.Task | None = asyncio.create_task(events_iter.__anext__())
 
-            if kind == "on_chat_model_stream":
-                chunk = event.get("data", {}).get("chunk")
-                if chunk and isinstance(chunk, AIMessage):
-                    if chunk.content and isinstance(chunk.content, str):
-                        yield {"type": "text", "content": chunk.content}
+        try:
+            while True:
+                if next_event_task is None:
+                    break
 
-            elif kind == "on_tool_start":
-                tool_name = event.get("name", "unknown")
-                tool_input = event.get("data", {}).get("input", {})
-                raw_tool_call_id = event.get("run_id")
-                tool_call_id = str(raw_tool_call_id) if raw_tool_call_id else str(uuid4())
-                tool_start_times[tool_call_id] = time.time()
-                tool_ids_by_name.setdefault(tool_name, []).append(tool_call_id)
-                input_str = tool_input if isinstance(tool_input, str) else str(tool_input)
-                yield {
-                    "type": "tool_call_start",
-                    "tool_call_id": tool_call_id,
-                    "tool_name": tool_name,
-                    "tool_input": input_str[:500],
-                }
+                done, _ = await asyncio.wait({next_event_task}, timeout=1.0)
+                if not done:
+                    now = time.time()
+                    for tool_call_id, state in list(tool_state.items()):
+                        last_emit = float(state.get("last_progress_emit", 0.0))
+                        if now - last_emit < 1.0:
+                            continue
+                        start_time = float(state.get("start_time", now))
+                        elapsed_ms = int((now - start_time) * 1000)
+                        tool_name = str(state.get("tool_name", "unknown"))
+                        expected_ms = self._expected_duration_ms(tool_name)
+                        progress_pct = (
+                            min(95, int((elapsed_ms / expected_ms) * 100))
+                            if expected_ms > 0
+                            else None
+                        )
+                        eta_ms = max(0, expected_ms - elapsed_ms) if expected_ms > 0 else None
+                        state["last_progress_emit"] = now
+                        yield {
+                            "type": "tool_call_progress",
+                            "tool_call_id": tool_call_id,
+                            "tool_name": tool_name,
+                            "elapsed_ms": elapsed_ms,
+                            "progress_pct": progress_pct,
+                            "eta_ms": eta_ms,
+                        }
+                    continue
 
-            elif kind == "on_tool_end":
-                tool_name = event.get("name", "unknown")
-                output = event.get("data", {}).get("output", "")
-                result_str = str(output) if not isinstance(output, str) else output
-                raw_tool_call_id = event.get("run_id")
-                tool_call_id = str(raw_tool_call_id) if raw_tool_call_id else ""
-                if tool_call_id and tool_call_id not in tool_start_times:
-                    tool_call_id = ""
-                if not tool_call_id:
-                    ids_for_name = tool_ids_by_name.get(tool_name, [])
-                    tool_call_id = ids_for_name.pop(0) if ids_for_name else str(uuid4())
+                try:
+                    event = next_event_task.result()
+                except StopAsyncIteration:
+                    break
 
-                start = tool_start_times.pop(tool_call_id, None)
-                duration_ms = int((time.time() - start) * 1000) if start else 0
-                yield {
-                    "type": "tool_call_end",
-                    "tool_call_id": tool_call_id,
-                    "tool_name": tool_name,
-                    "result_preview": result_str[:300],
-                    "duration_ms": duration_ms,
-                    "full_result": result_str,
-                }
+                next_event_task = asyncio.create_task(events_iter.__anext__())
+
+                kind = event.get("event")
+
+                if kind == "on_chat_model_stream":
+                    chunk = event.get("data", {}).get("chunk")
+                    if chunk and isinstance(chunk, AIMessage):
+                        if chunk.content and isinstance(chunk.content, str):
+                            yield {"type": "text", "content": chunk.content}
+
+                elif kind == "on_tool_start":
+                    tool_name = event.get("name", "unknown")
+                    tool_input = event.get("data", {}).get("input", {})
+                    raw_tool_call_id = event.get("run_id")
+                    tool_call_id = str(raw_tool_call_id) if raw_tool_call_id else str(uuid4())
+                    now = time.time()
+                    tool_state[tool_call_id] = {
+                        "tool_name": tool_name,
+                        "start_time": now,
+                        "last_progress_emit": now,
+                    }
+                    tool_ids_by_name.setdefault(tool_name, []).append(tool_call_id)
+                    input_str = tool_input if isinstance(tool_input, str) else str(tool_input)
+                    yield {
+                        "type": "tool_call_start",
+                        "tool_call_id": tool_call_id,
+                        "tool_name": tool_name,
+                        "tool_input": input_str[:500],
+                    }
+
+                elif kind == "on_tool_end":
+                    tool_name = event.get("name", "unknown")
+                    output = event.get("data", {}).get("output", "")
+                    result_str = str(output) if not isinstance(output, str) else output
+                    raw_tool_call_id = event.get("run_id")
+                    tool_call_id = str(raw_tool_call_id) if raw_tool_call_id else ""
+                    if tool_call_id and tool_call_id not in tool_state:
+                        tool_call_id = ""
+                    if not tool_call_id:
+                        ids_for_name = tool_ids_by_name.get(tool_name, [])
+                        tool_call_id = ids_for_name.pop(0) if ids_for_name else str(uuid4())
+
+                    state = tool_state.pop(tool_call_id, None)
+                    start_time = float(state.get("start_time")) if state else None
+                    duration_ms = int((time.time() - start_time) * 1000) if start_time else 0
+                    yield {
+                        "type": "tool_call_end",
+                        "tool_call_id": tool_call_id,
+                        "tool_name": tool_name,
+                        "result_preview": result_str[:300],
+                        "duration_ms": duration_ms,
+                        "full_result": result_str,
+                    }
+        finally:
+            if next_event_task is not None and not next_event_task.done():
+                next_event_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await next_event_task
+
+    @staticmethod
+    def _expected_duration_ms(tool_name: str) -> int:
+        """
+        Estimated duration used to compute progress percentage and ETA.
+        """
+        if tool_name == "analyze_pcap":
+            return settings.PCAP_ANALYSIS_TIMEOUT * 1000
+        if tool_name in {"generate_topology"}:
+            return max(120_000, settings.PCAP_ANALYSIS_TIMEOUT * 500)
+        return 60_000

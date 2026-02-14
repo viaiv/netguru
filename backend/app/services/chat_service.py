@@ -2,7 +2,7 @@
 Chat service — orchestrates message persistence + agent invocation + streaming.
 """
 import asyncio
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import AsyncGenerator
 from uuid import UUID
 
@@ -61,6 +61,7 @@ class ChatService:
         Yields dicts matching the WS protocol:
             {"type": "stream_start", "message_id": "..."}
             {"type": "tool_call_start", "tool_call_id": "...", "tool_name": "...", "tool_input": "..."}
+            {"type": "tool_call_state", "tool_call_id": "...", "tool_name": "...", "status": "..."}
             {"type": "tool_call_end", "tool_call_id": "...", "tool_name": "...", "result_preview": "...", "duration_ms": ...}
             {"type": "stream_chunk", "content": "..."}
             {"type": "stream_end",   "message_id": "...", "tokens_used": ...}
@@ -198,6 +199,7 @@ class ChatService:
 
         accumulated = ""
         tool_calls_log: list[dict] = []
+        active_tool_calls: dict[str, dict] = {}
         try:
             async for event in agent.stream_response(history):
                 event_type = event.get("type")
@@ -208,52 +210,120 @@ class ChatService:
 
                 elif event_type == "tool_call_start":
                     tool_call_id = str(event.get("tool_call_id", ""))
+                    tool_name = str(event.get("tool_name", "unknown"))
                     tool_calls_log.append({
                         "tool_call_id": tool_call_id,
-                        "tool": event["tool_name"],
+                        "tool": tool_name,
                         "input": event["tool_input"],
+                        "status": "running",
                     })
+                    active_tool_calls[tool_call_id] = {"tool_name": tool_name}
                     yield {
                         "type": "tool_call_start",
                         "tool_call_id": tool_call_id,
-                        "tool_name": event["tool_name"],
+                        "tool_name": tool_name,
                         "tool_input": event["tool_input"],
+                    }
+                    # Estado detalhado para jobs assincronos (MVP #14).
+                    yield {
+                        "type": "tool_call_state",
+                        "tool_call_id": tool_call_id,
+                        "tool_name": tool_name,
+                        "status": "queued",
+                    }
+                    yield {
+                        "type": "tool_call_state",
+                        "tool_call_id": tool_call_id,
+                        "tool_name": tool_name,
+                        "status": "running",
+                    }
+
+                elif event_type == "tool_call_progress":
+                    tool_call_id = str(event.get("tool_call_id", ""))
+                    tool_name = str(event.get("tool_name", "unknown"))
+                    progress_pct = event.get("progress_pct")
+                    elapsed_ms = int(event.get("elapsed_ms", 0) or 0)
+                    eta_ms = event.get("eta_ms")
+                    tc = self._find_tool_call_log(
+                        tool_calls_log=tool_calls_log,
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                    )
+                    if tc is not None:
+                        tc["status"] = "running"
+                        tc["elapsed_ms"] = elapsed_ms
+                        if progress_pct is not None:
+                            tc["progress_pct"] = int(progress_pct)
+                        if eta_ms is not None:
+                            tc["eta_ms"] = int(eta_ms)
+
+                    yield {
+                        "type": "tool_call_state",
+                        "tool_call_id": tool_call_id,
+                        "tool_name": tool_name,
+                        "status": "progress",
+                        "progress_pct": progress_pct,
+                        "elapsed_ms": elapsed_ms,
+                        "eta_ms": eta_ms,
                     }
 
                 elif event_type == "tool_call_end":
                     tool_call_id = str(event.get("tool_call_id", ""))
-                    # Atualiza log com resultado
-                    for tc in reversed(tool_calls_log):
-                        if (
-                            tc.get("tool_call_id") == tool_call_id
-                            and "result_preview" not in tc
-                        ):
-                            tc["result_preview"] = event["result_preview"]
-                            tc["duration_ms"] = event["duration_ms"]
-                            if event.get("full_result"):
-                                tc["full_result"] = event["full_result"]
-                            break
-                    else:
-                        # Fallback para eventos legados sem tool_call_id.
-                        for tc in reversed(tool_calls_log):
-                            if tc["tool"] == event["tool_name"] and "result_preview" not in tc:
-                                tc["result_preview"] = event["result_preview"]
-                                tc["duration_ms"] = event["duration_ms"]
-                                if event.get("full_result"):
-                                    tc["full_result"] = event["full_result"]
-                                break
+                    tool_name = str(event.get("tool_name", "unknown"))
+                    result_preview = str(event.get("result_preview", ""))
+                    duration_ms = int(event.get("duration_ms", 0) or 0)
+                    full_result = event.get("full_result")
+                    status = (
+                        "failed"
+                        if self._is_tool_result_failure(result_preview, full_result)
+                        else "completed"
+                    )
+                    tc = self._find_tool_call_log(
+                        tool_calls_log=tool_calls_log,
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                    )
+                    if tc is not None:
+                        tc["result_preview"] = result_preview
+                        tc["duration_ms"] = duration_ms
+                        tc["status"] = status
+                        if status == "completed":
+                            tc["progress_pct"] = 100
+                        if full_result:
+                            tc["full_result"] = full_result
+                    active_tool_calls.pop(tool_call_id, None)
+
                     yield {
                         "type": "tool_call_end",
                         "tool_call_id": tool_call_id,
-                        "tool_name": event["tool_name"],
-                        "result_preview": event["result_preview"],
-                        "duration_ms": event["duration_ms"],
+                        "tool_name": tool_name,
+                        "result_preview": result_preview,
+                        "duration_ms": duration_ms,
                     }
+                    state_event: dict = {
+                        "type": "tool_call_state",
+                        "tool_call_id": tool_call_id,
+                        "tool_name": tool_name,
+                        "status": status,
+                        "duration_ms": duration_ms,
+                    }
+                    if status == "completed":
+                        state_event["progress_pct"] = 100
+                    else:
+                        state_event["detail"] = (
+                            "Tool reportou erro/timeout. Revise parâmetros e tente novamente."
+                        )
+                    yield state_event
         except asyncio.CancelledError:
             await self._db.rollback()
             raise
         except LLMProviderError as exc:
             await self._db.rollback()
+            async for failure_event in self._emit_failed_tool_states(
+                active_tool_calls=active_tool_calls,
+                detail="Execucao interrompida por erro no provedor LLM.",
+            ):
+                yield failure_event
             yield {
                 "type": "error",
                 "code": "llm_error",
@@ -262,6 +332,11 @@ class ChatService:
             return
         except Exception as exc:
             await self._db.rollback()
+            async for failure_event in self._emit_failed_tool_states(
+                active_tool_calls=active_tool_calls,
+                detail="Execucao interrompida por erro interno durante o streaming.",
+            ):
+                yield failure_event
             yield {
                 "type": "error",
                 "code": "stream_error",
@@ -277,7 +352,7 @@ class ChatService:
         if attachment_metadata:
             assistant_metadata.update(attachment_metadata)
         assistant_msg.message_metadata = assistant_metadata or None
-        conversation.updated_at = datetime.now(UTC)
+        conversation.updated_at = datetime.utcnow()
 
         try:
             await self._db.commit()
@@ -353,7 +428,7 @@ class ChatService:
 
         assistant_msg.content = content
         assistant_msg.message_metadata = metadata
-        conversation.updated_at = datetime.now(UTC)
+        conversation.updated_at = datetime.utcnow()
 
         try:
             await self._db.commit()
@@ -416,6 +491,49 @@ class ChatService:
             "file_type": attachment.file_type,
             "source": attachment.source,
         }
+
+    @staticmethod
+    def _find_tool_call_log(
+        *,
+        tool_calls_log: list[dict],
+        tool_call_id: str,
+        tool_name: str,
+    ) -> dict | None:
+        for tc in reversed(tool_calls_log):
+            if tool_call_id and tc.get("tool_call_id") == tool_call_id:
+                return tc
+        for tc in reversed(tool_calls_log):
+            if tc.get("tool") == tool_name:
+                return tc
+        return None
+
+    @staticmethod
+    def _is_tool_result_failure(result_preview: str, full_result: object) -> bool:
+        preview = result_preview.lower().strip()
+        full_text = str(full_result).lower().strip() if full_result is not None else ""
+        candidates = [preview, full_text]
+        return any(
+            text.startswith("error")
+            or "timeout" in text
+            or "not found" in text
+            for text in candidates
+            if text
+        )
+
+    async def _emit_failed_tool_states(
+        self,
+        *,
+        active_tool_calls: dict[str, dict],
+        detail: str,
+    ) -> AsyncGenerator[dict, None]:
+        for tool_call_id, state in active_tool_calls.items():
+            yield {
+                "type": "tool_call_state",
+                "tool_call_id": tool_call_id,
+                "tool_name": state.get("tool_name", "unknown"),
+                "status": "failed",
+                "detail": detail,
+            }
 
     async def _get_owned_conversation(
         self,

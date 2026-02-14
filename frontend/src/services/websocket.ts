@@ -9,6 +9,7 @@ export type TWebSocketEventType =
   | 'stream_end'
   | 'stream_cancelled'
   | 'tool_call_start'
+  | 'tool_call_state'
   | 'tool_call_end'
   | 'title_updated'
   | 'error'
@@ -25,6 +26,10 @@ export interface IWebSocketEvent {
   tool_call_id?: string;
   tool_name?: string;
   tool_input?: string;
+  status?: 'queued' | 'running' | 'progress' | 'completed' | 'failed';
+  progress_pct?: number;
+  elapsed_ms?: number;
+  eta_ms?: number | null;
   result_preview?: string;
   duration_ms?: number;
   title?: string;

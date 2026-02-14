@@ -239,6 +239,101 @@ def test_websocket_streams_normal_flow_events(
             assert websocket.receive_json() == {"type": "pong"}
 
 
+def test_websocket_streams_tool_state_progression_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    WS endpoint must stream queued/running/progress/completed states for long jobs.
+    """
+    fake_db = FakeWsDbSession()
+
+    async def _fake_authenticate(_websocket, _token, _db):  # noqa: ANN001, ANN202
+        return SimpleNamespace(id=uuid4(), is_active=True)
+
+    class FakeChatService:
+        def __init__(self, _db) -> None:  # noqa: ANN001
+            pass
+
+        async def process_user_message(self, **_kwargs):  # noqa: ANN003, ANN202
+            yield {"type": "stream_start", "message_id": "msg-555"}
+            yield {
+                "type": "tool_call_start",
+                "tool_call_id": "tc-555",
+                "tool_name": "analyze_pcap",
+                "tool_input": "{'document_id': 'abc'}",
+            }
+            yield {
+                "type": "tool_call_state",
+                "tool_call_id": "tc-555",
+                "tool_name": "analyze_pcap",
+                "status": "queued",
+            }
+            yield {
+                "type": "tool_call_state",
+                "tool_call_id": "tc-555",
+                "tool_name": "analyze_pcap",
+                "status": "running",
+            }
+            yield {
+                "type": "tool_call_state",
+                "tool_call_id": "tc-555",
+                "tool_name": "analyze_pcap",
+                "status": "progress",
+                "progress_pct": 45,
+                "elapsed_ms": 12000,
+                "eta_ms": 14000,
+            }
+            yield {
+                "type": "tool_call_end",
+                "tool_call_id": "tc-555",
+                "tool_name": "analyze_pcap",
+                "result_preview": "done",
+                "duration_ms": 26000,
+            }
+            yield {
+                "type": "tool_call_state",
+                "tool_call_id": "tc-555",
+                "tool_name": "analyze_pcap",
+                "status": "completed",
+                "duration_ms": 26000,
+                "progress_pct": 100,
+            }
+            yield {"type": "stream_end", "message_id": "msg-555", "tokens_used": 10}
+
+    monkeypatch.setattr(
+        ws_chat,
+        "AsyncSessionLocal",
+        lambda: FakeAsyncSessionContext(fake_db),
+    )
+    monkeypatch.setattr(ws_chat, "_authenticate_websocket", _fake_authenticate)
+    monkeypatch.setattr(ws_chat, "ChatService", FakeChatService)
+
+    conversation_id = uuid4()
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/api/v1/ws/chat/{conversation_id}?token=fake") as websocket:
+            websocket.send_json({"type": "message", "content": "analyze pcap"})
+            assert websocket.receive_json() == {"type": "stream_start", "message_id": "msg-555"}
+            assert websocket.receive_json()["type"] == "tool_call_start"
+
+            queued = websocket.receive_json()
+            running = websocket.receive_json()
+            progress = websocket.receive_json()
+            assert queued["status"] == "queued"
+            assert running["status"] == "running"
+            assert progress["status"] == "progress"
+            assert progress["progress_pct"] == 45
+
+            assert websocket.receive_json()["type"] == "tool_call_end"
+            completed = websocket.receive_json()
+            assert completed["type"] == "tool_call_state"
+            assert completed["status"] == "completed"
+            assert websocket.receive_json() == {
+                "type": "stream_end",
+                "message_id": "msg-555",
+                "tokens_used": 10,
+            }
+
+
 def test_websocket_surfaces_chat_service_error_events(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

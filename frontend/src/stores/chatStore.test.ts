@@ -68,4 +68,22 @@ describe('useChatStore tool call correlation', () => {
     expect(next.messages).toHaveLength(1);
     expect(next.messages[0]?.role).toBe('user');
   });
+
+  it('applies incremental tool_call_state updates with progress and failed status', () => {
+    const store = useChatStore.getState();
+
+    store.handleToolCallStart('tc-42', 'analyze_pcap', "{document_id:'x'}");
+    store.handleToolCallState('tc-42', 'analyze_pcap', 'queued', 0, 0, null);
+    store.handleToolCallState('tc-42', 'analyze_pcap', 'progress', 48, 12000, 13000);
+    store.handleToolCallState('tc-42', 'analyze_pcap', 'failed', 48, 22000, null, 'timeout');
+    store.handleToolCallEnd('tc-42', 'analyze_pcap', 'Error analyzing PCAP: timeout', 23000);
+
+    const call = useChatStore.getState().activeToolCalls.find((c) => c.id === 'tc-42');
+    expect(call).toBeDefined();
+    expect(call?.status).toBe('failed');
+    expect(call?.progressPct).toBe(48);
+    expect(call?.elapsedMs).toBe(22000);
+    expect(call?.detail).toBe('timeout');
+    expect(call?.durationMs).toBe(23000);
+  });
 });

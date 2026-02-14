@@ -38,6 +38,7 @@ function ChatPage() {
     handleStreamEnd,
     handleStreamCancelled,
     handleToolCallStart,
+    handleToolCallState,
     handleToolCallEnd,
     handleWsError,
     setConnected,
@@ -101,6 +102,19 @@ function ChatPage() {
             );
           }
           break;
+        case 'tool_call_state':
+          if (event.tool_name && event.status) {
+            handleToolCallState(
+              event.tool_call_id ?? event.tool_name,
+              event.tool_name,
+              event.status,
+              event.progress_pct,
+              event.elapsed_ms,
+              event.eta_ms,
+              event.detail,
+            );
+          }
+          break;
         case 'title_updated':
           if (currentConversationId && event.title) {
             updateConversationTitle(currentConversationId, event.title);
@@ -119,6 +133,7 @@ function ChatPage() {
       handleStreamEnd,
       handleStreamCancelled,
       handleToolCallStart,
+      handleToolCallState,
       handleToolCallEnd,
       handleWsError,
       currentConversationId,
@@ -329,6 +344,11 @@ function ChatPage() {
       input?: string;
       result_preview?: string;
       duration_ms?: number;
+      status?: 'queued' | 'running' | 'progress' | 'completed' | 'failed';
+      progress_pct?: number;
+      elapsed_ms?: number;
+      eta_ms?: number | null;
+      detail?: string;
     }> | undefined;
     const resolvedAttachment = (
       (msg.metadata as Record<string, unknown>)?.attachment_context as Record<string, unknown> | undefined
@@ -351,7 +371,11 @@ function ChatPage() {
               toolInput: tc.input ?? '',
               resultPreview: tc.result_preview,
               durationMs: tc.duration_ms,
-              status: 'completed' as const,
+              status: tc.status ?? ('completed' as const),
+              progressPct: tc.progress_pct,
+              elapsedMs: tc.elapsed_ms,
+              etaMs: tc.eta_ms,
+              detail: tc.detail,
             }))}
             messageId={hasPcapTool ? msg.id : undefined}
           />

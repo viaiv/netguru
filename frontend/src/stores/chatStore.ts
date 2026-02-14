@@ -29,7 +29,58 @@ export interface IToolCall {
   toolInput: string;
   resultPreview?: string;
   durationMs?: number;
-  status: 'running' | 'completed';
+  progressPct?: number;
+  elapsedMs?: number;
+  etaMs?: number | null;
+  detail?: string;
+  status: 'queued' | 'running' | 'progress' | 'completed' | 'failed';
+}
+
+interface IStreamingSnapshot {
+  isStreaming: boolean;
+  streamingContent: string;
+  streamingMessageId: string | null;
+  activeToolCalls: IToolCall[];
+}
+
+const STREAMING_SNAPSHOT_KEY = 'netguru.chat.streaming_snapshot.v1';
+
+function readStreamingSnapshot(): IStreamingSnapshot {
+  const fallback: IStreamingSnapshot = {
+    isStreaming: false,
+    streamingContent: '',
+    streamingMessageId: null,
+    activeToolCalls: [],
+  };
+
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = window.sessionStorage.getItem(STREAMING_SNAPSHOT_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<IStreamingSnapshot>;
+    if (typeof parsed !== 'object' || parsed === null) return fallback;
+    return {
+      isStreaming: Boolean(parsed.isStreaming),
+      streamingContent:
+        typeof parsed.streamingContent === 'string' ? parsed.streamingContent : '',
+      streamingMessageId:
+        typeof parsed.streamingMessageId === 'string' ? parsed.streamingMessageId : null,
+      activeToolCalls: Array.isArray(parsed.activeToolCalls)
+        ? (parsed.activeToolCalls as IToolCall[])
+        : [],
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStreamingSnapshot(snapshot: IStreamingSnapshot): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(STREAMING_SNAPSHOT_KEY, JSON.stringify(snapshot));
+  } catch {
+    // ignore storage errors
+  }
 }
 
 interface IChatState {
@@ -74,6 +125,15 @@ interface IChatState {
   ) => void;
   handleStreamCancelled: () => void;
   handleToolCallStart: (toolCallId: string, toolName: string, toolInput: string) => void;
+  handleToolCallState: (
+    toolCallId: string,
+    toolName: string,
+    status: IToolCall['status'],
+    progressPct?: number,
+    elapsedMs?: number,
+    etaMs?: number | null,
+    detail?: string,
+  ) => void;
   handleToolCallEnd: (
     toolCallId: string,
     toolName: string,
@@ -86,13 +146,18 @@ interface IChatState {
 }
 
 export const useChatStore = create<IChatState>((set, get) => ({
+  ...(() => {
+    const snapshot = readStreamingSnapshot();
+    return {
+      isStreaming: snapshot.isStreaming,
+      streamingContent: snapshot.streamingContent,
+      streamingMessageId: snapshot.streamingMessageId,
+      activeToolCalls: snapshot.activeToolCalls,
+    };
+  })(),
   conversations: [],
   currentConversationId: null,
   messages: [],
-  isStreaming: false,
-  streamingContent: '',
-  streamingMessageId: null,
-  activeToolCalls: [],
   isConnected: false,
   error: null,
 
@@ -142,6 +207,12 @@ export const useChatStore = create<IChatState>((set, get) => ({
           : {}),
         error: null,
       }));
+      writeStreamingSnapshot({
+        isStreaming: get().isStreaming,
+        streamingContent: get().streamingContent,
+        streamingMessageId: get().streamingMessageId,
+        activeToolCalls: get().activeToolCalls,
+      });
       return true;
     } catch (err) {
       set({ error: getErrorMessage(err) });
@@ -175,6 +246,12 @@ export const useChatStore = create<IChatState>((set, get) => ({
       isStreaming: false,
       activeToolCalls: [],
       error: null,
+    });
+    writeStreamingSnapshot({
+      isStreaming: false,
+      streamingContent: '',
+      streamingMessageId: null,
+      activeToolCalls: [],
     });
   },
 
@@ -220,12 +297,24 @@ export const useChatStore = create<IChatState>((set, get) => ({
       streamingMessageId: messageId,
       activeToolCalls: [],
     });
+    writeStreamingSnapshot({
+      isStreaming: true,
+      streamingContent: '',
+      streamingMessageId: messageId,
+      activeToolCalls: [],
+    });
   },
 
   handleStreamChunk: (content: string) => {
     set((state) => ({
       streamingContent: state.streamingContent + content,
     }));
+    writeStreamingSnapshot({
+      isStreaming: get().isStreaming,
+      streamingContent: get().streamingContent,
+      streamingMessageId: get().streamingMessageId,
+      activeToolCalls: get().activeToolCalls,
+    });
   },
 
   handleStreamEnd: (
@@ -251,10 +340,22 @@ export const useChatStore = create<IChatState>((set, get) => ({
       streamingMessageId: null,
       activeToolCalls: [],
     }));
+    writeStreamingSnapshot({
+      isStreaming: false,
+      streamingContent: '',
+      streamingMessageId: null,
+      activeToolCalls: [],
+    });
   },
 
   handleStreamCancelled: () => {
     set({
+      isStreaming: false,
+      streamingContent: '',
+      streamingMessageId: null,
+      activeToolCalls: [],
+    });
+    writeStreamingSnapshot({
       isStreaming: false,
       streamingContent: '',
       streamingMessageId: null,
@@ -269,11 +370,75 @@ export const useChatStore = create<IChatState>((set, get) => ({
       id: resolvedToolCallId,
       toolName,
       toolInput,
+      progressPct: 0,
+      elapsedMs: 0,
       status: 'running',
     };
     set((state) => ({
       activeToolCalls: [...state.activeToolCalls, newToolCall],
     }));
+    writeStreamingSnapshot({
+      isStreaming: get().isStreaming,
+      streamingContent: get().streamingContent,
+      streamingMessageId: get().streamingMessageId,
+      activeToolCalls: get().activeToolCalls,
+    });
+  },
+
+  handleToolCallState: (
+    toolCallId: string,
+    toolName: string,
+    status: IToolCall['status'],
+    progressPct?: number,
+    elapsedMs?: number,
+    etaMs?: number | null,
+    detail?: string,
+  ) => {
+    set((state) => {
+      let matchedById = false;
+      const updatedById = state.activeToolCalls.map((tc) => {
+        if (!matchedById && tc.id === toolCallId) {
+          matchedById = true;
+          return {
+            ...tc,
+            status,
+            progressPct: progressPct ?? tc.progressPct,
+            elapsedMs: elapsedMs ?? tc.elapsedMs,
+            etaMs: etaMs ?? tc.etaMs,
+            detail: detail ?? tc.detail,
+          };
+        }
+        return tc;
+      });
+
+      if (matchedById || !toolName) {
+        return { activeToolCalls: updatedById };
+      }
+
+      let matchedByName = false;
+      const updatedByName = updatedById.map((tc) => {
+        if (!matchedByName && tc.toolName === toolName) {
+          matchedByName = true;
+          return {
+            ...tc,
+            status,
+            progressPct: progressPct ?? tc.progressPct,
+            elapsedMs: elapsedMs ?? tc.elapsedMs,
+            etaMs: etaMs ?? tc.etaMs,
+            detail: detail ?? tc.detail,
+          };
+        }
+        return tc;
+      });
+
+      return { activeToolCalls: updatedByName };
+    });
+    writeStreamingSnapshot({
+      isStreaming: get().isStreaming,
+      streamingContent: get().streamingContent,
+      streamingMessageId: get().streamingMessageId,
+      activeToolCalls: get().activeToolCalls,
+    });
   },
 
   handleToolCallEnd: (
@@ -285,9 +450,17 @@ export const useChatStore = create<IChatState>((set, get) => ({
     set((state) => {
       let matchedById = false;
       const updatedById = state.activeToolCalls.map((tc) => {
-        if (!matchedById && tc.id === toolCallId && tc.status === 'running') {
+        if (!matchedById && tc.id === toolCallId) {
           matchedById = true;
-          return { ...tc, resultPreview, durationMs, status: 'completed' as const };
+          const finalStatus: IToolCall['status'] =
+            tc.status === 'failed' ? 'failed' : 'completed';
+          return {
+            ...tc,
+            resultPreview,
+            durationMs,
+            status: finalStatus,
+            progressPct: tc.status === 'failed' ? tc.progressPct : 100,
+          };
         }
         return tc;
       });
@@ -298,20 +471,40 @@ export const useChatStore = create<IChatState>((set, get) => ({
 
       let matchedByName = false;
       const updatedByName = updatedById.map((tc) => {
-        if (!matchedByName && tc.toolName === toolName && tc.status === 'running') {
+        if (!matchedByName && tc.toolName === toolName) {
           matchedByName = true;
-          return { ...tc, resultPreview, durationMs, status: 'completed' as const };
+          const finalStatus: IToolCall['status'] =
+            tc.status === 'failed' ? 'failed' : 'completed';
+          return {
+            ...tc,
+            resultPreview,
+            durationMs,
+            status: finalStatus,
+            progressPct: tc.status === 'failed' ? tc.progressPct : 100,
+          };
         }
         return tc;
       });
 
       return { activeToolCalls: updatedByName };
     });
+    writeStreamingSnapshot({
+      isStreaming: get().isStreaming,
+      streamingContent: get().streamingContent,
+      streamingMessageId: get().streamingMessageId,
+      activeToolCalls: get().activeToolCalls,
+    });
   },
 
   handleWsError: (detail: string) => {
     set({
       error: detail,
+      isStreaming: false,
+      streamingContent: '',
+      streamingMessageId: null,
+      activeToolCalls: [],
+    });
+    writeStreamingSnapshot({
       isStreaming: false,
       streamingContent: '',
       streamingMessageId: null,

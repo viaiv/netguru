@@ -12,6 +12,7 @@ Protocol:
     {"type": "stream_start", "message_id": "..."}
     {"type": "stream_chunk", "content": "..."}
     {"type": "stream_end",   "message_id": "...", "tokens_used": int|null}
+    {"type": "tool_call_state", "tool_call_id": "...", "tool_name": "...", "status": "queued|running|progress|completed|failed"}
     {"type": "stream_cancelled", "reason": "..."}
     {"type": "error",        "code": "...", "detail": "..."}
     {"type": "pong"}

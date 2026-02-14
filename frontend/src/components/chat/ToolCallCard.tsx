@@ -22,8 +22,19 @@ interface ToolCallCardProps {
 function ToolCallCard({ toolCall, messageId }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false);
   const isCompleted = toolCall.status === 'completed';
-  const canExpand = isCompleted && (toolCall.toolInput || toolCall.resultPreview);
+  const isFailed = toolCall.status === 'failed';
+  const isInProgress =
+    toolCall.status === 'queued' || toolCall.status === 'running' || toolCall.status === 'progress';
+  const canExpand = (isCompleted || isFailed) && (toolCall.toolInput || toolCall.resultPreview);
   const showDashboardLink = toolCall.toolName === 'analyze_pcap' && isCompleted && messageId;
+  const progressValue = Math.max(0, Math.min(100, toolCall.progressPct ?? 0));
+  const elapsedSeconds = toolCall.elapsedMs ? Math.max(0, Math.round(toolCall.elapsedMs / 1000)) : 0;
+  const etaSeconds = toolCall.etaMs ? Math.max(0, Math.round(toolCall.etaMs / 1000)) : 0;
+  const indicatorClass = isFailed
+    ? 'tool-call-indicator--failed'
+    : isCompleted
+      ? 'tool-call-indicator--done'
+      : 'tool-call-indicator--running';
 
   function handleToggle(): void {
     if (canExpand) {
@@ -37,15 +48,11 @@ function ToolCallCard({ toolCall, messageId }: ToolCallCardProps) {
       onClick={handleToggle}
     >
       <div className="tool-call-header">
-        <span
-          className={`tool-call-indicator ${
-            toolCall.status === 'running' ? 'tool-call-indicator--running' : 'tool-call-indicator--done'
-          }`}
-        />
+        <span className={`tool-call-indicator ${indicatorClass}`} />
         <span className="tool-call-name">
           {TOOL_LABELS[toolCall.toolName] ?? toolCall.toolName}
         </span>
-        {isCompleted && toolCall.durationMs !== undefined && (
+        {(isCompleted || isFailed) && toolCall.durationMs !== undefined && (
           <span className="tool-call-duration">{toolCall.durationMs}ms</span>
         )}
         {canExpand && (
@@ -67,8 +74,33 @@ function ToolCallCard({ toolCall, messageId }: ToolCallCardProps) {
         </a>
       )}
 
-      {!expanded && isCompleted && toolCall.resultPreview && (
+      {isInProgress && (
+        <div className="tool-call-progress-wrap">
+          <div className="tool-call-progress-track">
+            <div
+              className={`tool-call-progress-fill ${toolCall.status === 'queued' ? 'tool-call-progress-fill--queued' : ''}`}
+              style={{ width: `${progressValue}%` }}
+            />
+          </div>
+          <div className="tool-call-progress-meta">
+            <span>
+              {toolCall.status === 'queued'
+                ? 'Na fila'
+                : `Progresso ${progressValue}%`}
+            </span>
+            <span>
+              {elapsedSeconds > 0 ? `${elapsedSeconds}s` : ''}
+              {etaSeconds > 0 ? ` · ETA ${etaSeconds}s` : ''}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {!expanded && (isCompleted || isFailed) && toolCall.resultPreview && (
         <p className="tool-call-preview">{toolCall.resultPreview}</p>
+      )}
+      {!expanded && !toolCall.resultPreview && toolCall.detail && (
+        <p className="tool-call-preview">{toolCall.detail}</p>
       )}
 
       {expanded && (
