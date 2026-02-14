@@ -153,6 +153,44 @@ class FakeDBSession:
 
 
 @pytest_asyncio.fixture
+async def client_with_store() -> AsyncGenerator[tuple[AsyncClient, InMemoryUserStore], None]:
+    """
+    Async HTTP client that also exposes the in-memory user store.
+
+    Useful for tests that need to manipulate user state directly
+    (e.g., clearing trial_ends_at to simulate a paid subscriber).
+    """
+    fake_redis = FakeRedis()
+    store = InMemoryUserStore()
+
+    original_get_password_hash = auth_endpoints.get_password_hash
+    original_verify_password = auth_endpoints.verify_password
+    auth_endpoints.get_password_hash = lambda password: f"hashed::{password}"
+    auth_endpoints.verify_password = (
+        lambda plain_password, hashed_password: hashed_password == f"hashed::{plain_password}"
+    )
+
+    async def override_get_db() -> AsyncGenerator[FakeDBSession, None]:
+        yield FakeDBSession(store)
+
+    async def override_get_redis() -> AsyncGenerator[FakeRedis, None]:
+        yield fake_redis
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_redis] = override_get_redis
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as async_client:
+        yield async_client, store
+
+    app.dependency_overrides.clear()
+    auth_endpoints.get_password_hash = original_get_password_hash
+    auth_endpoints.verify_password = original_verify_password
+
+
+@pytest_asyncio.fixture
 async def client() -> AsyncGenerator[AsyncClient, None]:
     """
     Async HTTP client with dependency overrides.

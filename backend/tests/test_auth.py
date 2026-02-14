@@ -22,7 +22,6 @@ async def _register_user(
             "email": email,
             "password": "StrongPass123",
             "full_name": "Test User",
-            "plan_tier": "solo",
         },
     )
     assert response.status_code == 201, response.text
@@ -95,7 +94,6 @@ async def test_register_duplicate_email_returns_conflict(client: AsyncClient) ->
             "email": "duplicate@example.com",
             "password": "StrongPass123",
             "full_name": "Duplicate User",
-            "plan_tier": "solo",
         },
     )
 
