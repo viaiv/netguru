@@ -7,7 +7,9 @@ from datetime import datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.services.memory_service import MemoryService
+import pytest
+
+from app.services.memory_service import MemoryService, MemoryServiceError
 
 
 def _memory_row(
@@ -294,3 +296,35 @@ def test_vendor_ambiguity_can_be_suppressed_when_vendor_is_unsupported() -> None
 
     assert selected == []
     assert ambiguous_vendors == []
+
+
+def test_raise_if_memory_schema_missing_detects_network_table_error() -> None:
+    """
+    Missing network_memories relation must map to deterministic domain error.
+    """
+    with pytest.raises(MemoryServiceError) as exc_info:
+        MemoryService._raise_if_memory_schema_missing(
+            Exception('UndefinedTableError: relation "network_memories" does not exist')
+        )
+
+    assert exc_info.value.code == "memory_schema_missing"
+    assert "alembic upgrade head" in exc_info.value.detail
+
+
+def test_raise_if_memory_schema_missing_detects_system_table_error() -> None:
+    """
+    Missing system_memories relation must map to deterministic domain error.
+    """
+    with pytest.raises(MemoryServiceError) as exc_info:
+        MemoryService._raise_if_memory_schema_missing(
+            Exception('UndefinedTableError: relation "system_memories" does not exist')
+        )
+
+    assert exc_info.value.code == "memory_schema_missing"
+
+
+def test_raise_if_memory_schema_missing_ignores_other_errors() -> None:
+    """
+    Non-schema errors should pass through unchanged.
+    """
+    MemoryService._raise_if_memory_schema_missing(Exception("connection timeout"))

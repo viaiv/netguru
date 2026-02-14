@@ -44,6 +44,8 @@ def _raise_memory_http_error(exc: MemoryServiceError) -> None:
         status_code = status.HTTP_404_NOT_FOUND
     elif exc.code == "memory_conflict":
         status_code = status.HTTP_409_CONFLICT
+    elif exc.code == "memory_schema_missing":
+        status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     raise HTTPException(status_code=status_code, detail=exc.detail) from exc
 
 

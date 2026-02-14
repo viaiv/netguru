@@ -103,7 +103,7 @@ class MemoryService:
             stmt = stmt.where(NetworkMemory.scope_name == scope_name)
 
         stmt = stmt.order_by(NetworkMemory.updated_at.desc())
-        return (await self._db.execute(stmt)).scalars().all()
+        return (await self._safe_execute(stmt)).scalars().all()
 
     async def get_memory(
         self,
@@ -121,7 +121,7 @@ class MemoryService:
         )
         if not include_inactive:
             stmt = stmt.where(NetworkMemory.is_active.is_(True))
-        return (await self._db.execute(stmt)).scalar_one_or_none()
+        return (await self._safe_execute(stmt)).scalar_one_or_none()
 
     async def create_memory(
         self,
@@ -238,7 +238,7 @@ class MemoryService:
             stmt = stmt.where(SystemMemory.is_active.is_(True))
 
         stmt = stmt.order_by(SystemMemory.updated_at.desc())
-        return (await self._db.execute(stmt)).scalars().all()
+        return (await self._safe_execute(stmt)).scalars().all()
 
     async def get_system_memory(
         self,
@@ -252,7 +252,7 @@ class MemoryService:
         stmt = select(SystemMemory).where(SystemMemory.id == memory_id)
         if not include_inactive:
             stmt = stmt.where(SystemMemory.is_active.is_(True))
-        return (await self._db.execute(stmt)).scalar_one_or_none()
+        return (await self._safe_execute(stmt)).scalar_one_or_none()
 
     async def create_system_memory(
         self,
@@ -380,8 +380,8 @@ class MemoryService:
             .order_by(SystemMemory.updated_at.desc())
         )
 
-        user_rows = (await self._db.execute(user_stmt)).scalars().all()
-        system_rows = (await self._db.execute(system_stmt)).scalars().all()
+        user_rows = (await self._safe_execute(user_stmt)).scalars().all()
+        system_rows = (await self._safe_execute(system_stmt)).scalars().all()
 
         candidates: list[tuple[NetworkMemory | SystemMemory, str]] = [
             (row, "user") for row in user_rows
@@ -663,7 +663,7 @@ class MemoryService:
             NetworkMemory.memory_key == memory_key,
             NetworkMemory.is_active.is_(True),
         )
-        existing = (await self._db.execute(stmt)).scalar_one_or_none()
+        existing = (await self._safe_execute(stmt)).scalar_one_or_none()
         if existing is None:
             return
         if exclude_memory_id is not None and existing.id == exclude_memory_id:
@@ -685,7 +685,7 @@ class MemoryService:
             SystemMemory.memory_key == memory_key,
             SystemMemory.is_active.is_(True),
         )
-        existing = (await self._db.execute(stmt)).scalar_one_or_none()
+        existing = (await self._safe_execute(stmt)).scalar_one_or_none()
         if existing is None:
             return
         if exclude_memory_id is not None and existing.id == exclude_memory_id:
@@ -810,6 +810,34 @@ class MemoryService:
         if ttl_seconds is None:
             return None
         return now + timedelta(seconds=ttl_seconds)
+
+    async def _safe_execute(self, statement: Any):
+        """
+        Execute DB statement translating missing memory tables into actionable domain errors.
+        """
+        try:
+            return await self._db.execute(statement)
+        except Exception as exc:
+            self._raise_if_memory_schema_missing(exc)
+            raise
+
+    @staticmethod
+    def _raise_if_memory_schema_missing(exc: Exception) -> None:
+        """
+        Convert missing memory table errors into a deterministic service error.
+        """
+        detail = str(exc).lower()
+        missing_network = "network_memories" in detail and (
+            "does not exist" in detail or "undefinedtable" in detail
+        )
+        missing_system = "system_memories" in detail and (
+            "does not exist" in detail or "undefinedtable" in detail
+        )
+        if missing_network or missing_system:
+            raise MemoryServiceError(
+                "Schema de memorias indisponivel. Execute `alembic upgrade head`.",
+                code="memory_schema_missing",
+            ) from exc
 
     @staticmethod
     def _normalize_text(value: str | None) -> str:
