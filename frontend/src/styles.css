@@ -4059,3 +4059,127 @@ html:has(.pcap-dashboard) #root {
     padding: 14px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   RAG Admin — tabs, stat cards, status badges, pagination
+   --------------------------------------------------------------------------- */
+
+/* Tabs */
+.admin-tab-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 9px 18px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.admin-tab-btn:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.admin-tab-btn:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.admin-tab-btn:not(:first-child) {
+  border-left: none;
+}
+
+.admin-tab-btn--active {
+  background: var(--accent);
+  color: #17330d;
+  border-color: var(--accent);
+}
+
+.admin-tab-btn:hover:not(.admin-tab-btn--active) {
+  background: rgba(var(--ink-rgb), 0.06);
+}
+
+/* Stat cards grid */
+.admin-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.68);
+  padding: 14px 16px;
+  animation: rise-in 0.3s ease both;
+}
+
+.admin-stat-card__label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.admin-stat-card__value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1.1;
+}
+
+/* Status badges */
+.status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.status-badge--uploaded {
+  background: rgba(var(--signal-rgb, 100, 149, 237), 0.15);
+  color: #2c5fa1;
+}
+
+.status-badge--processing {
+  background: rgba(255, 193, 7, 0.18);
+  color: #7a6200;
+}
+
+.status-badge--completed {
+  background: rgba(var(--accent-rgb), 0.18);
+  color: #2d6b0e;
+}
+
+.status-badge--failed {
+  background: rgba(var(--danger-rgb), 0.15);
+  color: #8b1a1a;
+}
+
+/* Pagination */
+.admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 8px 0;
+}
+
+@media (max-width: 768px) {
+  .admin-cards-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}

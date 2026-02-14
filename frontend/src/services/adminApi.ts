@@ -442,6 +442,104 @@ export async function fetchStripeEvents(params: {
 }
 
 // ---------------------------------------------------------------------------
+// RAG Management
+// ---------------------------------------------------------------------------
+
+export interface IRagStats {
+  total_documents: number;
+  total_chunks: number;
+  global_documents: number;
+  global_chunks: number;
+  local_documents: number;
+  local_chunks: number;
+  by_file_type: { file_type: string; count: number }[];
+  by_status: { status: string; count: number }[];
+}
+
+export interface IRagDocument {
+  id: string;
+  user_id: string | null;
+  user_email: string | null;
+  filename: string;
+  original_filename: string;
+  file_type: string;
+  file_size_bytes: number;
+  status: string;
+  chunk_count: number;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  processed_at: string | null;
+}
+
+export interface IRagUploadResponse {
+  id: string;
+  filename: string;
+  file_type: string;
+  file_size_bytes: number;
+  status: string;
+  created_at: string;
+}
+
+export interface IRagIngestUrlResponse {
+  id: string;
+  original_filename: string;
+  file_type: string;
+  file_size_bytes: number;
+  status: string;
+  source_url: string;
+  created_at: string;
+}
+
+export interface IRagReprocessResponse {
+  id: string;
+  status: string;
+  message: string;
+}
+
+export async function fetchRagStats(): Promise<IRagStats> {
+  const r = await api.get<IRagStats>('/admin/rag/stats');
+  return r.data;
+}
+
+export async function fetchRagDocuments(params: {
+  page?: number;
+  limit?: number;
+  scope?: 'global' | 'local' | 'all';
+  status?: string;
+  file_type?: string;
+  search?: string;
+}): Promise<{ items: IRagDocument[]; pagination: IPaginationMeta }> {
+  const r = await api.get('/admin/rag/documents', { params });
+  return r.data;
+}
+
+export async function uploadRagDocument(file: File): Promise<IRagUploadResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const r = await api.post<IRagUploadResponse>('/admin/rag/documents/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return r.data;
+}
+
+export async function ingestRagUrl(data: {
+  url: string;
+  title?: string;
+}): Promise<IRagIngestUrlResponse> {
+  const r = await api.post<IRagIngestUrlResponse>('/admin/rag/documents/ingest-url', data);
+  return r.data;
+}
+
+export async function reprocessRagDocument(id: string): Promise<IRagReprocessResponse> {
+  const r = await api.post<IRagReprocessResponse>(`/admin/rag/documents/${id}/reprocess`);
+  return r.data;
+}
+
+export async function deleteRagDocument(id: string): Promise<void> {
+  await api.delete(`/admin/rag/documents/${id}`);
+}
+
+// ---------------------------------------------------------------------------
 // Celery Task Events
 // ---------------------------------------------------------------------------
 

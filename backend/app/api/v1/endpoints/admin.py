@@ -1,19 +1,23 @@
 """
-Admin endpoints — dashboard, user management, plans, audit log, system health.
+Admin endpoints — dashboard, user management, plans, audit log, system health, RAG.
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import desc, func, or_, select
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from sqlalchemy import delete, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import require_permissions
 from app.core.rbac import Permission, UserRole, can_assign_role, normalize_role
+from app.models.document import Document, Embedding
 from app.models.plan import Plan
 from app.models.subscription import Subscription
 from app.models.user import User
@@ -40,10 +44,24 @@ from app.schemas.admin import (
     SystemHealthResponse,
     UsageSummary,
 )
+from app.schemas.rag import (
+    FileTypeDistribution,
+    RagDocumentItem,
+    RagDocumentListResponse,
+    RagIngestUrlRequest,
+    RagIngestUrlResponse,
+    RagReprocessResponse,
+    RagStatsResponse,
+    RagUploadResponse,
+    StatusDistribution,
+)
 from app.services.admin_dashboard_service import AdminDashboardService
 from app.services.audit_log_service import AuditLogService
 from app.services.memory_service import MemoryService, MemoryServiceError
+from app.services.url_ingestion_service import UrlIngestionError, UrlIngestionService
 from app.services.usage_tracking_service import UsageTrackingService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -654,3 +672,405 @@ async def list_celery_tasks(
         items=[CeleryTaskEventResponse.model_validate(e) for e in events],
         pagination=PaginationMeta(total=total, page=page, pages=pages, limit=limit),
     )
+
+
+# ---------------------------------------------------------------------------
+# RAG Management
+# ---------------------------------------------------------------------------
+
+PROCESSABLE_EXTENSIONS = {"txt", "conf", "cfg", "log", "md", "pdf"}
+
+
+@router.get("/rag/stats", response_model=RagStatsResponse)
+async def get_rag_stats(
+    _current_user: User = Depends(require_permissions(Permission.ADMIN_RAG_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> RagStatsResponse:
+    """Totais e distribuicoes de documentos e chunks RAG."""
+    # Total documents
+    total_docs = int(
+        (await db.execute(select(func.count()).select_from(Document))).scalar_one()
+    )
+    global_docs = int(
+        (await db.execute(
+            select(func.count()).select_from(Document).where(Document.user_id.is_(None))
+        )).scalar_one()
+    )
+    local_docs = total_docs - global_docs
+
+    # Total chunks
+    total_chunks = int(
+        (await db.execute(select(func.count()).select_from(Embedding))).scalar_one()
+    )
+    global_chunks = int(
+        (await db.execute(
+            select(func.count()).select_from(Embedding).where(Embedding.user_id.is_(None))
+        )).scalar_one()
+    )
+    local_chunks = total_chunks - global_chunks
+
+    # By file_type
+    ft_rows = (await db.execute(
+        select(Document.file_type, func.count())
+        .group_by(Document.file_type)
+        .order_by(func.count().desc())
+    )).all()
+    by_file_type = [FileTypeDistribution(file_type=r[0], count=r[1]) for r in ft_rows]
+
+    # By status
+    st_rows = (await db.execute(
+        select(Document.status, func.count())
+        .group_by(Document.status)
+        .order_by(func.count().desc())
+    )).all()
+    by_status = [StatusDistribution(status=r[0], count=r[1]) for r in st_rows]
+
+    return RagStatsResponse(
+        total_documents=total_docs,
+        total_chunks=total_chunks,
+        global_documents=global_docs,
+        global_chunks=global_chunks,
+        local_documents=local_docs,
+        local_chunks=local_chunks,
+        by_file_type=by_file_type,
+        by_status=by_status,
+    )
+
+
+@router.get("/rag/documents", response_model=RagDocumentListResponse)
+async def list_rag_documents(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    scope: Optional[str] = Query(default=None, pattern="^(global|local|all)$"),
+    status_filter: Optional[str] = Query(default=None, alias="status"),
+    file_type: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None, max_length=255),
+    _current_user: User = Depends(require_permissions(Permission.ADMIN_RAG_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> RagDocumentListResponse:
+    """Lista paginada de documentos RAG com filtros."""
+    filters = []
+    if scope == "global":
+        filters.append(Document.user_id.is_(None))
+    elif scope == "local":
+        filters.append(Document.user_id.isnot(None))
+
+    if status_filter:
+        filters.append(Document.status == status_filter)
+    if file_type:
+        filters.append(Document.file_type == file_type)
+    if search:
+        term = f"%{search}%"
+        filters.append(
+            or_(
+                Document.original_filename.ilike(term),
+                Document.filename.ilike(term),
+            )
+        )
+
+    # Count
+    count_q = select(func.count()).select_from(Document)
+    if filters:
+        count_q = count_q.where(*filters)
+    total = int((await db.execute(count_q)).scalar_one())
+
+    # Chunk count subquery
+    chunk_count_sq = (
+        select(func.count())
+        .where(Embedding.document_id == Document.id)
+        .correlate(Document)
+        .scalar_subquery()
+    )
+
+    # Fetch with optional user email join
+    q = (
+        select(
+            Document,
+            User.email.label("user_email"),
+            chunk_count_sq.label("chunk_count"),
+        )
+        .outerjoin(User, Document.user_id == User.id)
+        .order_by(desc(Document.created_at))
+        .offset((page - 1) * limit)
+        .limit(limit)
+    )
+    if filters:
+        q = q.where(*filters)
+
+    rows = (await db.execute(q)).all()
+
+    items = []
+    for row in rows:
+        doc = row[0]
+        user_email = row[1]
+        chunk_cnt = row[2] or 0
+        items.append(
+            RagDocumentItem(
+                id=doc.id,
+                user_id=doc.user_id,
+                user_email=user_email,
+                filename=doc.filename,
+                original_filename=doc.original_filename,
+                file_type=doc.file_type,
+                file_size_bytes=doc.file_size_bytes,
+                status=doc.status,
+                chunk_count=chunk_cnt,
+                metadata=doc.document_metadata,
+                created_at=doc.created_at,
+                processed_at=doc.processed_at,
+            )
+        )
+
+    pages = (total + limit - 1) // limit if total else 0
+    return RagDocumentListResponse(
+        items=items,
+        pagination=PaginationMeta(total=total, page=page, pages=pages, limit=limit),
+    )
+
+
+@router.post(
+    "/rag/documents/upload",
+    response_model=RagUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_rag_document(
+    file: UploadFile = File(...),
+    request: Request = None,
+    current_user: User = Depends(require_permissions(Permission.ADMIN_RAG_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> RagUploadResponse:
+    """Upload de documento para RAG Global (user_id=None)."""
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filename obrigatorio",
+        )
+
+    ext = Path(file.filename).suffix.lower().lstrip(".")
+    allowed = settings.ALLOWED_FILE_EXTENSIONS.split(",")
+    if ext not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Extensao '{ext}' nao permitida",
+        )
+
+    # Ler conteudo
+    content = await file.read()
+    max_size = settings.MAX_FILE_SIZE_MB * 1024 * 1024
+    if len(content) > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Arquivo excede limite de {settings.MAX_FILE_SIZE_MB} MB",
+        )
+
+    # Salvar no disco
+    doc_uuid = uuid4()
+    global_dir = Path(settings.UPLOAD_DIR) / "global"
+    global_dir.mkdir(parents=True, exist_ok=True)
+    stored_filename = f"{doc_uuid}.{ext}"
+    stored_path = global_dir / stored_filename
+    stored_path.write_bytes(content)
+
+    document = Document(
+        id=doc_uuid,
+        user_id=None,
+        filename=stored_filename,
+        original_filename=file.filename,
+        file_type=ext,
+        file_size_bytes=len(content),
+        storage_path=str(stored_path),
+        mime_type=file.content_type,
+        status="uploaded",
+        document_metadata={"ingestion_method": "upload"},
+    )
+    db.add(document)
+    await db.commit()
+    await db.refresh(document)
+
+    await AuditLogService.record(
+        db,
+        actor_id=current_user.id,
+        action="rag.document_uploaded",
+        target_type="document",
+        target_id=str(document.id),
+        changes={"filename": file.filename, "file_type": ext, "scope": "global"},
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("user-agent") if request else None,
+    )
+    await db.commit()
+
+    # Trigger Celery
+    if ext in PROCESSABLE_EXTENSIONS:
+        from app.workers.tasks.document_tasks import process_document
+
+        process_document.delay(str(document.id))
+
+    return RagUploadResponse(
+        id=document.id,
+        filename=document.original_filename,
+        file_type=document.file_type,
+        file_size_bytes=document.file_size_bytes,
+        status=document.status,
+        created_at=document.created_at,
+    )
+
+
+@router.post(
+    "/rag/documents/ingest-url",
+    response_model=RagIngestUrlResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def ingest_rag_url(
+    body: RagIngestUrlRequest,
+    request: Request,
+    current_user: User = Depends(require_permissions(Permission.ADMIN_RAG_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> RagIngestUrlResponse:
+    """Ingere URL como documento RAG Global."""
+    service = UrlIngestionService(db)
+
+    try:
+        document = await service.ingest(url=body.url, title=body.title)
+    except UrlIngestionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    await db.commit()
+    await db.refresh(document)
+
+    await AuditLogService.record(
+        db,
+        actor_id=current_user.id,
+        action="rag.url_ingested",
+        target_type="document",
+        target_id=str(document.id),
+        changes={"url": body.url, "title": body.title, "scope": "global"},
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+
+    # Trigger Celery
+    ext = Path(document.original_filename).suffix.lower().lstrip(".")
+    if ext in PROCESSABLE_EXTENSIONS:
+        from app.workers.tasks.document_tasks import process_document
+
+        process_document.delay(str(document.id))
+
+    source_url = ""
+    if document.document_metadata and isinstance(document.document_metadata, dict):
+        source_url = document.document_metadata.get("source_url", body.url)
+
+    return RagIngestUrlResponse(
+        id=document.id,
+        original_filename=document.original_filename,
+        file_type=document.file_type,
+        file_size_bytes=document.file_size_bytes,
+        status=document.status,
+        source_url=source_url,
+        created_at=document.created_at,
+    )
+
+
+@router.post("/rag/documents/{document_id}/reprocess", response_model=RagReprocessResponse)
+async def reprocess_rag_document(
+    document_id: UUID,
+    request: Request,
+    current_user: User = Depends(require_permissions(Permission.ADMIN_RAG_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> RagReprocessResponse:
+    """Reprocessa documento RAG: deleta embeddings e redespacha Celery."""
+    stmt = select(Document).where(Document.id == document_id)
+    document = (await db.execute(stmt)).scalar_one_or_none()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Documento nao encontrado",
+        )
+
+    if document.status == "processing":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Documento ja esta sendo processado",
+        )
+
+    # Deletar embeddings existentes
+    await db.execute(
+        delete(Embedding).where(Embedding.document_id == document_id)
+    )
+
+    # Reset status
+    document.status = "uploaded"
+    document.processed_at = None
+    await db.commit()
+
+    await AuditLogService.record(
+        db,
+        actor_id=current_user.id,
+        action="rag.document_reprocessed",
+        target_type="document",
+        target_id=str(document.id),
+        changes={"filename": document.original_filename},
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+
+    # Trigger Celery
+    ext = Path(document.original_filename).suffix.lower().lstrip(".")
+    if ext in PROCESSABLE_EXTENSIONS:
+        from app.workers.tasks.document_tasks import process_document
+
+        process_document.delay(str(document.id))
+
+    return RagReprocessResponse(
+        id=document.id,
+        status="uploaded",
+        message="Documento enviado para reprocessamento",
+    )
+
+
+@router.delete("/rag/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_rag_document(
+    document_id: UUID,
+    request: Request,
+    current_user: User = Depends(require_permissions(Permission.ADMIN_RAG_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Deleta documento RAG (cascade deleta embeddings)."""
+    stmt = select(Document).where(Document.id == document_id)
+    document = (await db.execute(stmt)).scalar_one_or_none()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Documento nao encontrado",
+        )
+
+    storage_path = document.storage_path
+    filename = document.original_filename
+    scope = "global" if document.user_id is None else "local"
+
+    await db.delete(document)
+    await db.commit()
+
+    # Limpar arquivo do disco
+    try:
+        file_path = Path(storage_path)
+        if file_path.is_file():
+            file_path.unlink()
+    except OSError:
+        logger.warning("Falha ao deletar arquivo: %s", storage_path)
+
+    await AuditLogService.record(
+        db,
+        actor_id=current_user.id,
+        action="rag.document_deleted",
+        target_type="document",
+        target_id=str(document_id),
+        changes={"filename": filename, "scope": scope},
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()

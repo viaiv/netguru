@@ -18,6 +18,7 @@ import AdminEmailTemplatesPage from '../../pages/admin/AdminEmailTemplatesPage';
 import AdminStripeEventsPage from '../../pages/admin/AdminStripeEventsPage';
 import AdminSettingsPage from '../../pages/admin/AdminSettingsPage';
 import AdminSystemMemoriesPage from '../../pages/admin/AdminSystemMemoriesPage';
+import AdminRagPage from '../../pages/admin/AdminRagPage';
 
 function AdminLayout() {
   const isMobile = useMobile();
@@ -61,6 +62,7 @@ function AdminLayout() {
             <Route path="stripe-events" element={<AdminStripeEventsPage />} />
             <Route path="settings" element={<AdminSettingsPage />} />
             <Route path="system-memories" element={<AdminSystemMemoriesPage />} />
+            <Route path="rag" element={<AdminRagPage />} />
           </Routes>
         </div>
       </div>
