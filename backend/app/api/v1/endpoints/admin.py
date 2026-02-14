@@ -62,6 +62,11 @@ from app.schemas.rag import (
 from app.services.admin_dashboard_service import AdminDashboardService
 from app.services.audit_log_service import AuditLogService
 from app.services.memory_service import MemoryService, MemoryServiceError
+from app.services.subscription_service import (
+    StripeNotConfiguredError,
+    SubscriptionService,
+    SubscriptionServiceError,
+)
 from app.services.url_ingestion_service import UrlIngestionError, UrlIngestionService
 from app.services.usage_tracking_service import UsageTrackingService
 
@@ -622,6 +627,106 @@ async def delete_plan(
         target_type="plan",
         target_id=str(plan.id),
         changes={"is_active": {"from": True, "to": False}},
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    await db.flush()
+    await db.refresh(plan)
+    return PlanResponse.model_validate(plan)
+
+
+@router.post("/plans/{plan_id}/stripe-sync", response_model=PlanResponse)
+async def stripe_sync_plan(
+    plan_id: UUID,
+    request: Request,
+    current_user: User = Depends(require_permissions(Permission.ADMIN_PLANS_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> PlanResponse:
+    """
+    Create or update Stripe Product + Price for this plan.
+
+    - If stripe_product_id is empty, creates a new Stripe Product.
+    - Always creates a new Stripe Price (Stripe prices are immutable).
+    - Updates the plan with the resulting IDs.
+    """
+    import stripe as stripe_lib
+
+    stmt = select(Plan).where(Plan.id == plan_id)
+    plan = (await db.execute(stmt)).scalar_one_or_none()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    if plan.price_cents <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Plano com preco zero nao pode ser sincronizado com Stripe. Defina um preco primeiro.",
+        )
+
+    try:
+        svc = await SubscriptionService.from_settings(db)
+    except StripeNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.detail,
+        ) from exc
+
+    svc._configure_stripe()
+
+    changes: dict = {}
+
+    try:
+        # 1. Product
+        if plan.stripe_product_id:
+            # Update existing product name
+            stripe_lib.Product.modify(
+                plan.stripe_product_id,
+                name=plan.display_name,
+                metadata={"plan_slug": plan.name, "plan_id": str(plan.id)},
+            )
+        else:
+            product = stripe_lib.Product.create(
+                name=plan.display_name,
+                metadata={"plan_slug": plan.name, "plan_id": str(plan.id)},
+            )
+            changes["stripe_product_id"] = {"from": None, "to": product.id}
+            plan.stripe_product_id = product.id
+
+        # 2. Price (always create new — Stripe prices are immutable)
+        interval = "month" if plan.billing_period == "monthly" else "year"
+        price = stripe_lib.Price.create(
+            product=plan.stripe_product_id,
+            unit_amount=plan.price_cents,
+            currency="brl",
+            recurring={"interval": interval},
+            metadata={"plan_slug": plan.name, "plan_id": str(plan.id)},
+        )
+        old_price_id = plan.stripe_price_id
+        changes["stripe_price_id"] = {"from": old_price_id, "to": price.id}
+        plan.stripe_price_id = price.id
+
+        # Deactivate old price if replaced
+        if old_price_id:
+            try:
+                stripe_lib.Price.modify(old_price_id, active=False)
+            except Exception:
+                pass  # Non-critical
+
+    except stripe_lib.StripeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Erro ao comunicar com Stripe: {exc.user_message or str(exc)}",
+        ) from exc
+
+    plan.updated_at = datetime.utcnow()
+
+    await AuditLogService.record(
+        db,
+        actor_id=current_user.id,
+        action="plan.stripe_synced",
+        target_type="plan",
+        target_id=str(plan.id),
+        changes=changes,
         ip_address=_client_ip(request),
         user_agent=request.headers.get("user-agent"),
     )

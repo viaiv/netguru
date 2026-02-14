@@ -183,6 +183,8 @@ export interface IPlan {
 export interface IPlanCreate {
   name: string;
   display_name: string;
+  stripe_product_id?: string | null;
+  stripe_price_id?: string | null;
   price_cents: number;
   billing_period: string;
   upload_limit_daily: number;
@@ -196,6 +198,8 @@ export interface IPlanCreate {
 
 export interface IPlanUpdate {
   display_name?: string;
+  stripe_product_id?: string | null;
+  stripe_price_id?: string | null;
   price_cents?: number;
   billing_period?: string;
   upload_limit_daily?: number;
@@ -358,6 +362,11 @@ export async function updatePlan(planId: string, data: IPlanUpdate): Promise<IPl
 
 export async function deletePlan(planId: string): Promise<IPlan> {
   const r = await api.delete<IPlan>(`/admin/plans/${planId}`);
+  return r.data;
+}
+
+export async function stripeSyncPlan(planId: string): Promise<IPlan> {
+  const r = await api.post<IPlan>(`/admin/plans/${planId}/stripe-sync`);
   return r.data;
 }
 
