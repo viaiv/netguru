@@ -195,7 +195,7 @@ class ToolGuardrailService:
                     "user_plan": self._plan_tier,
                 },
                 next_step=(
-                    f"Responda com 'confirmo executar {tool_name}' e reenvie a solicitacao."
+                    f"Para executar '{tool_name}', confirme digitando 'confirmo' na proxima mensagem."
                 ),
             )
 

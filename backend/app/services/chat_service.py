@@ -439,11 +439,12 @@ class ChatService:
                         result_preview = str(event.get("result_preview", ""))
                         duration_ms = int(event.get("duration_ms", 0) or 0)
                         full_result = event.get("full_result")
-                        status = (
-                            "failed"
-                            if self._is_tool_result_failure(result_preview, full_result)
-                            else "completed"
-                        )
+                        if "BLOCKED_BY_GUARDRAIL" in result_preview and "confirmation_required" in result_preview:
+                            status = "awaiting_confirmation"
+                        elif self._is_tool_result_failure(result_preview, full_result):
+                            status = "failed"
+                        else:
+                            status = "completed"
                         tc = self._find_tool_call_log(
                             tool_calls_log=tool_calls_log,
                             tool_call_id=tool_call_id,
@@ -475,6 +476,10 @@ class ChatService:
                         }
                         if status == "completed":
                             state_event["progress_pct"] = 100
+                        elif status == "awaiting_confirmation":
+                            state_event["detail"] = (
+                                "Essa ação requer sua confirmação para prosseguir."
+                            )
                         else:
                             state_event["detail"] = (
                                 "Tool reportou erro/timeout. Revise parâmetros e tente novamente."

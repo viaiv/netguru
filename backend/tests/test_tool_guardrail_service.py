@@ -192,7 +192,7 @@ async def test_guardrail_requires_explicit_confirmation_for_critical_tools(
 
     assert result.startswith("BLOCKED_BY_GUARDRAIL:")
     assert "confirmation_required" in result
-    assert "confirmo executar pre_change_review" in result
+    assert "confirme digitando" in result
     assert calls["calls"] == 0
 
 

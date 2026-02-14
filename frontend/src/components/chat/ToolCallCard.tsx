@@ -24,6 +24,7 @@ function ToolCallCard({ toolCall, messageId }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false);
   const isCompleted = toolCall.status === 'completed';
   const isFailed = toolCall.status === 'failed';
+  const isAwaitingConfirmation = toolCall.status === 'awaiting_confirmation';
   const isInProgress =
     toolCall.status === 'queued' || toolCall.status === 'running' || toolCall.status === 'progress';
   const canExpand = (isCompleted || isFailed) && (toolCall.toolInput || toolCall.resultPreview);
@@ -31,11 +32,13 @@ function ToolCallCard({ toolCall, messageId }: ToolCallCardProps) {
   const progressValue = Math.max(0, Math.min(100, toolCall.progressPct ?? 0));
   const elapsedSeconds = toolCall.elapsedMs ? Math.max(0, Math.round(toolCall.elapsedMs / 1000)) : 0;
   const etaSeconds = toolCall.etaMs ? Math.max(0, Math.round(toolCall.etaMs / 1000)) : 0;
-  const indicatorClass = isFailed
-    ? 'tool-call-indicator--failed'
-    : isCompleted
-      ? 'tool-call-indicator--done'
-      : 'tool-call-indicator--running';
+  const indicatorClass = isAwaitingConfirmation
+    ? 'tool-call-indicator--awaiting'
+    : isFailed
+      ? 'tool-call-indicator--failed'
+      : isCompleted
+        ? 'tool-call-indicator--done'
+        : 'tool-call-indicator--running';
 
   function handleToggle(): void {
     if (canExpand) {
@@ -97,10 +100,13 @@ function ToolCallCard({ toolCall, messageId }: ToolCallCardProps) {
         </div>
       )}
 
-      {!expanded && (isCompleted || isFailed) && toolCall.resultPreview && (
+      {isAwaitingConfirmation && toolCall.detail && (
+        <p className="tool-call-preview">{toolCall.detail}</p>
+      )}
+      {!isAwaitingConfirmation && !expanded && (isCompleted || isFailed) && toolCall.resultPreview && (
         <p className="tool-call-preview">{toolCall.resultPreview}</p>
       )}
-      {!expanded && !toolCall.resultPreview && toolCall.detail && (
+      {!isAwaitingConfirmation && !expanded && !toolCall.resultPreview && toolCall.detail && (
         <p className="tool-call-preview">{toolCall.detail}</p>
       )}
 

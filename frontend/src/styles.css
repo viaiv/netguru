@@ -1522,6 +1522,11 @@ textarea:focus {
   background: var(--danger);
 }
 
+.tool-call-indicator--awaiting {
+  background: #f59e0b;
+  animation: pulse-signal 1.8s infinite;
+}
+
 .tool-call-name {
   font-size: 0.82rem;
   font-weight: 700;

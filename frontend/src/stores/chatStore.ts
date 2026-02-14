@@ -33,7 +33,7 @@ export interface IToolCall {
   elapsedMs?: number;
   etaMs?: number | null;
   detail?: string;
-  status: 'queued' | 'running' | 'progress' | 'completed' | 'failed';
+  status: 'queued' | 'running' | 'progress' | 'completed' | 'failed' | 'awaiting_confirmation';
 }
 
 interface IStreamingSnapshot {
@@ -458,13 +458,15 @@ export const useChatStore = create<IChatState>((set, get) => ({
         if (!matchedById && tc.id === toolCallId) {
           matchedById = true;
           const finalStatus: IToolCall['status'] =
-            tc.status === 'failed' ? 'failed' : 'completed';
+            tc.status === 'failed' ? 'failed'
+            : tc.status === 'awaiting_confirmation' ? 'awaiting_confirmation'
+            : 'completed';
           return {
             ...tc,
             resultPreview,
             durationMs,
             status: finalStatus,
-            progressPct: tc.status === 'failed' ? tc.progressPct : 100,
+            progressPct: tc.status === 'failed' || tc.status === 'awaiting_confirmation' ? tc.progressPct : 100,
           };
         }
         return tc;
@@ -479,13 +481,15 @@ export const useChatStore = create<IChatState>((set, get) => ({
         if (!matchedByName && tc.toolName === toolName) {
           matchedByName = true;
           const finalStatus: IToolCall['status'] =
-            tc.status === 'failed' ? 'failed' : 'completed';
+            tc.status === 'failed' ? 'failed'
+            : tc.status === 'awaiting_confirmation' ? 'awaiting_confirmation'
+            : 'completed';
           return {
             ...tc,
             resultPreview,
             durationMs,
             status: finalStatus,
-            progressPct: tc.status === 'failed' ? tc.progressPct : 100,
+            progressPct: tc.status === 'failed' || tc.status === 'awaiting_confirmation' ? tc.progressPct : 100,
           };
         }
         return tc;
