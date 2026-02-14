@@ -179,6 +179,29 @@ def _build_graph(chat_model, tools: list[BaseTool] | None = None) -> StateGraph:
     return graph
 
 
+PLAN_TOOLS_MAP: dict[str, list[str]] = {
+    "free": ["search_rag_global", "parse_config", "validate_config", "parse_show_commands"],
+    "solo": ["search_rag_global", "parse_config", "validate_config", "parse_show_commands", "analyze_pcap", "diff_config_risk", "pre_change_review"],
+    "team": ["search_rag_global", "search_rag_local", "parse_config", "validate_config", "parse_show_commands", "analyze_pcap", "generate_topology", "diff_config_risk", "pre_change_review"],
+    "enterprise": ["search_rag_global", "search_rag_local", "parse_config", "validate_config", "parse_show_commands", "analyze_pcap", "generate_topology", "diff_config_risk", "pre_change_review"],
+}
+
+
+def _build_system_prompt(plan_tier: str | None = None) -> str:
+    """Build the system prompt, optionally including plan-aware tool restrictions."""
+    prompt = NETWORK_ENGINEER_SYSTEM_PROMPT
+    if plan_tier:
+        allowed_tools = PLAN_TOOLS_MAP.get(plan_tier, PLAN_TOOLS_MAP.get("free", []))
+        tools_list = ", ".join(allowed_tools)
+        prompt += (
+            f"\n\nPlano do usuario: {plan_tier}\n"
+            f"Tools disponiveis para este plano: {tools_list}\n"
+            f"NAO tente usar tools fora da lista acima — o usuario precisa fazer "
+            f"upgrade de plano para acessar recursos adicionais."
+        )
+    return prompt
+
+
 class NetworkEngineerAgent:
     """
     LangGraph-based network engineering agent com suporte a tools.
@@ -188,6 +211,7 @@ class NetworkEngineerAgent:
         api_key: Plaintext API key.
         model: Optional model name override.
         tools: Optional list of LangChain tools para o agent usar.
+        plan_tier: User's current plan tier for system prompt context.
     """
 
     def __init__(
@@ -196,9 +220,11 @@ class NetworkEngineerAgent:
         api_key: str,
         model: str | None = None,
         tools: list[BaseTool] | None = None,
+        plan_tier: str | None = None,
     ) -> None:
         self._chat_model = _create_chat_model(provider_name, api_key, model)
         self._tools = tools
+        self._system_prompt = _build_system_prompt(plan_tier)
         graph = _build_graph(self._chat_model, tools)
         self._compiled = graph.compile()
         self._recursion_limit = settings.AGENT_MAX_ITERATIONS * 2 + 1
@@ -220,7 +246,7 @@ class NetworkEngineerAgent:
             - {"type": "tool_call_start", "tool_call_id": "...", "tool_name": "...", "tool_input": "..."}
             - {"type": "tool_call_end", "tool_call_id": "...", "tool_name": "...", "result_preview": "...", "duration_ms": ...}
         """
-        lc_messages = [SystemMessage(content=NETWORK_ENGINEER_SYSTEM_PROMPT)]
+        lc_messages = [SystemMessage(content=self._system_prompt)]
         for msg in messages:
             if msg["role"] == "user":
                 lc_messages.append(HumanMessage(content=msg["content"]))

@@ -18,6 +18,14 @@ function formatLimit(value: number, suffix = ''): string {
   return `${value.toLocaleString('pt-BR')}${suffix}`;
 }
 
+const FEATURE_LABELS: Record<string, string> = {
+  rag_global: 'RAG Global',
+  rag_local: 'RAG Local',
+  pcap_analysis: 'Analise PCAP',
+  topology_generation: 'Topologia',
+  custom_tools: 'Custom tools',
+};
+
 function PricingPage() {
   const [plans, setPlans] = useState<IPublicPlan[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +88,7 @@ function PricingPage() {
             className="kv-grid"
             style={{
               display: 'grid',
-              gridTemplateColumns: `repeat(${Math.min(plans.length, 3)}, 1fr)`,
+              gridTemplateColumns: `repeat(${Math.min(plans.length, 4)}, 1fr)`,
               gap: '1.5rem',
               marginBottom: '2rem',
             }}
@@ -145,11 +153,14 @@ function PricingPage() {
 
                   {plan.features && Object.keys(plan.features).length > 0 && (
                     <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 1rem', fontSize: '0.85rem', opacity: 0.8 }}>
-                      {Object.entries(plan.features).map(([key, value]) => (
-                        <li key={key} style={{ marginBottom: '0.25rem' }}>
-                          {value === true ? key : `${key}: ${String(value)}`}
-                        </li>
-                      ))}
+                      {Object.entries(plan.features).map(([key, value]) => {
+                        const label = FEATURE_LABELS[key] || key;
+                        return (
+                          <li key={key} style={{ marginBottom: '0.25rem' }}>
+                            {value === true ? `✓ ${label}` : value === false ? `— ${label}` : `${label}: ${String(value)}`}
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
 
@@ -161,6 +172,15 @@ function PricingPage() {
                     >
                       Falar com vendas
                     </a>
+                  ) : plan.name === 'free' ? (
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      onClick={() => navigate(isAuthenticated ? '/chat' : '/register')}
+                      style={{ width: '100%' }}
+                    >
+                      {isAuthenticated ? 'Ir para o chat' : 'Comecar gratis'}
+                    </button>
                   ) : !plan.is_purchasable ? (
                     <button
                       type="button"
@@ -181,9 +201,7 @@ function PricingPage() {
                     >
                       {checkoutLoading === plan.id
                         ? 'Redirecionando...'
-                        : plan.price_cents === 0
-                          ? 'Comecar gratis'
-                          : 'Assinar'}
+                        : 'Assinar'}
                     </button>
                   )}
                 </article>
@@ -242,6 +260,36 @@ function PricingPage() {
                           ? 'Gratis'
                           : formatPrice(p.price_cents)}
                     </td>
+                  ))}
+                </tr>
+                <tr>
+                  <td>RAG Global</td>
+                  {plans.map((p) => (
+                    <td key={p.id}>{p.features?.rag_global ? '✓' : '—'}</td>
+                  ))}
+                </tr>
+                <tr>
+                  <td>RAG Local</td>
+                  {plans.map((p) => (
+                    <td key={p.id}>{p.features?.rag_local ? '✓' : '—'}</td>
+                  ))}
+                </tr>
+                <tr>
+                  <td>Analise PCAP</td>
+                  {plans.map((p) => (
+                    <td key={p.id}>{p.features?.pcap_analysis ? '✓' : '—'}</td>
+                  ))}
+                </tr>
+                <tr>
+                  <td>Topologia</td>
+                  {plans.map((p) => (
+                    <td key={p.id}>{p.features?.topology_generation ? '✓' : '—'}</td>
+                  ))}
+                </tr>
+                <tr>
+                  <td>Custom tools</td>
+                  {plans.map((p) => (
+                    <td key={p.id}>{p.features?.custom_tools ? '✓' : '—'}</td>
                   ))}
                 </tr>
               </tbody>

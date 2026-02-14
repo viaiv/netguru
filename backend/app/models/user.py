@@ -34,10 +34,10 @@ class User(Base):
     
     # Plan tier for RBAC
     plan_tier = Column(
-        String(20), 
-        default="solo",
+        String(20),
+        default="free",
         nullable=False,
-        comment="solo|team|enterprise"
+        comment="free|solo|team|enterprise"
     )
 
     # User authorization role (system-level RBAC)

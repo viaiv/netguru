@@ -18,7 +18,7 @@ from app.services.system_settings_service import SystemSettingsService
 GUARDRAIL_SETTINGS_KEY = "agent_tool_guardrails_policy"
 
 DEFAULT_GUARDRAIL_POLICY: dict[str, Any] = {
-    "version": 1,
+    "version": 2,
     "confirmation_phrases": [
         "confirmo",
         "confirmado",
@@ -29,6 +29,30 @@ DEFAULT_GUARDRAIL_POLICY: dict[str, Any] = {
         "approved",
     ],
     "tools": {
+        "search_rag_global": {
+            "allowed_plans": ["free", "solo", "team", "enterprise"],
+        },
+        "search_rag_local": {
+            "allowed_plans": ["team", "enterprise"],
+        },
+        "parse_config": {
+            "allowed_plans": ["free", "solo", "team", "enterprise"],
+        },
+        "validate_config": {
+            "allowed_plans": ["free", "solo", "team", "enterprise"],
+        },
+        "parse_show_commands": {
+            "allowed_plans": ["free", "solo", "team", "enterprise"],
+        },
+        "analyze_pcap": {
+            "sensitive": True,
+            "require_confirmation": True,
+            "allowed_roles": ["owner", "admin", "member"],
+            "allowed_plans": ["solo", "team", "enterprise"],
+        },
+        "generate_topology": {
+            "allowed_plans": ["team", "enterprise"],
+        },
         "pre_change_review": {
             "sensitive": True,
             "require_confirmation": True,
@@ -40,12 +64,6 @@ DEFAULT_GUARDRAIL_POLICY: dict[str, Any] = {
             "require_confirmation": False,
             "allowed_roles": ["owner", "admin", "member"],
             "allowed_plans": ["solo", "team", "enterprise"],
-        },
-        "analyze_pcap": {
-            "sensitive": True,
-            "require_confirmation": True,
-            "allowed_roles": ["owner", "admin", "member"],
-            "allowed_plans": ["team", "enterprise"],
         },
     },
 }
@@ -158,7 +176,9 @@ class ToolGuardrailService:
                     "user_role": self._user_role,
                 },
                 next_step=(
-                    "Solicite upgrade de plano para liberar esta capacidade sensivel."
+                    f"A ferramenta '{tool_name}' nao esta disponivel no plano "
+                    f"{self._plan_tier}. Faca upgrade em /pricing para acessar "
+                    f"este recurso."
                 ),
             )
 

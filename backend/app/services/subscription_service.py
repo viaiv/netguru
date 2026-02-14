@@ -360,7 +360,7 @@ class SubscriptionService:
     async def _handle_subscription_deleted(
         self, db: AsyncSession, data: dict[str, Any],
     ) -> None:
-        """customer.subscription.deleted — cancel and revert to solo."""
+        """customer.subscription.deleted — cancel and revert to free."""
         sub = await self._find_subscription_by_stripe_id(db, data["id"])
         if not sub:
             return
@@ -368,12 +368,12 @@ class SubscriptionService:
         sub.status = "canceled"
         sub.canceled_at = datetime.utcnow()
 
-        # Revert user to solo tier
+        # Revert user to free tier
         stmt = select(User).where(User.id == sub.user_id)
         result = await db.execute(stmt)
         user = result.scalar_one_or_none()
         if user:
-            user.plan_tier = "solo"
+            user.plan_tier = "free"
             user.updated_at = datetime.utcnow()
 
         await db.flush()

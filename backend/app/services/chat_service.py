@@ -319,6 +319,7 @@ class ChatService:
                     api_key=str(llm_attempt.get("api_key", "")),
                     model=attempt_model if isinstance(attempt_model, str) else None,
                     tools=tools,
+                    plan_tier=getattr(user, "plan_tier", None),
                 )
             except Exception as exc:
                 attempt_duration_ms = int((time.monotonic() - attempt_started_at) * 1000)
