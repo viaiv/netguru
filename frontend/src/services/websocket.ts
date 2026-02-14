@@ -19,6 +19,7 @@ export interface IWebSocketEvent {
   message_id?: string;
   content?: string;
   tokens_used?: number | null;
+  metadata?: Record<string, unknown> | null;
   code?: string;
   detail?: string;
   tool_call_id?: string;
@@ -28,6 +29,12 @@ export interface IWebSocketEvent {
   duration_ms?: number;
   title?: string;
   reason?: string;
+}
+
+export interface IOutgoingAttachmentRef {
+  document_id: string;
+  filename?: string;
+  file_type?: string;
 }
 
 type TEventHandler = (event: IWebSocketEvent) => void;
@@ -102,9 +109,13 @@ export class ChatWebSocket {
     };
   }
 
-  sendMessage(content: string): void {
+  sendMessage(content: string, attachments?: IOutgoingAttachmentRef[]): void {
     if (!this.isConnected) return;
-    this.ws!.send(JSON.stringify({ type: 'message', content }));
+    const payload: Record<string, unknown> = { type: 'message', content };
+    if (attachments && attachments.length > 0) {
+      payload.attachments = attachments;
+    }
+    this.ws!.send(JSON.stringify(payload));
   }
 
   sendCancel(): void {

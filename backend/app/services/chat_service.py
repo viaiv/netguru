@@ -15,6 +15,11 @@ from app.core.config import settings
 from app.core.security import decrypt_api_key
 from app.models.conversation import Conversation, Message
 from app.models.user import User
+from app.services.attachment_context_service import (
+    AttachmentContextResolution,
+    AttachmentContextService,
+    ResolvedAttachment,
+)
 from app.services.llm_client import LLMProviderError
 from app.services.playbook_service import PlaybookResponse, PlaybookService
 from app.services.usage_tracking_service import UsageTrackingService
@@ -48,6 +53,7 @@ class ChatService:
         user: User,
         conversation_id: UUID,
         content: str,
+        attachment_document_ids: list[UUID] | None = None,
     ) -> AsyncGenerator[dict, None]:
         """
         Process a user message end-to-end with streaming.
@@ -79,16 +85,25 @@ class ChatService:
                 code="llm_not_configured",
             )
 
-        # 4. Save user message (flush to get ID, no commit yet)
+        # 4. Resolve attachment context for this turn (best-effort).
+        attachment_resolution = await self._resolve_attachment_context(
+            user_id=user.id,
+            conversation_id=conversation_id,
+            content=content,
+            attachment_document_ids=attachment_document_ids,
+        )
+
+        # 5. Save user message (flush to get ID, no commit yet)
         user_msg = Message(
             conversation_id=conversation_id,
             role="user",
             content=content,
+            message_metadata=attachment_resolution.user_message_metadata,
         )
         self._db.add(user_msg)
         await self._db.flush()
 
-        # 4b. Auto-generate title from first user message
+        # 5b. Auto-generate title from first user message
         title_event = None
         if conversation.title == "Nova Conversa":
             new_title = self._generate_title(content)
@@ -96,23 +111,61 @@ class ChatService:
             await self._db.flush()
             title_event = {"type": "title_updated", "title": new_title}
 
-        playbook_response = await self._try_handle_playbook(conversation_id, content)
-        if playbook_response is not None:
+        attachment_metadata: dict | None = None
+        if attachment_resolution.resolved_attachment is not None:
+            attachment_metadata = {
+                "attachment_context": {
+                    "status": "resolved",
+                    "resolved_attachment": self._serialize_resolved_attachment(
+                        attachment_resolution.resolved_attachment
+                    ),
+                }
+            }
+        elif attachment_resolution.ambiguity_candidates:
+            attachment_metadata = {
+                "attachment_context": {
+                    "status": "ambiguous",
+                    "candidates": [
+                        self._serialize_resolved_attachment(candidate)
+                        for candidate in attachment_resolution.ambiguity_candidates
+                    ],
+                }
+            }
+
+        if attachment_resolution.ambiguity_prompt:
             async for event in self._emit_direct_response(
                 conversation=conversation,
                 conversation_id=conversation_id,
                 user=user,
-                content=playbook_response.content,
-                metadata={"playbook": playbook_response.metadata},
+                content=attachment_resolution.ambiguity_prompt,
+                metadata=attachment_metadata,
                 title_event=title_event,
             ):
                 yield event
             return
 
-        # 5. Load conversation history
-        history = await self._load_history(conversation_id)
+        playbook_response = await self._try_handle_playbook(conversation_id, content)
+        if playbook_response is not None:
+            playbook_metadata = {"playbook": playbook_response.metadata}
+            if attachment_metadata:
+                playbook_metadata.update(attachment_metadata)
+            async for event in self._emit_direct_response(
+                conversation=conversation,
+                conversation_id=conversation_id,
+                user=user,
+                content=playbook_response.content,
+                metadata=playbook_metadata,
+                title_event=title_event,
+            ):
+                yield event
+            return
 
-        # 6. Build agent with tools
+        # 6. Load conversation history
+        history = await self._load_history(conversation_id)
+        if history and history[-1]["role"] == "user":
+            history[-1]["content"] = attachment_resolution.content_for_agent
+
+        # 7. Build agent with tools
         try:
             api_key = decrypt_api_key(user.encrypted_api_key)
             tools = get_agent_tools(db=self._db, user_id=user.id)
@@ -129,7 +182,7 @@ class ChatService:
                 code="llm_init_error",
             )
 
-        # 7. Stream response
+        # 8. Stream response
         assistant_msg = Message(
             conversation_id=conversation_id,
             role="assistant",
@@ -216,9 +269,14 @@ class ChatService:
             }
             return
 
-        # 8. Persist assistant message
+        # 9. Persist assistant message
         assistant_msg.content = accumulated
-        assistant_msg.message_metadata = {"tool_calls": tool_calls_log} if tool_calls_log else None
+        assistant_metadata: dict = {}
+        if tool_calls_log:
+            assistant_metadata["tool_calls"] = tool_calls_log
+        if attachment_metadata:
+            assistant_metadata.update(attachment_metadata)
+        assistant_msg.message_metadata = assistant_metadata or None
         conversation.updated_at = datetime.now(UTC)
 
         try:
@@ -235,18 +293,21 @@ class ChatService:
             }
             return
 
-        # 9. Track usage metrics
+        # 10. Track usage metrics
         try:
             await UsageTrackingService.increment_messages(self._db, user.id)
             await self._db.commit()
         except Exception:
             pass  # Non-critical — don't fail the response
 
-        yield {
+        stream_end_event = {
             "type": "stream_end",
             "message_id": str(assistant_msg.id),
             "tokens_used": None,
         }
+        if assistant_msg.message_metadata is not None:
+            stream_end_event["metadata"] = assistant_msg.message_metadata
+        yield stream_end_event
 
     async def _try_handle_playbook(
         self,
@@ -314,10 +375,46 @@ class ChatService:
         except Exception:
             pass
 
-        yield {
+        stream_end_event = {
             "type": "stream_end",
             "message_id": str(assistant_msg.id),
             "tokens_used": None,
+        }
+        if metadata is not None:
+            stream_end_event["metadata"] = metadata
+        yield stream_end_event
+
+    async def _resolve_attachment_context(
+        self,
+        *,
+        user_id: UUID,
+        conversation_id: UUID,
+        content: str,
+        attachment_document_ids: list[UUID] | None,
+    ) -> AttachmentContextResolution:
+        """
+        Resolve attachment references for current turn.
+
+        Never raises: if resolver fails, falls back to original content.
+        """
+        try:
+            resolver = AttachmentContextService(self._db)
+            return await resolver.resolve_context(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                content=content,
+                explicit_document_ids=attachment_document_ids,
+            )
+        except Exception:
+            return AttachmentContextResolution(content_for_agent=content)
+
+    @staticmethod
+    def _serialize_resolved_attachment(attachment: ResolvedAttachment) -> dict:
+        return {
+            "document_id": str(attachment.document_id),
+            "filename": attachment.filename,
+            "file_type": attachment.file_type,
+            "source": attachment.source,
         }
 
     async def _get_owned_conversation(

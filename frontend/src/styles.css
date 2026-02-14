@@ -1077,6 +1077,13 @@ select:focus {
   word-break: break-word;
 }
 
+.message-context-file {
+  margin: 0 0 8px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: rgba(var(--ink-rgb), 0.7);
+}
+
 .typing-cursor {
   display: inline-block;
   width: 2px;

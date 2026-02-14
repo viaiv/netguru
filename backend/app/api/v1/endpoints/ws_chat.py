@@ -4,6 +4,7 @@ WebSocket endpoint for real-time chat streaming.
 Protocol:
   Client → Server:
     {"type": "message", "content": "..."} — send chat message
+    {"type": "message", "content": "...", "attachments": [{"document_id": "..."}]} — message with uploaded attachments
     {"type": "cancel"}                    — cancel current processing
     {"type": "ping"}                      — keep-alive
 
@@ -77,12 +78,14 @@ async def _stream_events(
     user: User,
     conversation_id: UUID,
     content: str,
+    attachment_document_ids: list[UUID] | None = None,
 ) -> None:
     """Consome o generator do ChatService e envia eventos pelo WebSocket."""
     async for event in service.process_user_message(
         user=user,
         conversation_id=conversation_id,
         content=content,
+        attachment_document_ids=attachment_document_ids,
     ):
         await websocket.send_json(event)
 
@@ -154,11 +157,41 @@ async def websocket_chat(
                         })
                         continue
 
+                    attachment_document_ids: list[UUID] = []
+                    raw_attachments = data.get("attachments")
+                    if isinstance(raw_attachments, list):
+                        invalid_attachment_id = False
+                        for item in raw_attachments:
+                            if not isinstance(item, dict):
+                                continue
+                            raw_doc_id = item.get("document_id")
+                            if not raw_doc_id:
+                                continue
+                            try:
+                                attachment_document_ids.append(UUID(str(raw_doc_id)))
+                            except (TypeError, ValueError):
+                                invalid_attachment_id = True
+                                break
+                        if invalid_attachment_id:
+                            await websocket.send_json({
+                                "type": "error",
+                                "code": "invalid_attachment_id",
+                                "detail": "Um ou mais document_id de anexo sao invalidos.",
+                            })
+                            continue
+
                     service = ChatService(db)
 
                     # Roda processamento e escuta cancel concorrentemente
                     stream_task = asyncio.create_task(
-                        _stream_events(service, websocket, user, conversation_id, content)
+                        _stream_events(
+                            service,
+                            websocket,
+                            user,
+                            conversation_id,
+                            content,
+                            attachment_document_ids or None,
+                        )
                     )
                     cancel_task = asyncio.create_task(
                         _wait_for_cancel(websocket)

@@ -67,7 +67,11 @@ interface IChatState {
   addUserMessage: (content: string) => void;
   handleStreamStart: (messageId: string) => void;
   handleStreamChunk: (content: string) => void;
-  handleStreamEnd: (messageId: string, tokensUsed: number | null) => void;
+  handleStreamEnd: (
+    messageId: string,
+    tokensUsed: number | null,
+    metadata?: Record<string, unknown> | null,
+  ) => void;
   handleStreamCancelled: () => void;
   handleToolCallStart: (toolCallId: string, toolName: string, toolInput: string) => void;
   handleToolCallEnd: (
@@ -224,7 +228,11 @@ export const useChatStore = create<IChatState>((set, get) => ({
     }));
   },
 
-  handleStreamEnd: (messageId: string, tokensUsed: number | null) => {
+  handleStreamEnd: (
+    messageId: string,
+    tokensUsed: number | null,
+    metadata?: Record<string, unknown> | null,
+  ) => {
     const finalContent = get().streamingContent;
     const assistantMsg: IMessage = {
       id: messageId,
@@ -232,7 +240,7 @@ export const useChatStore = create<IChatState>((set, get) => ({
       role: 'assistant',
       content: finalContent,
       tokens_used: tokensUsed,
-      metadata: null,
+      metadata: metadata ?? null,
       created_at: new Date().toISOString(),
     };
 

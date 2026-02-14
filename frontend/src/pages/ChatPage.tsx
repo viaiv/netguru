@@ -74,7 +74,7 @@ function ChatPage() {
           break;
         case 'stream_end':
           if (event.message_id) {
-            handleStreamEnd(event.message_id, event.tokens_used ?? null);
+            handleStreamEnd(event.message_id, event.tokens_used ?? null, event.metadata ?? null);
           } else {
             handleStreamCancelled();
           }
@@ -209,11 +209,17 @@ function ChatPage() {
           setUploadProgress(progress.percentage);
         });
 
-        const fileLabel = `[Arquivo anexado: ${result.filename} (${result.file_type}, ${result.id})]`;
+        const fileLabel = `[Arquivo anexado: ${result.filename} (${result.file_type})]`;
         const fullMessage = text ? `${fileLabel}\n${text}` : fileLabel;
 
         addUserMessage(fullMessage);
-        sendMessage(fullMessage);
+        sendMessage(fullMessage, [
+          {
+            document_id: result.id,
+            filename: result.filename,
+            file_type: result.file_type,
+          },
+        ]);
 
         // Reset file + input
         setAttachedFile(null);
@@ -324,6 +330,14 @@ function ChatPage() {
       result_preview?: string;
       duration_ms?: number;
     }> | undefined;
+    const resolvedAttachment = (
+      (msg.metadata as Record<string, unknown>)?.attachment_context as Record<string, unknown> | undefined
+    )?.resolved_attachment as
+      | {
+          filename?: string;
+          file_type?: string;
+        }
+      | undefined;
     const hasPcapTool = metaToolCalls?.some((tc) => tc.tool === 'analyze_pcap');
 
     return (
@@ -347,7 +361,15 @@ function ChatPage() {
           {isUser ? (
             <div className="message-content">{msg.content}</div>
           ) : (
-            <MarkdownContent content={msg.content} />
+            <>
+              {resolvedAttachment?.filename && (
+                <p className="message-context-file">
+                  Arquivo usado: {resolvedAttachment.filename}
+                  {resolvedAttachment.file_type ? ` (${resolvedAttachment.file_type})` : ''}
+                </p>
+              )}
+              <MarkdownContent content={msg.content} />
+            </>
           )}
         </div>
       </div>

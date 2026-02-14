@@ -6,7 +6,11 @@
  * Cleanup no unmount e troca de conversa.
  */
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ChatWebSocket, type IWebSocketEvent } from '../services/websocket';
+import {
+  ChatWebSocket,
+  type IOutgoingAttachmentRef,
+  type IWebSocketEvent,
+} from '../services/websocket';
 
 interface UseWebSocketReconnectOptions {
   conversationId: string | null;
@@ -19,7 +23,7 @@ interface UseWebSocketReconnectReturn {
   isConnected: boolean;
   isReconnecting: boolean;
   reconnectAttempt: number;
-  sendMessage: (content: string) => void;
+  sendMessage: (content: string, attachments?: IOutgoingAttachmentRef[]) => void;
   sendCancel: () => void;
   manualRetry: () => void;
 }
@@ -123,8 +127,8 @@ export function useWebSocketReconnect({
     };
   }, [conversationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const sendMessage = useCallback((content: string) => {
-    wsRef.current?.sendMessage(content);
+  const sendMessage = useCallback((content: string, attachments?: IOutgoingAttachmentRef[]) => {
+    wsRef.current?.sendMessage(content, attachments);
   }, []);
 
   const sendCancel = useCallback(() => {
