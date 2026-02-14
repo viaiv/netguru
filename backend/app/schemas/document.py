@@ -165,3 +165,12 @@ class FileDetailResponse(FileItemResponse):
     """
 
     download_url: str
+
+
+class StorageUsageResponse(BaseModel):
+    """
+    Resumo de uso de storage do usuario.
+    """
+
+    total_bytes: int
+    total_files: int

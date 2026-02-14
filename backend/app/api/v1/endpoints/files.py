@@ -28,6 +28,7 @@ from app.schemas.document import (
     FileUploadResponse,
     PresignUploadRequest,
     PresignUploadResponse,
+    StorageUsageResponse,
 )
 from app.services.file_storage import (
     FileStorageError,
@@ -412,6 +413,28 @@ async def list_files(
             pages=pages,
             limit=limit,
         ),
+    )
+
+
+@router.get("/storage-usage", response_model=StorageUsageResponse)
+async def get_storage_usage(
+    current_user: User = Depends(require_permissions(Permission.USERS_READ_SELF)),
+    db: AsyncSession = Depends(get_db),
+) -> StorageUsageResponse:
+    """
+    Retorna resumo de uso de storage do usuario atual.
+    """
+
+    stmt = select(
+        func.coalesce(func.sum(Document.file_size_bytes), 0),
+        func.count(),
+    ).where(Document.user_id == current_user.id)
+    result = await db.execute(stmt)
+    total_bytes, total_files = result.one()
+
+    return StorageUsageResponse(
+        total_bytes=int(total_bytes),
+        total_files=int(total_files),
     )
 
 

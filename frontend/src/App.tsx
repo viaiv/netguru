@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 
 import ChatPage from './pages/ChatPage';
+import FilesPage from './pages/FilesPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
@@ -141,6 +142,13 @@ function App() {
                 {railCollapsed ? '\uD83D\uDCAC' : 'Chat'}
               </NavLink>
               <NavLink
+                to="/files"
+                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                title="Arquivos"
+              >
+                {railCollapsed ? '\uD83D\uDCC1' : 'Arquivos'}
+              </NavLink>
+              <NavLink
                 to="/me"
                 className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
                 title="Perfil"
@@ -181,6 +189,14 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <ChatPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/files"
+                element={
+                  <ProtectedRoute>
+                    <FilesPage />
                   </ProtectedRoute>
                 }
               />

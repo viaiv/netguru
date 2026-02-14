@@ -123,6 +123,66 @@ export async function uploadFile(
 }
 
 // ---------------------------------------------------------------------------
+//  File management types
+// ---------------------------------------------------------------------------
+
+export interface IFileItem {
+  id: string;
+  filename: string;
+  original_filename: string;
+  file_type: string;
+  file_size_bytes: number;
+  status: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  processed_at: string | null;
+}
+
+export interface IFilePagination {
+  total: number;
+  page: number;
+  pages: number;
+  limit: number;
+}
+
+export interface IFileListResponse {
+  files: IFileItem[];
+  pagination: IFilePagination;
+}
+
+export interface IStorageUsage {
+  total_bytes: number;
+  total_files: number;
+}
+
+// ---------------------------------------------------------------------------
+//  File management API
+// ---------------------------------------------------------------------------
+
+export async function fetchFiles(params?: {
+  file_type?: string;
+  page?: number;
+  limit?: number;
+}): Promise<IFileListResponse> {
+  const response = await api.get<IFileListResponse>('/files', { params });
+  return response.data;
+}
+
+export async function deleteFile(fileId: string): Promise<void> {
+  await api.delete(`/files/${fileId}`);
+}
+
+export async function downloadFile(fileId: string): Promise<{ download_url: string }> {
+  const response = await api.get<{ download_url: string }>(`/files/${fileId}/download`);
+  return response.data;
+}
+
+export async function fetchStorageUsage(): Promise<IStorageUsage> {
+  const response = await api.get<IStorageUsage>('/files/storage-usage');
+  return response.data;
+}
+
+// ---------------------------------------------------------------------------
 //  Helpers
 // ---------------------------------------------------------------------------
 
