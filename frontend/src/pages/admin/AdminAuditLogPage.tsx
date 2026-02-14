@@ -74,22 +74,30 @@ function AdminAuditLogPage() {
   ];
 
   return (
-    <div className="admin-audit">
-      <h2 className="admin-page-title">Audit Log</h2>
+    <section className="admin-page">
+      <div className="admin-page-header">
+        <h2 className="admin-page-title">Audit Log</h2>
+      </div>
 
-      <div className="admin-filters">
-        <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)}>
-          <option value="">Todas as acoes</option>
-          <option value="user.updated">user.updated</option>
-          <option value="plan.created">plan.created</option>
-          <option value="plan.updated">plan.updated</option>
-          <option value="plan.deactivated">plan.deactivated</option>
-        </select>
-        <select value={targetFilter} onChange={(e) => setTargetFilter(e.target.value)}>
-          <option value="">Todos os alvos</option>
-          <option value="user">user</option>
-          <option value="plan">plan</option>
-        </select>
+      <div className="admin-filter-bar">
+        <div className="admin-filter-bar__field">
+          <span className="admin-filter-bar__label">Acao</span>
+          <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)}>
+            <option value="">Todas</option>
+            <option value="user.updated">user.updated</option>
+            <option value="plan.created">plan.created</option>
+            <option value="plan.updated">plan.updated</option>
+            <option value="plan.deactivated">plan.deactivated</option>
+          </select>
+        </div>
+        <div className="admin-filter-bar__field">
+          <span className="admin-filter-bar__label">Alvo</span>
+          <select value={targetFilter} onChange={(e) => setTargetFilter(e.target.value)}>
+            <option value="">Todos</option>
+            <option value="user">user</option>
+            <option value="plan">plan</option>
+          </select>
+        </div>
       </div>
 
       <DataTable
@@ -100,7 +108,7 @@ function AdminAuditLogPage() {
         onPageChange={handlePageChange}
         rowKey={(e) => e.id}
       />
-    </div>
+    </section>
   );
 }
 

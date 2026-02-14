@@ -354,8 +354,8 @@ function AdminSettingsPage() {
 
   return (
     <section className="admin-page">
-      <div className="admin-page__header">
-        <h2 className="admin-page__title">Configuracoes</h2>
+      <div className="admin-page-header">
+        <h2 className="admin-page-title">Configuracoes</h2>
         <p className="text-muted">Gerencie as configuracoes do sistema.</p>
       </div>
 

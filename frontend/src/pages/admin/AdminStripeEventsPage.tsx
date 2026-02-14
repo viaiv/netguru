@@ -117,23 +117,31 @@ function AdminStripeEventsPage() {
   ];
 
   return (
-    <div className="admin-stripe-events">
-      <h2 className="admin-page-title">Stripe Events</h2>
+    <section className="admin-page">
+      <div className="admin-page-header">
+        <h2 className="admin-page-title">Stripe Events</h2>
+      </div>
 
-      <div className="admin-filters">
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-          <option value="">Todos os tipos</option>
-          <option value="checkout.session.completed">Checkout</option>
-          <option value="customer.subscription.updated">Sub. Atualizada</option>
-          <option value="customer.subscription.deleted">Sub. Cancelada</option>
-          <option value="invoice.payment_failed">Pgto. Falhou</option>
-        </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">Todos os status</option>
-          <option value="processed">Processado</option>
-          <option value="failed">Falhou</option>
-          <option value="ignored">Ignorado</option>
-        </select>
+      <div className="admin-filter-bar">
+        <div className="admin-filter-bar__field">
+          <span className="admin-filter-bar__label">Tipo</span>
+          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+            <option value="">Todos</option>
+            <option value="checkout.session.completed">Checkout</option>
+            <option value="customer.subscription.updated">Sub. Atualizada</option>
+            <option value="customer.subscription.deleted">Sub. Cancelada</option>
+            <option value="invoice.payment_failed">Pgto. Falhou</option>
+          </select>
+        </div>
+        <div className="admin-filter-bar__field">
+          <span className="admin-filter-bar__label">Status</span>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">Todos</option>
+            <option value="processed">Processado</option>
+            <option value="failed">Falhou</option>
+            <option value="ignored">Ignorado</option>
+          </select>
+        </div>
       </div>
 
       <DataTable
@@ -144,7 +152,7 @@ function AdminStripeEventsPage() {
         onPageChange={handlePageChange}
         rowKey={(e) => e.id}
       />
-    </div>
+    </section>
   );
 }
 

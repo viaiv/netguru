@@ -1,13 +1,13 @@
 /**
- * AdminDashboardPage — overview statistics.
+ * AdminDashboardPage — overview statistics + BYO-LLM usage report.
  */
 import { useEffect, useState } from 'react';
 
-import StatCard from '../../components/admin/StatCard';
 import { getErrorMessage } from '../../services/api';
 import {
   exportByoLlmUsageCsv,
   fetchByoLlmUsageReport,
+  type IByoLlmAlert,
   type IByoLlmUsageReport,
 } from '../../services/adminApi';
 import { useAdminStore } from '../../stores/adminStore';
@@ -21,6 +21,29 @@ function isoDaysAgo(days: number): string {
   now.setDate(now.getDate() - days);
   return now.toISOString().slice(0, 10);
 }
+
+// ---------------------------------------------------------------------------
+// Alert badge
+// ---------------------------------------------------------------------------
+
+function AlertBadge({ alert }: { alert: IByoLlmAlert }) {
+  const cls =
+    alert.severity === 'critical'
+      ? 'admin-alert-badge--critical'
+      : alert.severity === 'warning'
+        ? 'admin-alert-badge--warning'
+        : 'admin-alert-badge--info';
+
+  return (
+    <span className={`admin-alert-badge ${cls}`}>
+      {alert.severity.toUpperCase()}: {alert.message}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
 
 function AdminDashboardPage() {
   const stats = useAdminStore((s) => s.stats);
@@ -85,6 +108,11 @@ function AdminDashboardPage() {
     window.URL.revokeObjectURL(url);
   }
 
+  function handleReload() {
+    loadStats();
+    void loadUsageReport();
+  }
+
   useEffect(() => {
     loadStats();
     void loadUsageReport();
@@ -100,59 +128,106 @@ function AdminDashboardPage() {
   }
 
   return (
-    <div className="admin-dashboard">
-      <h2 className="admin-page-title">Dashboard</h2>
-
-      <div className="stat-grid">
-        <StatCard label="Total Usuarios" value={stats.total_users} />
-        <StatCard label="Usuarios Ativos" value={stats.active_users} />
-        <StatCard label="Conversas" value={stats.total_conversations} />
-        <StatCard label="Mensagens" value={stats.total_messages} />
-        <StatCard label="Documentos" value={stats.total_documents} />
-        <StatCard label="Novos (7d)" value={stats.recent_signups_7d} />
-        <StatCard label="Mensagens Hoje" value={stats.messages_today} />
+    <section className="admin-page">
+      {/* Header */}
+      <div className="admin-page-header">
+        <h2 className="admin-page-title">Dashboard</h2>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={handleReload}
+          disabled={loading || usageLoading}
+        >
+          Recarregar
+        </button>
       </div>
 
-      <div className="admin-section">
-        <h3 className="admin-section__title">Usuarios por Plano</h3>
-        <div className="stat-grid stat-grid--small">
-          {Object.entries(stats.users_by_plan).map(([plan, count]) => (
-            <StatCard key={plan} label={plan} value={count} />
-          ))}
+      {/* Core metrics — 4 columns */}
+      <div className="admin-cards-grid admin-cards-grid--4">
+        <div className="admin-stat-card">
+          <span className="admin-stat-card__label">Total Usuarios</span>
+          <span className="admin-stat-card__value">{stats.total_users}</span>
+        </div>
+        <div className="admin-stat-card">
+          <span className="admin-stat-card__label">Usuarios Ativos</span>
+          <span className="admin-stat-card__value">{stats.active_users}</span>
+        </div>
+        <div className="admin-stat-card">
+          <span className="admin-stat-card__label">Conversas</span>
+          <span className="admin-stat-card__value">{stats.total_conversations}</span>
+        </div>
+        <div className="admin-stat-card">
+          <span className="admin-stat-card__label">Mensagens</span>
+          <span className="admin-stat-card__value">{stats.total_messages}</span>
         </div>
       </div>
 
-      <div className="admin-section">
-        <h3 className="admin-section__title">Usuarios por Role</h3>
-        <div className="stat-grid stat-grid--small">
-          {Object.entries(stats.users_by_role).map(([role, count]) => (
-            <StatCard key={role} label={role} value={count} />
-          ))}
+      {/* Secondary metrics — 3 columns */}
+      <div className="admin-cards-grid" style={{ marginTop: 12 }}>
+        <div className="admin-stat-card">
+          <span className="admin-stat-card__label">Documentos</span>
+          <span className="admin-stat-card__value">{stats.total_documents}</span>
+        </div>
+        <div className="admin-stat-card">
+          <span className="admin-stat-card__label">Novos (7d)</span>
+          <span className="admin-stat-card__value">{stats.recent_signups_7d}</span>
+        </div>
+        <div className="admin-stat-card">
+          <span className="admin-stat-card__label">Mensagens Hoje</span>
+          <span className="admin-stat-card__value">{stats.messages_today}</span>
         </div>
       </div>
 
-      <div className="admin-section">
-        <h3 className="admin-section__title">Uso BYO-LLM</h3>
+      {/* Users by Plan + Role — side by side */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 28 }}>
+        <div>
+          <h3 className="admin-section-title">Usuarios por Plano</h3>
+          <div className="admin-cards-grid--auto admin-cards-grid">
+            {Object.entries(stats.users_by_plan).map(([plan, count]) => (
+              <div key={plan} className="admin-stat-card">
+                <span className="admin-stat-card__label">{plan}</span>
+                <span className="admin-stat-card__value">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <h3 className="admin-section-title">Usuarios por Role</h3>
+          <div className="admin-cards-grid--auto admin-cards-grid">
+            {Object.entries(stats.users_by_role).map(([role, count]) => (
+              <div key={role} className="admin-stat-card">
+                <span className="admin-stat-card__label">{role}</span>
+                <span className="admin-stat-card__value">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
-        <div className="admin-filters">
-          <label>
-            Inicio
+      {/* BYO-LLM Usage */}
+      <div style={{ marginTop: 32 }}>
+        <h3 className="admin-section-title">Uso BYO-LLM</h3>
+
+        {/* Filter bar */}
+        <div className="admin-filter-bar">
+          <div className="admin-filter-bar__field">
+            <span className="admin-filter-bar__label">Inicio</span>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
             />
-          </label>
-          <label>
-            Fim
+          </div>
+          <div className="admin-filter-bar__field">
+            <span className="admin-filter-bar__label">Fim</span>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
             />
-          </label>
-          <label>
-            Provider
+          </div>
+          <div className="admin-filter-bar__field">
+            <span className="admin-filter-bar__label">Provider</span>
             <select
               value={providerFilter}
               onChange={(e) => setProviderFilter(e.target.value)}
@@ -167,67 +242,109 @@ function AdminDashboardPage() {
               <option value="openrouter">OpenRouter</option>
               <option value="unknown">Unknown</option>
             </select>
-          </label>
-          <button type="button" className="btn btn-primary" onClick={() => void loadUsageReport()}>
-            Aplicar
-          </button>
-          <button
-            type="button"
-            className="ghost-btn"
-            onClick={() => void handleExportCsv()}
-            disabled={!usageReport || usageLoading}
-          >
-            Exportar CSV
-          </button>
-          <button
-            type="button"
-            className="ghost-btn"
-            onClick={handleExportJson}
-            disabled={!usageReport || usageLoading}
-          >
-            Exportar JSON
-          </button>
+          </div>
+          <div className="admin-filter-bar__field">
+            <span className="admin-filter-bar__label">&nbsp;</span>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void loadUsageReport()}
+            >
+              Aplicar
+            </button>
+          </div>
+          <div className="admin-filter-bar__actions">
+            <button
+              type="button"
+              className="btn btn-secondary btn--sm"
+              onClick={() => void handleExportCsv()}
+              disabled={!usageReport || usageLoading}
+            >
+              CSV
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn--sm"
+              onClick={handleExportJson}
+              disabled={!usageReport || usageLoading}
+            >
+              JSON
+            </button>
+          </div>
         </div>
 
-        {usageError ? <p className="admin-empty">{usageError}</p> : null}
-        {usageLoading && !usageReport ? <p className="admin-loading">Carregando uso BYO-LLM...</p> : null}
+        {usageError && <div className="admin-error">{usageError}</div>}
+        {usageLoading && !usageReport && (
+          <p className="admin-loading">Carregando uso BYO-LLM...</p>
+        )}
 
         {usageReport && (
           <>
-            <div className="stat-grid stat-grid--small">
-              <StatCard label="Mensagens" value={usageReport.totals.messages} />
-              <StatCard label="Tokens" value={usageReport.totals.tokens.toLocaleString()} />
-              <StatCard label="Latencia p50 (ms)" value={usageReport.totals.latency_p50_ms.toFixed(1)} />
-              <StatCard label="Latencia p95 (ms)" value={usageReport.totals.latency_p95_ms.toFixed(1)} />
-              <StatCard label="Erro (%)" value={`${usageReport.totals.error_rate_pct.toFixed(2)}%`} />
+            {/* Totals — 5 columns */}
+            <div className="admin-cards-grid admin-cards-grid--5">
+              <div className="admin-stat-card">
+                <span className="admin-stat-card__label">Mensagens</span>
+                <span className="admin-stat-card__value">{usageReport.totals.messages}</span>
+              </div>
+              <div className="admin-stat-card">
+                <span className="admin-stat-card__label">Tokens</span>
+                <span className="admin-stat-card__value">
+                  {usageReport.totals.tokens.toLocaleString()}
+                </span>
+              </div>
+              <div className="admin-stat-card">
+                <span className="admin-stat-card__label">Latencia p50</span>
+                <span className="admin-stat-card__value">
+                  {usageReport.totals.latency_p50_ms.toFixed(0)}
+                  <span style={{ fontSize: '0.7rem', fontWeight: 400, marginLeft: 2 }}>ms</span>
+                </span>
+              </div>
+              <div className="admin-stat-card">
+                <span className="admin-stat-card__label">Latencia p95</span>
+                <span className="admin-stat-card__value">
+                  {usageReport.totals.latency_p95_ms.toFixed(0)}
+                  <span style={{ fontSize: '0.7rem', fontWeight: 400, marginLeft: 2 }}>ms</span>
+                </span>
+              </div>
+              <div className="admin-stat-card">
+                <span className="admin-stat-card__label">Taxa de Erro</span>
+                <span className="admin-stat-card__value">
+                  {usageReport.totals.error_rate_pct.toFixed(1)}%
+                </span>
+              </div>
             </div>
 
+            {/* Alerts */}
             {usageReport.alerts.length > 0 && (
-              <div className="button-row">
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
                 {usageReport.alerts.map((alert) => (
-                  <span key={`${alert.code}-${alert.message}`} className="chip chip-muted">
-                    {alert.severity.toUpperCase()}: {alert.message}
-                  </span>
+                  <AlertBadge key={`${alert.code}-${alert.message}`} alert={alert} />
                 ))}
               </div>
             )}
 
-            <div className="data-table__wrapper">
-              <table className="data-table__table">
+            {/* Provider/Model table */}
+            <h4 className="admin-section-title" style={{ marginTop: 20 }}>
+              Por Provider / Modelo
+            </h4>
+            <div className="admin-table-wrapper">
+              <table className="admin-table">
                 <thead>
                   <tr>
                     <th>Provider</th>
                     <th>Modelo</th>
                     <th>Mensagens</th>
                     <th>Tokens</th>
-                    <th>Latencia media (ms)</th>
-                    <th>Erro (%)</th>
+                    <th>Latencia media</th>
+                    <th>Erro</th>
                   </tr>
                 </thead>
                 <tbody>
                   {usageReport.by_provider_model.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="data-table__empty">Sem dados no periodo.</td>
+                      <td colSpan={6} className="admin-table__empty">
+                        Sem dados no periodo.
+                      </td>
                     </tr>
                   ) : (
                     usageReport.by_provider_model.map((row) => (
@@ -236,7 +353,7 @@ function AdminDashboardPage() {
                         <td>{row.model}</td>
                         <td>{row.messages}</td>
                         <td>{row.tokens.toLocaleString()}</td>
-                        <td>{row.avg_latency_ms.toFixed(1)}</td>
+                        <td>{row.avg_latency_ms.toFixed(0)} ms</td>
                         <td>{row.error_rate_pct.toFixed(2)}%</td>
                       </tr>
                     ))
@@ -245,21 +362,27 @@ function AdminDashboardPage() {
               </table>
             </div>
 
-            <div className="data-table__wrapper">
-              <table className="data-table__table">
+            {/* Tools table */}
+            <h4 className="admin-section-title" style={{ marginTop: 20 }}>
+              Por Tool
+            </h4>
+            <div className="admin-table-wrapper">
+              <table className="admin-table">
                 <thead>
                   <tr>
                     <th>Tool</th>
                     <th>Chamadas</th>
                     <th>Falhas</th>
-                    <th>Duracao media (ms)</th>
-                    <th>Erro (%)</th>
+                    <th>Duracao media</th>
+                    <th>Erro</th>
                   </tr>
                 </thead>
                 <tbody>
                   {usageReport.by_tool.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="data-table__empty">Sem chamadas de tool no periodo.</td>
+                      <td colSpan={5} className="admin-table__empty">
+                        Sem chamadas de tool no periodo.
+                      </td>
                     </tr>
                   ) : (
                     usageReport.by_tool.map((row) => (
@@ -267,7 +390,7 @@ function AdminDashboardPage() {
                         <td>{row.tool}</td>
                         <td>{row.calls}</td>
                         <td>{row.failed_calls}</td>
-                        <td>{row.avg_duration_ms.toFixed(1)}</td>
+                        <td>{row.avg_duration_ms.toFixed(0)} ms</td>
                         <td>{row.error_rate_pct.toFixed(2)}%</td>
                       </tr>
                     ))
@@ -278,7 +401,7 @@ function AdminDashboardPage() {
           </>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 

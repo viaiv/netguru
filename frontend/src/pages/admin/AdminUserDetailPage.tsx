@@ -81,12 +81,13 @@ function AdminUserDetailPage() {
   }
 
   return (
-    <div className="admin-user-detail">
-      <button type="button" className="ghost-btn" onClick={() => navigate('/admin/users')}>
-        Voltar
-      </button>
-
-      <h2 className="admin-page-title">{user.email}</h2>
+    <section className="admin-page">
+      <div className="admin-page-header">
+        <button type="button" className="btn btn-secondary btn--sm" onClick={() => navigate('/admin/users')}>
+          Voltar
+        </button>
+        <h2 className="admin-page-title">{user.email}</h2>
+      </div>
 
       {error && <div className="admin-error">{error}</div>}
 
@@ -202,7 +203,7 @@ function AdminUserDetailPage() {
         onConfirm={() => confirmAction?.action()}
         onCancel={() => setConfirmAction(null)}
       />
-    </div>
+    </section>
   );
 }
 

@@ -106,23 +106,31 @@ function AdminEmailLogsPage() {
   ];
 
   return (
-    <div className="admin-email-logs">
-      <h2 className="admin-page-title">Email Logs</h2>
+    <section className="admin-page">
+      <div className="admin-page-header">
+        <h2 className="admin-page-title">Email Logs</h2>
+      </div>
 
-      <div className="admin-filters">
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-          <option value="">Todos os tipos</option>
-          <option value="verification">Verificacao</option>
-          <option value="password_reset">Reset senha</option>
-          <option value="welcome">Boas-vindas</option>
-          <option value="test">Teste</option>
-        </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">Todos os status</option>
-          <option value="sent">Enviado</option>
-          <option value="failed">Falhou</option>
-          <option value="skipped">Pulado</option>
-        </select>
+      <div className="admin-filter-bar">
+        <div className="admin-filter-bar__field">
+          <span className="admin-filter-bar__label">Tipo</span>
+          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+            <option value="">Todos</option>
+            <option value="verification">Verificacao</option>
+            <option value="password_reset">Reset senha</option>
+            <option value="welcome">Boas-vindas</option>
+            <option value="test">Teste</option>
+          </select>
+        </div>
+        <div className="admin-filter-bar__field">
+          <span className="admin-filter-bar__label">Status</span>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">Todos</option>
+            <option value="sent">Enviado</option>
+            <option value="failed">Falhou</option>
+            <option value="skipped">Pulado</option>
+          </select>
+        </div>
       </div>
 
       <DataTable
@@ -135,7 +143,7 @@ function AdminEmailLogsPage() {
         searchPlaceholder="Buscar por email..."
         rowKey={(e) => e.id}
       />
-    </div>
+    </section>
   );
 }
 

@@ -71,23 +71,31 @@ function AdminUsersPage() {
   ];
 
   return (
-    <div className="admin-users">
-      <h2 className="admin-page-title">Usuarios</h2>
+    <section className="admin-page">
+      <div className="admin-page-header">
+        <h2 className="admin-page-title">Usuarios</h2>
+      </div>
 
-      <div className="admin-filters">
-        <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
-          <option value="">Todas as roles</option>
-          <option value="owner">Owner</option>
-          <option value="admin">Admin</option>
-          <option value="member">Member</option>
-          <option value="viewer">Viewer</option>
-        </select>
-        <select value={tierFilter} onChange={(e) => setTierFilter(e.target.value)}>
-          <option value="">Todos os planos</option>
-          <option value="solo">Solo</option>
-          <option value="team">Team</option>
-          <option value="enterprise">Enterprise</option>
-        </select>
+      <div className="admin-filter-bar">
+        <div className="admin-filter-bar__field">
+          <span className="admin-filter-bar__label">Role</span>
+          <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+            <option value="">Todas</option>
+            <option value="owner">Owner</option>
+            <option value="admin">Admin</option>
+            <option value="member">Member</option>
+            <option value="viewer">Viewer</option>
+          </select>
+        </div>
+        <div className="admin-filter-bar__field">
+          <span className="admin-filter-bar__label">Plano</span>
+          <select value={tierFilter} onChange={(e) => setTierFilter(e.target.value)}>
+            <option value="">Todos</option>
+            <option value="solo">Solo</option>
+            <option value="team">Team</option>
+            <option value="enterprise">Enterprise</option>
+          </select>
+        </div>
       </div>
 
       <DataTable
@@ -101,7 +109,7 @@ function AdminUsersPage() {
         onRowClick={(u) => navigate(`/admin/users/${u.id}`)}
         rowKey={(u) => u.id}
       />
-    </div>
+    </section>
   );
 }
 

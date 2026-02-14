@@ -232,8 +232,18 @@ function AdminHealthPage() {
   }
 
   return (
-    <div className="admin-health">
-      <h2 className="admin-page-title">System Health</h2>
+    <section className="admin-page">
+      <div className="admin-page-header">
+        <h2 className="admin-page-title">System Health</h2>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={loadHealth}
+          disabled={loading}
+        >
+          Verificar novamente
+        </button>
+      </div>
 
       <div className="health-overview kv-card">
         <div className="health-overview__status">
@@ -255,12 +265,8 @@ function AdminHealthPage() {
         ))}
       </div>
 
-      <button type="button" className="btn btn--secondary" onClick={loadHealth}>
-        Verificar novamente
-      </button>
-
       <CeleryTaskLog />
-    </div>
+    </section>
   );
 }
 

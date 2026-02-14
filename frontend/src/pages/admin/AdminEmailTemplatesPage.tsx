@@ -123,8 +123,8 @@ function AdminEmailTemplatesPage() {
 
   return (
     <section className="admin-page">
-      <div className="admin-page__header">
-        <h2 className="admin-page__title">Email Templates</h2>
+      <div className="admin-page-header">
+        <h2 className="admin-page-title">Email Templates</h2>
         <p className="text-muted">
           Gerencie os templates dos emails transacionais do sistema.
         </p>
