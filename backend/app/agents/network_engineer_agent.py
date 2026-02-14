@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 from typing import AsyncGenerator
+from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import BaseTool
@@ -193,8 +194,8 @@ class NetworkEngineerAgent:
         Yields:
             Dicts com tipo:
             - {"type": "text", "content": "..."}
-            - {"type": "tool_call_start", "tool_name": "...", "tool_input": "..."}
-            - {"type": "tool_call_end", "tool_name": "...", "result_preview": "...", "duration_ms": ...}
+            - {"type": "tool_call_start", "tool_call_id": "...", "tool_name": "...", "tool_input": "..."}
+            - {"type": "tool_call_end", "tool_call_id": "...", "tool_name": "...", "result_preview": "...", "duration_ms": ...}
         """
         lc_messages = [SystemMessage(content=NETWORK_ENGINEER_SYSTEM_PROMPT)]
         for msg in messages:
@@ -206,6 +207,7 @@ class NetworkEngineerAgent:
                 lc_messages.append(SystemMessage(content=msg["content"]))
 
         tool_start_times: dict[str, float] = {}
+        tool_ids_by_name: dict[str, list[str]] = {}
 
         async for event in self._compiled.astream_events(
             {"messages": lc_messages},
@@ -223,10 +225,14 @@ class NetworkEngineerAgent:
             elif kind == "on_tool_start":
                 tool_name = event.get("name", "unknown")
                 tool_input = event.get("data", {}).get("input", {})
-                tool_start_times[tool_name] = time.time()
+                raw_tool_call_id = event.get("run_id")
+                tool_call_id = str(raw_tool_call_id) if raw_tool_call_id else str(uuid4())
+                tool_start_times[tool_call_id] = time.time()
+                tool_ids_by_name.setdefault(tool_name, []).append(tool_call_id)
                 input_str = tool_input if isinstance(tool_input, str) else str(tool_input)
                 yield {
                     "type": "tool_call_start",
+                    "tool_call_id": tool_call_id,
                     "tool_name": tool_name,
                     "tool_input": input_str[:500],
                 }
@@ -235,10 +241,19 @@ class NetworkEngineerAgent:
                 tool_name = event.get("name", "unknown")
                 output = event.get("data", {}).get("output", "")
                 result_str = str(output) if not isinstance(output, str) else output
-                start = tool_start_times.pop(tool_name, None)
+                raw_tool_call_id = event.get("run_id")
+                tool_call_id = str(raw_tool_call_id) if raw_tool_call_id else ""
+                if tool_call_id and tool_call_id not in tool_start_times:
+                    tool_call_id = ""
+                if not tool_call_id:
+                    ids_for_name = tool_ids_by_name.get(tool_name, [])
+                    tool_call_id = ids_for_name.pop(0) if ids_for_name else str(uuid4())
+
+                start = tool_start_times.pop(tool_call_id, None)
                 duration_ms = int((time.time() - start) * 1000) if start else 0
                 yield {
                     "type": "tool_call_end",
+                    "tool_call_id": tool_call_id,
                     "tool_name": tool_name,
                     "result_preview": result_str[:300],
                     "duration_ms": duration_ms,

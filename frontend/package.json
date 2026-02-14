@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "test": "vitest run",
+    "test:critical-chat": "vitest run src/stores/chatStore.test.ts",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview"
   },

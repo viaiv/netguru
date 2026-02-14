@@ -9,7 +9,7 @@ Tarefas periodicas de manutencao (Celery Beat).
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import redis
@@ -47,7 +47,7 @@ def cleanup_orphan_uploads() -> dict:
 
     with get_sync_db() as db:
         # --- 1) pending_upload docs (1 hour cutoff) ---
-        pending_cutoff = datetime.utcnow() - timedelta(hours=1)
+        pending_cutoff = datetime.now(UTC) - timedelta(hours=1)
         pending_stmt = select(Document).where(
             Document.status == "pending_upload",
             Document.created_at < pending_cutoff,
@@ -74,7 +74,7 @@ def cleanup_orphan_uploads() -> dict:
             pending_removed += 1
 
         # --- 2) uploaded orphan docs (existing logic, with R2 support) ---
-        cutoff = datetime.utcnow() - timedelta(hours=settings.ORPHAN_UPLOAD_AGE_HOURS)
+        cutoff = datetime.now(UTC) - timedelta(hours=settings.ORPHAN_UPLOAD_AGE_HOURS)
         stmt = select(Document).where(
             Document.status == "uploaded",
             Document.created_at < cutoff,
@@ -220,7 +220,7 @@ def mark_stale_tasks_timeout() -> dict:
     from app.core.database_sync import get_sync_db
     from app.models.celery_task_event import CeleryTaskEvent
 
-    cutoff = datetime.utcnow() - timedelta(minutes=5)
+    cutoff = datetime.now(UTC) - timedelta(minutes=5)
     marked = 0
 
     with get_sync_db() as db:
@@ -230,7 +230,7 @@ def mark_stale_tasks_timeout() -> dict:
         )
         stale_events = db.execute(stmt).scalars().all()
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         for event in stale_events:
             event.status = "TIMEOUT"
             event.finished_at = now

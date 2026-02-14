@@ -2,7 +2,7 @@
 Chat service — orchestrates message persistence + agent invocation + streaming.
 """
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import AsyncGenerator
 from uuid import UUID
 
@@ -53,8 +53,8 @@ class ChatService:
 
         Yields dicts matching the WS protocol:
             {"type": "stream_start", "message_id": "..."}
-            {"type": "tool_call_start", "tool_name": "...", "tool_input": "..."}
-            {"type": "tool_call_end", "tool_name": "...", "result_preview": "...", "duration_ms": ...}
+            {"type": "tool_call_start", "tool_call_id": "...", "tool_name": "...", "tool_input": "..."}
+            {"type": "tool_call_end", "tool_call_id": "...", "tool_name": "...", "result_preview": "...", "duration_ms": ...}
             {"type": "stream_chunk", "content": "..."}
             {"type": "stream_end",   "message_id": "...", "tokens_used": ...}
 
@@ -140,27 +140,44 @@ class ChatService:
                     yield {"type": "stream_chunk", "content": event["content"]}
 
                 elif event_type == "tool_call_start":
+                    tool_call_id = str(event.get("tool_call_id", ""))
                     tool_calls_log.append({
+                        "tool_call_id": tool_call_id,
                         "tool": event["tool_name"],
                         "input": event["tool_input"],
                     })
                     yield {
                         "type": "tool_call_start",
+                        "tool_call_id": tool_call_id,
                         "tool_name": event["tool_name"],
                         "tool_input": event["tool_input"],
                     }
 
                 elif event_type == "tool_call_end":
+                    tool_call_id = str(event.get("tool_call_id", ""))
                     # Atualiza log com resultado
                     for tc in reversed(tool_calls_log):
-                        if tc["tool"] == event["tool_name"] and "result_preview" not in tc:
+                        if (
+                            tc.get("tool_call_id") == tool_call_id
+                            and "result_preview" not in tc
+                        ):
                             tc["result_preview"] = event["result_preview"]
                             tc["duration_ms"] = event["duration_ms"]
                             if event.get("full_result"):
                                 tc["full_result"] = event["full_result"]
                             break
+                    else:
+                        # Fallback para eventos legados sem tool_call_id.
+                        for tc in reversed(tool_calls_log):
+                            if tc["tool"] == event["tool_name"] and "result_preview" not in tc:
+                                tc["result_preview"] = event["result_preview"]
+                                tc["duration_ms"] = event["duration_ms"]
+                                if event.get("full_result"):
+                                    tc["full_result"] = event["full_result"]
+                                break
                     yield {
                         "type": "tool_call_end",
+                        "tool_call_id": tool_call_id,
                         "tool_name": event["tool_name"],
                         "result_preview": event["result_preview"],
                         "duration_ms": event["duration_ms"],
@@ -188,7 +205,7 @@ class ChatService:
         # 8. Persist assistant message
         assistant_msg.content = accumulated
         assistant_msg.message_metadata = {"tool_calls": tool_calls_log} if tool_calls_log else None
-        conversation.updated_at = datetime.utcnow()
+        conversation.updated_at = datetime.now(UTC)
 
         try:
             await self._db.commit()

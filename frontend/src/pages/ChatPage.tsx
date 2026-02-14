@@ -83,10 +83,23 @@ function ChatPage() {
           handleStreamCancelled();
           break;
         case 'tool_call_start':
-          handleToolCallStart(event.tool_name!, event.tool_input!);
+          if (event.tool_name && event.tool_input !== undefined) {
+            handleToolCallStart(
+              event.tool_call_id ?? event.tool_name,
+              event.tool_name,
+              event.tool_input,
+            );
+          }
           break;
         case 'tool_call_end':
-          handleToolCallEnd(event.tool_name!, event.result_preview!, event.duration_ms!);
+          if (event.tool_name && event.result_preview !== undefined) {
+            handleToolCallEnd(
+              event.tool_call_id ?? event.tool_name,
+              event.tool_name,
+              event.result_preview,
+              event.duration_ms ?? 0,
+            );
+          }
           break;
         case 'title_updated':
           if (currentConversationId && event.title) {

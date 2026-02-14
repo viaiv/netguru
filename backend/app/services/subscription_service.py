@@ -7,7 +7,7 @@ para variaveis de ambiente (retrocompatibilidade).
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Optional
 from uuid import UUID
 
@@ -334,7 +334,7 @@ class SubscriptionService:
         user = result.scalar_one_or_none()
         if user:
             user.plan_tier = plan.name
-            user.updated_at = datetime.utcnow()
+            user.updated_at = datetime.now(UTC)
 
         await db.flush()
 
@@ -366,7 +366,7 @@ class SubscriptionService:
             return
 
         sub.status = "canceled"
-        sub.canceled_at = datetime.utcnow()
+        sub.canceled_at = datetime.now(UTC)
 
         # Revert user to solo tier
         stmt = select(User).where(User.id == sub.user_id)
@@ -374,7 +374,7 @@ class SubscriptionService:
         user = result.scalar_one_or_none()
         if user:
             user.plan_tier = "solo"
-            user.updated_at = datetime.utcnow()
+            user.updated_at = datetime.now(UTC)
 
         await db.flush()
 

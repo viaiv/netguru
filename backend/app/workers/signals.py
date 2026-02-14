@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import traceback
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from celery.signals import task_failure, task_postrun, task_prerun
@@ -48,7 +48,7 @@ def on_task_prerun(sender: object = None, task_id: str = "", task: object = None
             task_name=sender.name if hasattr(sender, "name") else str(sender),
             status="STARTED",
             args_summary=args_summary,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(UTC),
             worker=worker_hostname,
         )
 
@@ -66,7 +66,7 @@ def on_task_postrun(sender: object = None, task_id: str = "", task: object = Non
         from app.core.database_sync import get_sync_db
         from app.models.celery_task_event import CeleryTaskEvent
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         with get_sync_db() as db:
             event = (
@@ -108,7 +108,7 @@ def on_task_failure(sender: object = None, task_id: str = "", exception: BaseExc
         from app.models.celery_task_event import CeleryTaskEvent
         import traceback as tb_module
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         error_text = ""
         if exception:
             error_text = "".join(tb_module.format_exception(type(exception), exception, exception.__traceback__))

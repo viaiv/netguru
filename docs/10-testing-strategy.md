@@ -23,6 +23,30 @@ A estratégia de testes do NetGuru segue a pirâmide de testes:
 
 ---
 
+## ✅ Suíte Crítica (Obrigatória no CI)
+
+Para proteger o fluxo agentic de chat, estes testes são o mínimo obrigatório em CI:
+
+**Backend (WS + tools avançadas):**
+```bash
+cd backend
+./scripts/test_critical_chat.sh
+```
+
+**Frontend (eventos WS no estado de chat):**
+```bash
+cd frontend
+npm run test:critical-chat
+```
+
+Essas suítes cobrem:
+- stream normal, erro e cancelamento no WebSocket
+- correlação de tool calls por ID único
+- wrappers das tools `parse_config`, `validate_config`, `parse_show_commands`, `analyze_pcap`
+- transições de estado de chat para eventos `stream_*`, `tool_call_*` e erro
+
+---
+
 ## 🧪 Backend Testing
 
 ### Setup de Testes

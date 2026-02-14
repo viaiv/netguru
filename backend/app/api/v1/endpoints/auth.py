@@ -4,7 +4,7 @@ Authentication endpoints: register, login, refresh token, email verification, pa
 from __future__ import annotations
 
 import secrets
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -152,7 +152,7 @@ async def login(
         )
 
     # Update last login
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = datetime.now(UTC)
     await db.commit()
 
     # Create tokens

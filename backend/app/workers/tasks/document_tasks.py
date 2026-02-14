@@ -4,7 +4,7 @@ Celery task para processamento de documentos (chunking + embedding).
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select
@@ -80,7 +80,7 @@ def process_document(document_id: str) -> dict:
 
             if not chunks:
                 document.status = "completed"
-                document.processed_at = datetime.utcnow()
+                document.processed_at = datetime.now(UTC)
                 return {"status": "completed", "chunks": 0}
 
             embedding_svc = EmbeddingService.get_instance()
@@ -103,7 +103,7 @@ def process_document(document_id: str) -> dict:
                 db.add(embedding)
 
             document.status = "completed"
-            document.processed_at = datetime.utcnow()
+            document.processed_at = datetime.now(UTC)
 
             logger.info(
                 "Documento processado: %s (%d chunks)",

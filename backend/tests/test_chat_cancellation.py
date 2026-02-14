@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.api.v1.endpoints import ws_chat
 from app.main import app
-from app.services.chat_service import ChatService
+from app.services.chat_service import ChatService, ChatServiceError
 
 
 class FakeChatDbSession:
@@ -190,3 +190,92 @@ def test_websocket_cancel_rolls_back_and_keeps_connection_usable(
             assert second_cancel_event["type"] == "stream_cancelled"
 
     assert fake_db.rollback_calls >= 2
+
+
+def test_websocket_streams_normal_flow_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    WS endpoint must emit stream_start -> stream_chunk -> stream_end on success.
+    """
+    fake_db = FakeWsDbSession()
+
+    async def _fake_authenticate(_websocket, _token, _db):  # noqa: ANN001, ANN202
+        return SimpleNamespace(id=uuid4(), is_active=True)
+
+    class FakeChatService:
+        def __init__(self, _db) -> None:  # noqa: ANN001
+            pass
+
+        async def process_user_message(self, **_kwargs):  # noqa: ANN003, ANN202
+            yield {"type": "stream_start", "message_id": "msg-123"}
+            yield {"type": "stream_chunk", "content": "hello "}
+            yield {"type": "stream_chunk", "content": "world"}
+            yield {"type": "stream_end", "message_id": "msg-123", "tokens_used": 42}
+
+    monkeypatch.setattr(
+        ws_chat,
+        "AsyncSessionLocal",
+        lambda: FakeAsyncSessionContext(fake_db),
+    )
+    monkeypatch.setattr(ws_chat, "_authenticate_websocket", _fake_authenticate)
+    monkeypatch.setattr(ws_chat, "ChatService", FakeChatService)
+
+    conversation_id = uuid4()
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/api/v1/ws/chat/{conversation_id}?token=fake") as websocket:
+            websocket.send_json({"type": "message", "content": "normal"})
+
+            assert websocket.receive_json() == {"type": "stream_start", "message_id": "msg-123"}
+            assert websocket.receive_json() == {"type": "stream_chunk", "content": "hello "}
+            assert websocket.receive_json() == {"type": "stream_chunk", "content": "world"}
+            assert websocket.receive_json() == {
+                "type": "stream_end",
+                "message_id": "msg-123",
+                "tokens_used": 42,
+            }
+
+            websocket.send_json({"type": "ping"})
+            assert websocket.receive_json() == {"type": "pong"}
+
+
+def test_websocket_surfaces_chat_service_error_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    WS endpoint must convert ChatServiceError into protocol error event.
+    """
+    fake_db = FakeWsDbSession()
+
+    async def _fake_authenticate(_websocket, _token, _db):  # noqa: ANN001, ANN202
+        return SimpleNamespace(id=uuid4(), is_active=True)
+
+    class FakeChatService:
+        def __init__(self, _db) -> None:  # noqa: ANN001
+            pass
+
+        async def process_user_message(self, **_kwargs):  # noqa: ANN003, ANN202
+            if False:
+                yield {}
+            raise ChatServiceError("stream failed", code="stream_failed")
+
+    monkeypatch.setattr(
+        ws_chat,
+        "AsyncSessionLocal",
+        lambda: FakeAsyncSessionContext(fake_db),
+    )
+    monkeypatch.setattr(ws_chat, "_authenticate_websocket", _fake_authenticate)
+    monkeypatch.setattr(ws_chat, "ChatService", FakeChatService)
+
+    conversation_id = uuid4()
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/api/v1/ws/chat/{conversation_id}?token=fake") as websocket:
+            websocket.send_json({"type": "message", "content": "error path"})
+            assert websocket.receive_json() == {
+                "type": "error",
+                "code": "stream_failed",
+                "detail": "stream failed",
+            }
+
+            websocket.send_json({"type": "ping"})
+            assert websocket.receive_json() == {"type": "pong"}

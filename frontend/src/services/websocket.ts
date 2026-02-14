@@ -21,6 +21,7 @@ export interface IWebSocketEvent {
   tokens_used?: number | null;
   code?: string;
   detail?: string;
+  tool_call_id?: string;
   tool_name?: string;
   tool_input?: string;
   result_preview?: string;

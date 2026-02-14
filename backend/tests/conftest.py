@@ -4,7 +4,7 @@ Pytest fixtures for backend API tests.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest_asyncio
@@ -119,7 +119,7 @@ class FakeDBSession:
         elif isinstance(user_id, str):
             setattr(user, "id", UUID(user_id))
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         if getattr(user, "created_at", None) is None:
             setattr(user, "created_at", now)
         if getattr(user, "updated_at", None) is None:

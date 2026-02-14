@@ -16,7 +16,7 @@
 > - Tools registradas: parse_config, validate_config, parse_show_commands, analyze_pcap
 > - System prompt do agent atualizado com descrição das 6 tools
 > - Frontend ToolCallDisplay com labels das 4 novas tools
-> - Settings: PCAP_MAX_PACKETS=10000, PCAP_ANALYSIS_TIMEOUT=30
+> - Settings: PCAP_MAX_PACKETS=10000, PCAP_ANALYSIS_TIMEOUT=300
 > - Todas as deps já instaladas: ciscoconfparse, textfsm, scapy
 > Próximo: testes end-to-end via WebSocket (config→parse→validate, show output→parse, PCAP→analyze).
 
@@ -661,6 +661,7 @@ GET  /api/v1/agent/tools
 **Antes de commit:**
 - [ ] Linter passou
 - [ ] Testes passam
+- [ ] Defaults críticos em docs conferem com `backend/app/core/config.py` (ex.: `PCAP_*`, `CHAT_*`)
 - [ ] Commit em português
 - [ ] SEM assinaturas do Claude
 - [ ] Perguntei antes de commitar
@@ -722,6 +723,6 @@ Você tem contexto completo do NetGuru. Use para:
 ---
 
 **Versão:** 1.0
-**Última atualização:** 13 de Fevereiro de 2026
+**Última atualização:** 14 de Fevereiro de 2026
 
 **Boa construção! 🚀🤖**

@@ -6,7 +6,7 @@ Fornece acesso async (FastAPI) e sync (Celery/EmailService).
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 from uuid import UUID
 
@@ -60,7 +60,7 @@ class EmailTemplateService:
         if is_active is not None:
             template.is_active = is_active
         template.updated_by = updated_by
-        template.updated_at = datetime.utcnow()
+        template.updated_at = datetime.now(UTC)
 
         await db.flush()
         await db.refresh(template)

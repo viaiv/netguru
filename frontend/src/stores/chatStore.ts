@@ -69,8 +69,13 @@ interface IChatState {
   handleStreamChunk: (content: string) => void;
   handleStreamEnd: (messageId: string, tokensUsed: number | null) => void;
   handleStreamCancelled: () => void;
-  handleToolCallStart: (toolName: string, toolInput: string) => void;
-  handleToolCallEnd: (toolName: string, resultPreview: string, durationMs: number) => void;
+  handleToolCallStart: (toolCallId: string, toolName: string, toolInput: string) => void;
+  handleToolCallEnd: (
+    toolCallId: string,
+    toolName: string,
+    resultPreview: string,
+    durationMs: number,
+  ) => void;
   handleWsError: (detail: string) => void;
   setConnected: (connected: boolean) => void;
   clearError: () => void;
@@ -249,9 +254,11 @@ export const useChatStore = create<IChatState>((set, get) => ({
     });
   },
 
-  handleToolCallStart: (toolName: string, toolInput: string) => {
+  handleToolCallStart: (toolCallId: string, toolName: string, toolInput: string) => {
+    const resolvedToolCallId =
+      toolCallId || `tc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const newToolCall: IToolCall = {
-      id: `tc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      id: resolvedToolCallId,
       toolName,
       toolInput,
       status: 'running',
@@ -261,14 +268,37 @@ export const useChatStore = create<IChatState>((set, get) => ({
     }));
   },
 
-  handleToolCallEnd: (toolName: string, resultPreview: string, durationMs: number) => {
-    set((state) => ({
-      activeToolCalls: state.activeToolCalls.map((tc) =>
-        tc.toolName === toolName && tc.status === 'running'
-          ? { ...tc, resultPreview, durationMs, status: 'completed' as const }
-          : tc,
-      ),
-    }));
+  handleToolCallEnd: (
+    toolCallId: string,
+    toolName: string,
+    resultPreview: string,
+    durationMs: number,
+  ) => {
+    set((state) => {
+      let matchedById = false;
+      const updatedById = state.activeToolCalls.map((tc) => {
+        if (!matchedById && tc.id === toolCallId && tc.status === 'running') {
+          matchedById = true;
+          return { ...tc, resultPreview, durationMs, status: 'completed' as const };
+        }
+        return tc;
+      });
+
+      if (matchedById || !toolName) {
+        return { activeToolCalls: updatedById };
+      }
+
+      let matchedByName = false;
+      const updatedByName = updatedById.map((tc) => {
+        if (!matchedByName && tc.toolName === toolName && tc.status === 'running') {
+          matchedByName = true;
+          return { ...tc, resultPreview, durationMs, status: 'completed' as const };
+        }
+        return tc;
+      });
+
+      return { activeToolCalls: updatedByName };
+    });
   },
 
   handleWsError: (detail: string) => {

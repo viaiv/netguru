@@ -5,7 +5,7 @@ Provides both async (FastAPI) and sync (Celery) database access.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 from uuid import UUID
 
@@ -104,7 +104,7 @@ class SystemSettingsService:
             if description is not None:
                 row.description = description
             row.updated_by = updated_by
-            row.updated_at = datetime.utcnow()
+            row.updated_at = datetime.now(UTC)
 
         await db.flush()
         await db.refresh(row)
