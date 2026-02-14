@@ -16,6 +16,7 @@ from app.core.security import decrypt_api_key
 from app.models.conversation import Conversation, Message
 from app.models.user import User
 from app.services.llm_client import LLMProviderError
+from app.services.playbook_service import PlaybookResponse, PlaybookService
 from app.services.usage_tracking_service import UsageTrackingService
 
 
@@ -94,6 +95,19 @@ class ChatService:
             conversation.title = new_title
             await self._db.flush()
             title_event = {"type": "title_updated", "title": new_title}
+
+        playbook_response = await self._try_handle_playbook(conversation_id, content)
+        if playbook_response is not None:
+            async for event in self._emit_direct_response(
+                conversation=conversation,
+                conversation_id=conversation_id,
+                user=user,
+                content=playbook_response.content,
+                metadata={"playbook": playbook_response.metadata},
+                title_event=title_event,
+            ):
+                yield event
+            return
 
         # 5. Load conversation history
         history = await self._load_history(conversation_id)
@@ -227,6 +241,78 @@ class ChatService:
             await self._db.commit()
         except Exception:
             pass  # Non-critical — don't fail the response
+
+        yield {
+            "type": "stream_end",
+            "message_id": str(assistant_msg.id),
+            "tokens_used": None,
+        }
+
+    async def _try_handle_playbook(
+        self,
+        conversation_id: UUID,
+        content: str,
+    ) -> PlaybookResponse | None:
+        """Try handling message as guided playbook flow."""
+        try:
+            playbook = PlaybookService()
+            return await playbook.handle_message(
+                conversation_id=conversation_id,
+                content=content,
+            )
+        except Exception:
+            # Never block chat if playbook subsystem fails.
+            return None
+
+    async def _emit_direct_response(
+        self,
+        conversation: Conversation,
+        conversation_id: UUID,
+        user: User,
+        content: str,
+        metadata: dict | None = None,
+        title_event: dict | None = None,
+    ) -> AsyncGenerator[dict, None]:
+        """
+        Emit a non-LLM assistant response through stream protocol and persist it.
+        """
+        assistant_msg = Message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content="",
+        )
+        self._db.add(assistant_msg)
+        await self._db.flush()
+
+        yield {"type": "stream_start", "message_id": str(assistant_msg.id)}
+        if title_event:
+            yield title_event
+        if content:
+            yield {"type": "stream_chunk", "content": content}
+
+        assistant_msg.content = content
+        assistant_msg.message_metadata = metadata
+        conversation.updated_at = datetime.now(UTC)
+
+        try:
+            await self._db.commit()
+        except asyncio.CancelledError:
+            await self._db.rollback()
+            raise
+        except Exception as exc:
+            await self._db.rollback()
+            yield {
+                "type": "error",
+                "code": "db_error",
+                "detail": f"Erro ao salvar resposta: {exc}",
+            }
+            return
+
+        try:
+            await UsageTrackingService.increment_messages(self._db, user.id)
+            await self._db.commit()
+        except Exception:
+            pass
 
         yield {
             "type": "stream_end",

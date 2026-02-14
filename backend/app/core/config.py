@@ -96,6 +96,7 @@ class Settings(BaseSettings):
     # Chat / Agent
     CHAT_HISTORY_LIMIT: int = 20
     CHAT_MAX_MESSAGE_LENGTH: int = 10000
+    PLAYBOOK_STATE_TTL_SECONDS: int = 604800  # 7 days
     DEFAULT_LLM_MODEL_OPENAI: str = "gpt-4o"
     DEFAULT_LLM_MODEL_ANTHROPIC: str = "claude-sonnet-4-20250514"
     DEFAULT_LLM_MODEL_AZURE: str = "gpt-4o"
