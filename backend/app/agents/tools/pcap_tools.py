@@ -74,7 +74,11 @@ def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
             )
 
             formatted = result_data["formatted"]
-            pcap_data = json.dumps(result_data.get("data", {}), default=str)
+            pcap_data = json.dumps(
+                result_data.get("data", {}),
+                default=str,
+                ensure_ascii=False,
+            )
             return f"{formatted}\n<!-- PCAP_DATA:{pcap_data} -->"
         except Exception as e:
             return f"Error analyzing PCAP: {e}"

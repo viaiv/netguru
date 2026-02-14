@@ -247,7 +247,10 @@ async def get_pcap_data(
         match = _PCAP_DATA_RE.search(full_result)
         if match:
             try:
-                return json.loads(match.group(1))
+                raw_json = match.group(1)
+                # Fix invalid \' escapes that leak from Python/SQL serialization
+                raw_json = raw_json.replace("\\'", "'")
+                return json.loads(raw_json)
             except json.JSONDecodeError:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
