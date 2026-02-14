@@ -239,6 +239,7 @@ async def test_chat_service_returns_ambiguity_prompt_without_calling_agent(
 
     monkeypatch.setattr(ChatService, "_get_owned_conversation", _fake_get_owned_conversation)
     monkeypatch.setattr(ChatService, "_resolve_attachment_context", _fake_resolve_context)
+    monkeypatch.setattr("app.services.chat_service.decrypt_api_key", lambda _value: "plain-key")
     monkeypatch.setattr(
         "app.services.chat_service.NetworkEngineerAgent",
         AgentMustNotBeCalled,

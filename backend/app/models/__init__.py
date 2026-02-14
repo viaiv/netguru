@@ -15,6 +15,8 @@ from app.models.email_log import EmailLog
 from app.models.email_template import EmailTemplate
 from app.models.celery_task_event import CeleryTaskEvent
 from app.models.stripe_event import StripeEvent
+from app.models.network_memory import NetworkMemory
+from app.models.system_memory import SystemMemory
 
 __all__ = [
     "User",
@@ -31,4 +33,6 @@ __all__ = [
     "EmailTemplate",
     "CeleryTaskEvent",
     "StripeEvent",
+    "NetworkMemory",
+    "SystemMemory",
 ]

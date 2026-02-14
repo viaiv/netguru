@@ -37,6 +37,7 @@ class Permission(str, Enum):
     ADMIN_PLANS_MANAGE = "admin:plans_manage"
     ADMIN_SYSTEM_HEALTH = "admin:system_health"
     ADMIN_SETTINGS_MANAGE = "admin:settings_manage"
+    ADMIN_SYSTEM_MEMORIES_MANAGE = "admin:system_memories_manage"
 
 
 ROLE_PERMISSIONS: dict[UserRole, frozenset[Permission]] = {
@@ -56,6 +57,7 @@ ROLE_PERMISSIONS: dict[UserRole, frozenset[Permission]] = {
             Permission.ADMIN_AUDIT_LOG,
             Permission.ADMIN_PLANS_READ,
             Permission.ADMIN_SYSTEM_HEALTH,
+            Permission.ADMIN_SYSTEM_MEMORIES_MANAGE,
         }
     ),
     UserRole.MEMBER: frozenset(

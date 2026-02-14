@@ -168,6 +168,38 @@ export interface ISystemSettingUpdate {
   description?: string;
 }
 
+export interface ISystemMemory {
+  id: string;
+  scope: 'system';
+  scope_name: string | null;
+  memory_key: string;
+  memory_value: string;
+  tags: string[] | null;
+  ttl_seconds: number | null;
+  expires_at: string | null;
+  version: number;
+  is_active: boolean;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ISystemMemoryCreate {
+  memory_key: string;
+  memory_value: string;
+  tags?: string[] | null;
+  ttl_seconds?: number;
+}
+
+export interface ISystemMemoryUpdate {
+  memory_key?: string;
+  memory_value?: string;
+  tags?: string[] | null;
+  ttl_seconds?: number;
+  clear_ttl?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // API Methods
 // ---------------------------------------------------------------------------
@@ -271,6 +303,39 @@ export async function testR2(): Promise<{ message: string }> {
 
 export async function testStripe(): Promise<{ message: string }> {
   const r = await api.post<{ message: string }>('/admin/settings/test-stripe');
+  return r.data;
+}
+
+// ---------------------------------------------------------------------------
+// System Memories
+// ---------------------------------------------------------------------------
+
+export async function fetchSystemMemories(params?: {
+  include_inactive?: boolean;
+}): Promise<ISystemMemory[]> {
+  const r = await api.get<ISystemMemory[]>('/admin/system-memories', { params });
+  return r.data;
+}
+
+export async function createSystemMemory(data: ISystemMemoryCreate): Promise<ISystemMemory> {
+  const r = await api.post<ISystemMemory>('/admin/system-memories', data);
+  return r.data;
+}
+
+export async function updateSystemMemory(
+  memoryId: string,
+  data: ISystemMemoryUpdate,
+): Promise<ISystemMemory> {
+  const r = await api.patch<ISystemMemory>(`/admin/system-memories/${memoryId}`, data);
+  return r.data;
+}
+
+export async function deleteSystemMemory(memoryId: string): Promise<void> {
+  await api.delete(`/admin/system-memories/${memoryId}`);
+}
+
+export async function testFreeLlm(): Promise<{ message: string }> {
+  const r = await api.post<{ message: string }>('/admin/settings/test-free-llm');
   return r.data;
 }
 

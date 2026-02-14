@@ -93,6 +93,7 @@ async def test_chat_service_starts_playbook_from_natural_message(
         "app.services.chat_service.UsageTrackingService.increment_messages",
         _fake_increment_messages,
     )
+    monkeypatch.setattr("app.services.chat_service.decrypt_api_key", lambda _value: "plain-key")
     monkeypatch.setattr(
         "app.services.chat_service.NetworkEngineerAgent",
         AgentMustNotBeCalled,

@@ -11,6 +11,10 @@ const LLM_PROVIDERS = [
   { value: 'openai', label: 'OpenAI' },
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'azure', label: 'Azure OpenAI' },
+  { value: 'google', label: 'Google Gemini' },
+  { value: 'groq', label: 'Groq' },
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'openrouter', label: 'OpenRouter' },
 ] as const;
 
 function MePage() {

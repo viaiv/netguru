@@ -9,6 +9,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   plans: 'Planos',
   'audit-log': 'Audit Log',
   health: 'System Health',
+  'system-memories': 'Memorias Sistema',
 };
 
 function Breadcrumb() {

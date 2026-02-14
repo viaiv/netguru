@@ -23,6 +23,7 @@ ENCRYPTED_KEYS = frozenset({
     "r2_secret_access_key",
     "stripe_secret_key",
     "stripe_webhook_secret",
+    "free_llm_api_key",
 })
 
 

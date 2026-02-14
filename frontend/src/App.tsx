@@ -7,6 +7,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import MePage from './pages/MePage';
+import MemoriesPage from './pages/MemoriesPage';
 import PcapDashboardPage from './pages/PcapDashboardPage';
 import RegisterPage from './pages/RegisterPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
@@ -149,6 +150,13 @@ function App() {
                 {railCollapsed ? '\uD83D\uDCC1' : 'Arquivos'}
               </NavLink>
               <NavLink
+                to="/memories"
+                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                title="Memorias"
+              >
+                {railCollapsed ? '\uD83E\uDDE0' : 'Memorias'}
+              </NavLink>
+              <NavLink
                 to="/me"
                 className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
                 title="Perfil"
@@ -205,6 +213,14 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <MePage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/memories"
+                element={
+                  <ProtectedRoute>
+                    <MemoriesPage />
                   </ProtectedRoute>
                 }
               />

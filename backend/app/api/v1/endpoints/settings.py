@@ -162,6 +162,66 @@ async def test_r2(
     return {"message": "Conexao com R2 realizada com sucesso (CORS configurado)"}
 
 
+@router.post("/settings/test-free-llm", status_code=status.HTTP_200_OK)
+async def test_free_llm(
+    current_user: User = Depends(require_permissions(Permission.ADMIN_SETTINGS_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Testa conexao com o provedor LLM gratuito validando a API key."""
+    from app.services.llm_client import LLMProviderError, create_llm_provider
+
+    enabled = await SystemSettingsService.get(db, "free_llm_enabled")
+    if enabled != "true":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="LLM gratuito nao esta habilitado",
+        )
+
+    api_key = await SystemSettingsService.get(db, "free_llm_api_key")
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="API key do LLM gratuito nao configurada",
+        )
+
+    provider_name = (await SystemSettingsService.get(db, "free_llm_provider")) or "google"
+    model = (await SystemSettingsService.get(db, "free_llm_model")) or "gemini-2.0-flash"
+
+    try:
+        provider = create_llm_provider(provider_name, api_key)
+    except LLMProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Erro ao criar provedor: {exc}",
+        ) from exc
+
+    # Faz chamada simples para validar a key
+    try:
+        result_text = ""
+        async for chunk in provider.stream_chat(
+            messages=[{"role": "user", "content": "Respond with OK"}],
+            model=model,
+            max_tokens=10,
+        ):
+            result_text += chunk
+            if len(result_text) > 50:
+                break
+    except LLMProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Falha ao conectar ao provedor: {exc}",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Erro inesperado: {exc}",
+        ) from exc
+
+    return {
+        "message": f"Conexao com {provider_name} realizada com sucesso (modelo: {model})"
+    }
+
+
 @router.post("/settings/test-stripe", status_code=status.HTTP_200_OK)
 async def test_stripe(
     current_user: User = Depends(require_permissions(Permission.ADMIN_SETTINGS_MANAGE)),

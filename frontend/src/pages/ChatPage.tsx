@@ -25,6 +25,7 @@ function ChatPage() {
     streamingContent,
     streamingMessageId,
     activeToolCalls,
+    usingFreeLlm,
     error,
     fetchConversations,
     createConversation,
@@ -68,7 +69,7 @@ function ChatPage() {
     (event: IWebSocketEvent) => {
       switch (event.type) {
         case 'stream_start':
-          handleStreamStart(event.message_id!);
+          handleStreamStart(event.message_id!, event.using_free_llm);
           break;
         case 'stream_chunk':
           handleStreamChunk(event.content!);
@@ -519,7 +520,10 @@ function ChatPage() {
               {/* Streaming bubble */}
               {isStreaming && streamingContent && (
                 <div className="message-bubble message-bubble--assistant">
-                  <p className="message-role">NetGuru</p>
+                  <p className="message-role">
+                    NetGuru
+                    {usingFreeLlm && <span className="chip chip-free-llm">Modelo gratuito</span>}
+                  </p>
                   <MarkdownContent content={streamingContent} isStreaming />
                   <span className="typing-cursor" />
                 </div>
@@ -528,7 +532,10 @@ function ChatPage() {
               {/* Waiting indicator (streaming started but no text yet) */}
               {isStreaming && !streamingContent && activeToolCalls.length === 0 && (
                 <div className="message-bubble message-bubble--assistant">
-                  <p className="message-role">NetGuru</p>
+                  <p className="message-role">
+                    NetGuru
+                    {usingFreeLlm && <span className="chip chip-free-llm">Modelo gratuito</span>}
+                  </p>
                   <div className="message-content">
                     <span className="typing-cursor" />
                   </div>

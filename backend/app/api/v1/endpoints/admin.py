@@ -17,6 +17,11 @@ from app.core.rbac import Permission, UserRole, can_assign_role, normalize_role
 from app.models.plan import Plan
 from app.models.subscription import Subscription
 from app.models.user import User
+from app.schemas.memory import (
+    SystemMemoryCreate,
+    SystemMemoryResponse,
+    SystemMemoryUpdate,
+)
 from app.schemas.admin import (
     AdminUserDetailResponse,
     AdminUserListItem,
@@ -37,6 +42,7 @@ from app.schemas.admin import (
 )
 from app.services.admin_dashboard_service import AdminDashboardService
 from app.services.audit_log_service import AuditLogService
+from app.services.memory_service import MemoryService, MemoryServiceError
 from app.services.usage_tracking_service import UsageTrackingService
 
 router = APIRouter()
@@ -52,6 +58,16 @@ def _client_ip(request: Request) -> str:
     if forwarded:
         return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
+
+
+def _raise_memory_http_error(exc: MemoryServiceError) -> None:
+    """Convert memory domain errors to HTTP responses."""
+    status_code = status.HTTP_400_BAD_REQUEST
+    if exc.code == "memory_not_found":
+        status_code = status.HTTP_404_NOT_FOUND
+    elif exc.code == "memory_conflict":
+        status_code = status.HTTP_409_CONFLICT
+    raise HTTPException(status_code=status_code, detail=exc.detail) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +339,150 @@ async def list_audit_log(
         items=[AuditLogResponse(**item) for item in items],
         pagination=PaginationMeta(total=total, page=page, pages=pages, limit=limit),
     )
+
+
+# ---------------------------------------------------------------------------
+# System Memories
+# ---------------------------------------------------------------------------
+
+@router.get("/system-memories", response_model=list[SystemMemoryResponse])
+async def list_system_memories(
+    include_inactive: bool = Query(default=False),
+    _current_user: User = Depends(require_permissions(Permission.ADMIN_SYSTEM_MEMORIES_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> list[SystemMemoryResponse]:
+    """List curated system memories available to all users."""
+    service = MemoryService(db)
+    rows = await service.list_system_memories(include_inactive=include_inactive)
+    return [SystemMemoryResponse.model_validate(row) for row in rows]
+
+
+@router.post("/system-memories", response_model=SystemMemoryResponse, status_code=status.HTTP_201_CREATED)
+async def create_system_memory(
+    body: SystemMemoryCreate,
+    request: Request,
+    current_user: User = Depends(require_permissions(Permission.ADMIN_SYSTEM_MEMORIES_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> SystemMemoryResponse:
+    """Create a curated system memory."""
+    service = MemoryService(db)
+    try:
+        memory = await service.create_system_memory(
+            actor_id=current_user.id,
+            payload=body,
+        )
+    except MemoryServiceError as exc:
+        _raise_memory_http_error(exc)
+
+    await AuditLogService.record(
+        db,
+        actor_id=current_user.id,
+        action="memory_system.created",
+        target_type="system_memory",
+        target_id=str(memory.id),
+        changes=body.model_dump(mode="json"),
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.flush()
+    return SystemMemoryResponse.model_validate(memory)
+
+
+@router.patch("/system-memories/{memory_id}", response_model=SystemMemoryResponse)
+async def update_system_memory(
+    memory_id: UUID,
+    body: SystemMemoryUpdate,
+    request: Request,
+    current_user: User = Depends(require_permissions(Permission.ADMIN_SYSTEM_MEMORIES_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> SystemMemoryResponse:
+    """Update a curated system memory."""
+    service = MemoryService(db)
+    existing = await service.get_system_memory(memory_id=memory_id)
+    if existing is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Memoria de sistema nao encontrada")
+
+    before = {
+        "scope": existing.scope,
+        "scope_name": existing.scope_name,
+        "memory_key": existing.memory_key,
+        "memory_value": existing.memory_value,
+        "tags": existing.tags,
+        "ttl_seconds": existing.ttl_seconds,
+        "expires_at": existing.expires_at.isoformat() if existing.expires_at else None,
+        "version": existing.version,
+        "is_active": existing.is_active,
+    }
+
+    try:
+        updated = await service.update_system_memory(
+            actor_id=current_user.id,
+            memory_id=memory_id,
+            payload=body,
+        )
+    except MemoryServiceError as exc:
+        _raise_memory_http_error(exc)
+
+    after = {
+        "scope": updated.scope,
+        "scope_name": updated.scope_name,
+        "memory_key": updated.memory_key,
+        "memory_value": updated.memory_value,
+        "tags": updated.tags,
+        "ttl_seconds": updated.ttl_seconds,
+        "expires_at": updated.expires_at.isoformat() if updated.expires_at else None,
+        "version": updated.version,
+        "is_active": updated.is_active,
+    }
+    changes = {
+        key: {"from": before.get(key), "to": after.get(key)}
+        for key in after
+        if before.get(key) != after.get(key)
+    }
+    if changes:
+        await AuditLogService.record(
+            db,
+            actor_id=current_user.id,
+            action="memory_system.updated",
+            target_type="system_memory",
+            target_id=str(updated.id),
+            changes=changes,
+            ip_address=_client_ip(request),
+            user_agent=request.headers.get("user-agent"),
+        )
+
+    await db.flush()
+    return SystemMemoryResponse.model_validate(updated)
+
+
+@router.delete("/system-memories/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_system_memory(
+    memory_id: UUID,
+    request: Request,
+    current_user: User = Depends(require_permissions(Permission.ADMIN_SYSTEM_MEMORIES_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Soft-delete a curated system memory."""
+    service = MemoryService(db)
+    try:
+        memory = await service.delete_system_memory(
+            actor_id=current_user.id,
+            memory_id=memory_id,
+        )
+    except MemoryServiceError as exc:
+        _raise_memory_http_error(exc)
+
+    await AuditLogService.record(
+        db,
+        actor_id=current_user.id,
+        action="memory_system.deleted",
+        target_type="system_memory",
+        target_id=str(memory.id),
+        changes={"is_active": {"from": True, "to": False}},
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.flush()
 
 
 # ---------------------------------------------------------------------------

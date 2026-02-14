@@ -169,10 +169,190 @@ class AzureOpenAIProvider(BaseLLMProvider):
             raise LLMProviderError(f"Azure OpenAI error: {exc}") from exc
 
 
+class GeminiProvider(BaseLLMProvider):
+    """Google Gemini chat completion provider."""
+
+    def __init__(self, api_key: str) -> None:
+        try:
+            import google.generativeai as genai
+        except ImportError as exc:
+            raise LLMProviderError("google-generativeai package not installed") from exc
+        genai.configure(api_key=api_key)
+        self._genai = genai
+
+    async def stream_chat(
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> AsyncGenerator[str, None]:
+        resolved_model = model or settings.DEFAULT_LLM_MODEL_GOOGLE
+        resolved_temp = temperature if temperature is not None else settings.LLM_TEMPERATURE
+        resolved_max = max_tokens or settings.LLM_MAX_TOKENS
+
+        # Separate system prompt from chat messages
+        system_text = ""
+        chat_messages = []
+        for msg in messages:
+            if msg["role"] == "system":
+                system_text += msg["content"] + "\n"
+            else:
+                role = "model" if msg["role"] == "assistant" else "user"
+                chat_messages.append({"role": role, "parts": [msg["content"]]})
+
+        try:
+            gen_model = self._genai.GenerativeModel(
+                model_name=resolved_model,
+                system_instruction=system_text.strip() or None,
+                generation_config=self._genai.GenerationConfig(
+                    temperature=resolved_temp,
+                    max_output_tokens=resolved_max,
+                ),
+            )
+            response = await gen_model.generate_content_async(
+                chat_messages,
+                stream=True,
+            )
+            async for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+        except Exception as exc:
+            raise LLMProviderError(f"Google Gemini error: {exc}") from exc
+
+
+class GroqProvider(BaseLLMProvider):
+    """Groq inference provider (OpenAI-compatible API)."""
+
+    def __init__(self, api_key: str) -> None:
+        try:
+            from openai import AsyncOpenAI
+        except ImportError as exc:
+            raise LLMProviderError("openai package not installed") from exc
+        self._client = AsyncOpenAI(
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1",
+        )
+
+    async def stream_chat(
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> AsyncGenerator[str, None]:
+        resolved_model = model or settings.DEFAULT_LLM_MODEL_GROQ
+        resolved_temp = temperature if temperature is not None else settings.LLM_TEMPERATURE
+        resolved_max = max_tokens or settings.LLM_MAX_TOKENS
+
+        try:
+            stream = await self._client.chat.completions.create(
+                model=resolved_model,
+                messages=messages,
+                temperature=resolved_temp,
+                max_tokens=resolved_max,
+                stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta and delta.content:
+                    yield delta.content
+        except Exception as exc:
+            raise LLMProviderError(f"Groq error: {exc}") from exc
+
+
+class DeepSeekProvider(BaseLLMProvider):
+    """DeepSeek provider (OpenAI-compatible API)."""
+
+    def __init__(self, api_key: str) -> None:
+        try:
+            from openai import AsyncOpenAI
+        except ImportError as exc:
+            raise LLMProviderError("openai package not installed") from exc
+        self._client = AsyncOpenAI(
+            api_key=api_key,
+            base_url="https://api.deepseek.com",
+        )
+
+    async def stream_chat(
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> AsyncGenerator[str, None]:
+        resolved_model = model or settings.DEFAULT_LLM_MODEL_DEEPSEEK
+        resolved_temp = temperature if temperature is not None else settings.LLM_TEMPERATURE
+        resolved_max = max_tokens or settings.LLM_MAX_TOKENS
+
+        try:
+            stream = await self._client.chat.completions.create(
+                model=resolved_model,
+                messages=messages,
+                temperature=resolved_temp,
+                max_tokens=resolved_max,
+                stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta and delta.content:
+                    yield delta.content
+        except Exception as exc:
+            raise LLMProviderError(f"DeepSeek error: {exc}") from exc
+
+
+class OpenRouterProvider(BaseLLMProvider):
+    """OpenRouter provider — gateway to hundreds of models via single API key."""
+
+    def __init__(self, api_key: str) -> None:
+        try:
+            from openai import AsyncOpenAI
+        except ImportError as exc:
+            raise LLMProviderError("openai package not installed") from exc
+        self._client = AsyncOpenAI(
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1",
+            default_headers={
+                "HTTP-Referer": settings.FRONTEND_URL,
+                "X-Title": settings.APP_NAME,
+            },
+        )
+
+    async def stream_chat(
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> AsyncGenerator[str, None]:
+        resolved_model = model or settings.DEFAULT_LLM_MODEL_OPENROUTER
+        resolved_temp = temperature if temperature is not None else settings.LLM_TEMPERATURE
+        resolved_max = max_tokens or settings.LLM_MAX_TOKENS
+
+        try:
+            stream = await self._client.chat.completions.create(
+                model=resolved_model,
+                messages=messages,
+                temperature=resolved_temp,
+                max_tokens=resolved_max,
+                stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta and delta.content:
+                    yield delta.content
+        except Exception as exc:
+            raise LLMProviderError(f"OpenRouter error: {exc}") from exc
+
+
 _PROVIDERS: dict[str, type[BaseLLMProvider]] = {
     "openai": OpenAIProvider,
     "anthropic": AnthropicProvider,
     "azure": AzureOpenAIProvider,
+    "google": GeminiProvider,
+    "groq": GroqProvider,
+    "deepseek": DeepSeekProvider,
+    "openrouter": OpenRouterProvider,
 }
 
 

@@ -188,6 +188,14 @@ code {
   background: rgba(var(--ink-rgb), 0.08);
 }
 
+.chip-free-llm {
+  background: rgba(var(--signal-rgb), 0.12);
+  border-color: rgba(var(--signal-rgb), 0.4);
+  color: var(--signal);
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
 .chip-refresh-idle {
   background: rgba(var(--ink-rgb), 0.08);
 }
@@ -420,7 +428,8 @@ code {
 }
 
 input,
-select {
+select,
+textarea {
   font-family: inherit;
   font-size: 1rem;
   color: var(--ink);
@@ -432,7 +441,8 @@ select {
 }
 
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   outline: none;
   border-color: var(--signal);
   box-shadow: 0 0 0 4px rgba(var(--signal-rgb), 0.19);

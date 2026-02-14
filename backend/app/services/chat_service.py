@@ -21,6 +21,8 @@ from app.services.attachment_context_service import (
     ResolvedAttachment,
 )
 from app.services.llm_client import LLMProviderError
+from app.services.memory_service import MemoryContextResolution, MemoryService
+from app.services.system_settings_service import SystemSettingsService
 from app.services.playbook_service import PlaybookResponse, PlaybookService
 from app.services.usage_tracking_service import UsageTrackingService
 
@@ -79,12 +81,31 @@ class ChatService:
                 code="message_too_long",
             )
 
-        # 3. Validate user has LLM configured
-        if not user.llm_provider or not user.encrypted_api_key:
-            raise ChatServiceError(
-                "Configure seu provedor LLM e API key no perfil antes de usar o chat.",
-                code="llm_not_configured",
-            )
+        # 3. Resolve LLM provider (BYO-LLM ou free fallback via DB)
+        if user.llm_provider and user.encrypted_api_key:
+            provider_name = user.llm_provider
+            api_key = decrypt_api_key(user.encrypted_api_key)
+            using_free_llm = False
+        else:
+            free_enabled = await SystemSettingsService.get(self._db, "free_llm_enabled")
+            if free_enabled == "true":
+                free_key = await SystemSettingsService.get(self._db, "free_llm_api_key")
+                if free_key:
+                    provider_name = (
+                        await SystemSettingsService.get(self._db, "free_llm_provider")
+                    ) or "google"
+                    api_key = free_key
+                    using_free_llm = True
+                else:
+                    raise ChatServiceError(
+                        "Configure seu provedor LLM e API key no perfil antes de usar o chat.",
+                        code="llm_not_configured",
+                    )
+            else:
+                raise ChatServiceError(
+                    "Configure seu provedor LLM e API key no perfil antes de usar o chat.",
+                    code="llm_not_configured",
+                )
 
         # 4. Resolve attachment context for this turn (best-effort).
         attachment_resolution = await self._resolve_attachment_context(
@@ -163,17 +184,30 @@ class ChatService:
 
         # 6. Load conversation history
         history = await self._load_history(conversation_id)
+        memory_resolution = await self._resolve_memory_context(
+            user_id=user.id,
+            content_for_agent=attachment_resolution.content_for_agent,
+        )
         if history and history[-1]["role"] == "user":
-            history[-1]["content"] = attachment_resolution.content_for_agent
+            enriched_content = attachment_resolution.content_for_agent
+            if memory_resolution.context_block:
+                enriched_content = (
+                    f"{enriched_content}\n\n{memory_resolution.context_block}"
+                )
+            history[-1]["content"] = enriched_content
 
         # 7. Build agent with tools
         try:
-            api_key = decrypt_api_key(user.encrypted_api_key)
+            model_override = conversation.model_used
+            if using_free_llm and not model_override:
+                model_override = (
+                    await SystemSettingsService.get(self._db, "free_llm_model")
+                ) or settings.DEFAULT_LLM_MODEL_GOOGLE
             tools = get_agent_tools(db=self._db, user_id=user.id)
             agent = NetworkEngineerAgent(
-                provider_name=user.llm_provider,
+                provider_name=provider_name,
                 api_key=api_key,
-                model=conversation.model_used,
+                model=model_override,
                 tools=tools,
             )
         except Exception as exc:
@@ -192,7 +226,13 @@ class ChatService:
         self._db.add(assistant_msg)
         await self._db.flush()
 
-        yield {"type": "stream_start", "message_id": str(assistant_msg.id)}
+        stream_start_event: dict = {
+            "type": "stream_start",
+            "message_id": str(assistant_msg.id),
+        }
+        if using_free_llm:
+            stream_start_event["using_free_llm"] = True
+        yield stream_start_event
 
         if title_event:
             yield title_event
@@ -351,6 +391,10 @@ class ChatService:
             assistant_metadata["tool_calls"] = tool_calls_log
         if attachment_metadata:
             assistant_metadata.update(attachment_metadata)
+        if memory_resolution.entries:
+            assistant_metadata["memory_context"] = MemoryService.build_context_metadata(
+                memory_resolution.entries
+            )
         assistant_msg.message_metadata = assistant_metadata or None
         conversation.updated_at = datetime.utcnow()
 
@@ -482,6 +526,26 @@ class ChatService:
             )
         except Exception:
             return AttachmentContextResolution(content_for_agent=content)
+
+    async def _resolve_memory_context(
+        self,
+        *,
+        user_id: UUID,
+        content_for_agent: str,
+    ) -> MemoryContextResolution:
+        """
+        Resolve persistent memory context for current turn.
+
+        Never raises: if resolver fails, falls back to empty context.
+        """
+        try:
+            service = MemoryService(self._db)
+            return await service.resolve_chat_context(
+                user_id=user_id,
+                message_content=content_for_agent,
+            )
+        except Exception:
+            return MemoryContextResolution(entries=[], context_block=None)
 
     @staticmethod
     def _serialize_resolved_attachment(attachment: ResolvedAttachment) -> dict:

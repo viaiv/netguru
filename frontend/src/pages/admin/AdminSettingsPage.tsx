@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { getErrorMessage } from '../../services/api';
-import { testEmail, testR2, testStripe, upsertSetting } from '../../services/adminApi';
+import { testEmail, testFreeLlm, testR2, testStripe, upsertSetting } from '../../services/adminApi';
 import { useAdminStore } from '../../stores/adminStore';
 
 // ---------------------------------------------------------------------------
@@ -16,13 +16,15 @@ type SettingDef = {
   key: string;
   label: string;
   description: string;
-  type: 'text' | 'password' | 'toggle';
+  type: 'text' | 'password' | 'toggle' | 'select';
+  options?: { value: string; label: string }[];
 };
 
 const TABS = [
   { id: 'email', label: 'Email' },
   { id: 'cloudflare', label: 'Cloudflare R2' },
   { id: 'stripe', label: 'Stripe' },
+  { id: 'llm', label: 'LLM Gratuito' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -108,6 +110,42 @@ const STRIPE_SETTINGS_KEYS: SettingDef[] = [
   },
 ];
 
+const FREE_LLM_SETTINGS_KEYS: SettingDef[] = [
+  {
+    key: 'free_llm_enabled',
+    label: 'LLM gratuito habilitado',
+    description: 'Ativar fallback gratuito para usuarios sem API key propria',
+    type: 'toggle',
+  },
+  {
+    key: 'free_llm_provider',
+    label: 'Provider',
+    description: 'Provedor LLM usado no fallback gratuito',
+    type: 'select',
+    options: [
+      { value: 'google', label: 'Google (Gemini)' },
+      { value: 'openai', label: 'OpenAI' },
+      { value: 'anthropic', label: 'Anthropic (Claude)' },
+      { value: 'azure', label: 'Azure OpenAI' },
+      { value: 'groq', label: 'Groq' },
+      { value: 'deepseek', label: 'DeepSeek' },
+      { value: 'openrouter', label: 'OpenRouter' },
+    ],
+  },
+  {
+    key: 'free_llm_api_key',
+    label: 'API Key',
+    description: 'Chave de API do provedor gratuito (criptografada)',
+    type: 'password',
+  },
+  {
+    key: 'free_llm_model',
+    label: 'Modelo',
+    description: 'Nome do modelo (ex: gemini-2.0-flash)',
+    type: 'text',
+  },
+];
+
 // ---------------------------------------------------------------------------
 //  Component
 // ---------------------------------------------------------------------------
@@ -124,6 +162,7 @@ function AdminSettingsPage() {
   const [testing, setTesting] = useState(false);
   const [testingR2, setTestingR2] = useState(false);
   const [testingStripe, setTestingStripe] = useState(false);
+  const [testingFreeLlm, setTestingFreeLlm] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -160,6 +199,7 @@ function AdminSettingsPage() {
   function currentKeys(): SettingDef[] {
     if (activeTab === 'email') return EMAIL_SETTINGS_KEYS;
     if (activeTab === 'stripe') return STRIPE_SETTINGS_KEYS;
+    if (activeTab === 'llm') return FREE_LLM_SETTINGS_KEYS;
     return R2_SETTINGS_KEYS;
   }
 
@@ -228,6 +268,20 @@ function AdminSettingsPage() {
     }
   }
 
+  async function handleTestFreeLlm(): Promise<void> {
+    setTestingFreeLlm(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await testFreeLlm();
+      setMessage(result.message);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setTestingFreeLlm(false);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   //  Field renderer
   // ---------------------------------------------------------------------------
@@ -251,6 +305,19 @@ function AdminSettingsPage() {
               {getValue(def.key) === 'true' ? 'Ativado' : 'Desativado'}
             </span>
           </div>
+        ) : def.type === 'select' && def.options ? (
+          <select
+            id={def.key}
+            value={getValue(def.key)}
+            onChange={(e) => setValue(def.key, e.target.value)}
+          >
+            <option value="">Selecione...</option>
+            {def.options.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
         ) : (
           <input
             id={def.key}
@@ -365,6 +432,27 @@ function AdminSettingsPage() {
                 onClick={handleTestStripe}
               >
                 {testingStripe ? 'Testando...' : 'Testar Conexao'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* LLM Gratuito tab */}
+        {activeTab === 'llm' && (
+          <div className="admin-card">
+            <h3 className="admin-card__title">LLM Gratuito (Fallback)</h3>
+            {FREE_LLM_SETTINGS_KEYS.map(renderField)}
+            <div className="button-row" style={{ gap: 12 }}>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Salvando...' : 'Salvar'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={testingFreeLlm}
+                onClick={handleTestFreeLlm}
+              >
+                {testingFreeLlm ? 'Testando...' : 'Testar Conexao'}
               </button>
             </div>
           </div>

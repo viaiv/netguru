@@ -93,6 +93,7 @@ interface IChatState {
   isStreaming: boolean;
   streamingContent: string;
   streamingMessageId: string | null;
+  usingFreeLlm: boolean;
 
   // Tool calls
   activeToolCalls: IToolCall[];
@@ -116,7 +117,7 @@ interface IChatState {
 
   // WS actions
   addUserMessage: (content: string) => void;
-  handleStreamStart: (messageId: string) => void;
+  handleStreamStart: (messageId: string, usingFreeLlm?: boolean) => void;
   handleStreamChunk: (content: string) => void;
   handleStreamEnd: (
     messageId: string,
@@ -155,6 +156,7 @@ export const useChatStore = create<IChatState>((set, get) => ({
       activeToolCalls: snapshot.activeToolCalls,
     };
   })(),
+  usingFreeLlm: false,
   conversations: [],
   currentConversationId: null,
   messages: [],
@@ -290,11 +292,12 @@ export const useChatStore = create<IChatState>((set, get) => ({
     }));
   },
 
-  handleStreamStart: (messageId: string) => {
+  handleStreamStart: (messageId: string, usingFreeLlm?: boolean) => {
     set({
       isStreaming: true,
       streamingContent: '',
       streamingMessageId: messageId,
+      usingFreeLlm: usingFreeLlm ?? false,
       activeToolCalls: [],
     });
     writeStreamingSnapshot({
@@ -338,6 +341,7 @@ export const useChatStore = create<IChatState>((set, get) => ({
       isStreaming: false,
       streamingContent: '',
       streamingMessageId: null,
+      usingFreeLlm: false,
       activeToolCalls: [],
     }));
     writeStreamingSnapshot({
@@ -353,6 +357,7 @@ export const useChatStore = create<IChatState>((set, get) => ({
       isStreaming: false,
       streamingContent: '',
       streamingMessageId: null,
+      usingFreeLlm: false,
       activeToolCalls: [],
     });
     writeStreamingSnapshot({

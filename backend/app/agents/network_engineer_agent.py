@@ -125,6 +125,17 @@ def _create_chat_model(
             streaming=True,
         )
 
+    if provider_name == "google":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        return ChatGoogleGenerativeAI(
+            google_api_key=api_key,
+            model=model or settings.DEFAULT_LLM_MODEL_GOOGLE,
+            temperature=settings.LLM_TEMPERATURE,
+            max_output_tokens=settings.LLM_MAX_TOKENS,
+            streaming=True,
+        )
+
     raise ValueError(f"Unsupported provider: {provider_name}")
 
 

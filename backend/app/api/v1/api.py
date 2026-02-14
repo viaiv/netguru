@@ -4,7 +4,18 @@ Aggregates all API endpoints.
 """
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import admin, auth, billing, chat, files, plans, settings, users, ws_chat
+from app.api.v1.endpoints import (
+    admin,
+    auth,
+    billing,
+    chat,
+    files,
+    memories,
+    plans,
+    settings,
+    users,
+    ws_chat,
+)
 
 api_router = APIRouter()
 
@@ -19,6 +30,7 @@ api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(users.router, prefix="/users", tags=["Users"])
 api_router.include_router(chat.router, prefix="/chat", tags=["Chat"])
 api_router.include_router(files.router, prefix="/files", tags=["Files"])
+api_router.include_router(memories.router, prefix="/memories", tags=["Memories"])
 api_router.include_router(ws_chat.router, tags=["WebSocket Chat"])
 
 api_router.include_router(plans.router, prefix="/plans", tags=["Plans"])
