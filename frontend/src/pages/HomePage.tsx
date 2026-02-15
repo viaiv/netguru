@@ -78,23 +78,15 @@ function formatPrice(priceCents: number, billingPeriod: string, planName: string
   return { price: `R$${reais}`, period };
 }
 
-const FEATURE_LABELS: Record<string, string> = {
-  rag_global: 'Base de conhecimento de vendors',
-  rag_local: 'Documentos privados da equipe',
-  pcap_analysis: 'Analise de capturas de rede',
-  topology_generation: 'Mapa de topologia automatico',
-  config_tools: 'Validacao de configuracoes',
-  custom_tools: 'Ferramentas personalizadas',
-};
-
-const HIDDEN_FEATURES = new Set(['allow_system_fallback']);
-
-function featureFlags(features: Record<string, boolean> | null): string[] {
-  if (!features) return [];
-  return Object.entries(features)
-    .filter(([key, enabled]) => enabled && !HIDDEN_FEATURES.has(key))
-    .map(([key]) => FEATURE_LABELS[key] || key);
-}
+/** Ordem fixa de features para comparacao visual entre cards. */
+const FEATURE_ORDER: { key: string; label: string }[] = [
+  { key: 'rag_global', label: 'Base de conhecimento de vendors' },
+  { key: 'rag_local', label: 'Documentos privados da equipe' },
+  { key: 'config_tools', label: 'Validacao de configuracoes' },
+  { key: 'pcap_analysis', label: 'Analise de capturas de rede' },
+  { key: 'topology_generation', label: 'Mapa de topologia automatico' },
+  { key: 'custom_tools', label: 'Ferramentas personalizadas' },
+];
 
 function HomePage() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -188,7 +180,6 @@ function HomePage() {
             {plans.map((p, i) => {
               const { price, period } = formatPrice(p.price_cents, p.billing_period, p.name);
               const highlighted = i === highlightedIndex;
-              const feats = featureFlags(p.features);
               return (
                 <div key={p.name} className={`landing-plan-card ${highlighted ? 'landing-plan-card--highlighted' : ''}`}>
                   <h3 className="landing-plan-name">{p.display_name}</h3>
@@ -196,13 +187,16 @@ function HomePage() {
                     {price}
                     {period && <span className="landing-plan-period">{period}</span>}
                   </p>
-                  {feats.length > 0 && (
-                    <ul className="landing-plan-features">
-                      {feats.map((feat) => (
-                        <li key={feat}>{feat}</li>
-                      ))}
-                    </ul>
-                  )}
+                  <ul className="landing-plan-features">
+                    {FEATURE_ORDER.map(({ key, label }) => {
+                      const enabled = !!p.features?.[key];
+                      return (
+                        <li key={key} style={{ opacity: enabled ? 1 : 0.4 }}>
+                          {enabled ? '✓' : '—'} {label}
+                        </li>
+                      );
+                    })}
+                  </ul>
                   <Link
                     to={isAuthenticated ? '/chat' : '/register'}
                     className={`btn ${highlighted ? 'btn-primary' : 'btn-secondary'} landing-plan-cta`}

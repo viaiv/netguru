@@ -18,17 +18,15 @@ function formatLimit(value: number, suffix = ''): string {
   return `${value.toLocaleString('pt-BR')}${suffix}`;
 }
 
-const FEATURE_LABELS: Record<string, string> = {
-  rag_global: 'Base de conhecimento de vendors',
-  rag_local: 'Documentos privados da equipe',
-  pcap_analysis: 'Analise de capturas de rede',
-  topology_generation: 'Mapa de topologia automatico',
-  config_tools: 'Validacao de configuracoes',
-  custom_tools: 'Ferramentas personalizadas',
-};
-
-/** Features internas que nao devem aparecer nos cards do pricing. */
-const HIDDEN_FEATURES = new Set(['allow_system_fallback']);
+/** Ordem fixa de features para comparacao visual entre cards. */
+const FEATURE_ORDER: { key: string; label: string }[] = [
+  { key: 'rag_global', label: 'Base de conhecimento de vendors' },
+  { key: 'rag_local', label: 'Documentos privados da equipe' },
+  { key: 'config_tools', label: 'Validacao de configuracoes' },
+  { key: 'pcap_analysis', label: 'Analise de capturas de rede' },
+  { key: 'topology_generation', label: 'Mapa de topologia automatico' },
+  { key: 'custom_tools', label: 'Ferramentas personalizadas' },
+];
 
 function PricingPage() {
   const [plans, setPlans] = useState<IPublicPlan[]>([]);
@@ -170,20 +168,16 @@ function PricingPage() {
                     </li>
                   </ul>
 
-                  {plan.features && Object.keys(plan.features).length > 0 && (
-                    <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 1rem', fontSize: '0.85rem', opacity: 0.8 }}>
-                      {Object.entries(plan.features)
-                        .filter(([key]) => !HIDDEN_FEATURES.has(key))
-                        .map(([key, value]) => {
-                          const label = FEATURE_LABELS[key] || key;
-                          return (
-                            <li key={key} style={{ marginBottom: '0.25rem' }}>
-                              {value === true ? `✓ ${label}` : value === false ? `— ${label}` : `${label}: ${String(value)}`}
-                            </li>
-                          );
-                        })}
-                    </ul>
-                  )}
+                  <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 1rem', fontSize: '0.85rem', opacity: 0.8 }}>
+                    {FEATURE_ORDER.map(({ key, label }) => {
+                      const enabled = !!plan.features?.[key];
+                      return (
+                        <li key={key} style={{ marginBottom: '0.25rem', opacity: enabled ? 1 : 0.5 }}>
+                          {enabled ? `✓ ${label}` : `— ${label}`}
+                        </li>
+                      );
+                    })}
+                  </ul>
 
                   {plan.name === 'enterprise' ? (
                     <a
@@ -302,42 +296,14 @@ function PricingPage() {
                     <td key={p.id}>{p.features?.allow_system_fallback ? '✓' : '—'}</td>
                   ))}
                 </tr>
-                <tr>
-                  <td>Base de conhecimento de vendors</td>
-                  {plans.map((p) => (
-                    <td key={p.id}>{p.features?.rag_global ? '✓' : '—'}</td>
-                  ))}
-                </tr>
-                <tr>
-                  <td>Documentos privados da equipe</td>
-                  {plans.map((p) => (
-                    <td key={p.id}>{p.features?.rag_local ? '✓' : '—'}</td>
-                  ))}
-                </tr>
-                <tr>
-                  <td>Analise de capturas de rede</td>
-                  {plans.map((p) => (
-                    <td key={p.id}>{p.features?.pcap_analysis ? '✓' : '—'}</td>
-                  ))}
-                </tr>
-                <tr>
-                  <td>Mapa de topologia automatico</td>
-                  {plans.map((p) => (
-                    <td key={p.id}>{p.features?.topology_generation ? '✓' : '—'}</td>
-                  ))}
-                </tr>
-                <tr>
-                  <td>Validacao de configuracoes</td>
-                  {plans.map((p) => (
-                    <td key={p.id}>{p.features?.config_tools ? '✓' : '—'}</td>
-                  ))}
-                </tr>
-                <tr>
-                  <td>Ferramentas personalizadas</td>
-                  {plans.map((p) => (
-                    <td key={p.id}>{p.features?.custom_tools ? '✓' : '—'}</td>
-                  ))}
-                </tr>
+                {FEATURE_ORDER.map(({ key, label }) => (
+                  <tr key={key}>
+                    <td>{label}</td>
+                    {plans.map((p) => (
+                      <td key={p.id}>{p.features?.[key] ? '✓' : '—'}</td>
+                    ))}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
