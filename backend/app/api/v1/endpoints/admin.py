@@ -1208,14 +1208,22 @@ async def upload_rag_document(
             detail=f"Extensao '{ext}' nao permitida",
         )
 
-    # Ler conteudo
-    content = await file.read()
+    # Ler conteudo em chunks — rejeitar antes de materializar tudo
     max_size = settings.MAX_FILE_SIZE_MB * 1024 * 1024
-    if len(content) > max_size:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Arquivo excede limite de {settings.MAX_FILE_SIZE_MB} MB",
-        )
+    chunks: list[bytes] = []
+    total_read = 0
+    while True:
+        chunk = await file.read(1024 * 1024)  # 1 MB por vez
+        if not chunk:
+            break
+        total_read += len(chunk)
+        if total_read > max_size:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Arquivo excede limite de {settings.MAX_FILE_SIZE_MB} MB",
+            )
+        chunks.append(chunk)
+    content = b"".join(chunks)
 
     # Armazenar (R2 ou local)
     from app.services.url_ingestion_service import _store_file
