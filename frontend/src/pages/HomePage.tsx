@@ -78,11 +78,22 @@ function formatPrice(priceCents: number, billingPeriod: string, planName: string
   return { price: `R$${reais}`, period };
 }
 
+const FEATURE_LABELS: Record<string, string> = {
+  rag_global: 'Base de conhecimento de vendors',
+  rag_local: 'Documentos privados da equipe',
+  pcap_analysis: 'Analise de capturas de rede',
+  topology_generation: 'Mapa de topologia automatico',
+  config_tools: 'Validacao de configuracoes',
+  custom_tools: 'Ferramentas personalizadas',
+};
+
+const HIDDEN_FEATURES = new Set(['allow_system_fallback']);
+
 function featureFlags(features: Record<string, boolean> | null): string[] {
   if (!features) return [];
   return Object.entries(features)
-    .filter(([, enabled]) => enabled)
-    .map(([key]) => key);
+    .filter(([key, enabled]) => enabled && !HIDDEN_FEATURES.has(key))
+    .map(([key]) => FEATURE_LABELS[key] || key);
 }
 
 function HomePage() {

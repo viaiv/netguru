@@ -19,12 +19,12 @@ function formatLimit(value: number, suffix = ''): string {
 }
 
 const FEATURE_LABELS: Record<string, string> = {
-  rag_global: 'RAG Global',
-  rag_local: 'RAG Local',
-  pcap_analysis: 'Analise PCAP',
-  topology_generation: 'Topologia',
-  config_tools: 'Config tools',
-  custom_tools: 'Custom tools',
+  rag_global: 'Base de conhecimento de vendors',
+  rag_local: 'Documentos privados da equipe',
+  pcap_analysis: 'Analise de capturas de rede',
+  topology_generation: 'Mapa de topologia automatico',
+  config_tools: 'Validacao de configuracoes',
+  custom_tools: 'Ferramentas personalizadas',
 };
 
 /** Features internas que nao devem aparecer nos cards do pricing. */
@@ -303,37 +303,37 @@ function PricingPage() {
                   ))}
                 </tr>
                 <tr>
-                  <td>RAG Global</td>
+                  <td>Base de conhecimento de vendors</td>
                   {plans.map((p) => (
                     <td key={p.id}>{p.features?.rag_global ? '✓' : '—'}</td>
                   ))}
                 </tr>
                 <tr>
-                  <td>RAG Local</td>
+                  <td>Documentos privados da equipe</td>
                   {plans.map((p) => (
                     <td key={p.id}>{p.features?.rag_local ? '✓' : '—'}</td>
                   ))}
                 </tr>
                 <tr>
-                  <td>Analise PCAP</td>
+                  <td>Analise de capturas de rede</td>
                   {plans.map((p) => (
                     <td key={p.id}>{p.features?.pcap_analysis ? '✓' : '—'}</td>
                   ))}
                 </tr>
                 <tr>
-                  <td>Topologia</td>
+                  <td>Mapa de topologia automatico</td>
                   {plans.map((p) => (
                     <td key={p.id}>{p.features?.topology_generation ? '✓' : '—'}</td>
                   ))}
                 </tr>
                 <tr>
-                  <td>Config tools</td>
+                  <td>Validacao de configuracoes</td>
                   {plans.map((p) => (
                     <td key={p.id}>{p.features?.config_tools ? '✓' : '—'}</td>
                   ))}
                 </tr>
                 <tr>
-                  <td>Custom tools</td>
+                  <td>Ferramentas personalizadas</td>
                   {plans.map((p) => (
                     <td key={p.id}>{p.features?.custom_tools ? '✓' : '—'}</td>
                   ))}
