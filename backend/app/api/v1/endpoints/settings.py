@@ -3,6 +3,7 @@ Admin settings endpoints — manage system-wide configuration, email logs, and s
 """
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -31,6 +32,8 @@ from app.schemas.admin import (
 from app.services.llm_model_resolver_service import LLMModelResolverService
 from app.services.email_template_service import EmailTemplateService
 from app.services.system_settings_service import SystemSettingsService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -149,14 +152,17 @@ async def test_r2(
     try:
         r2.list_objects(max_keys=1)
     except R2OperationError as exc:
+        logger.error("R2 connection test failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Falha ao conectar ao R2: {exc}",
+            detail="Falha ao conectar ao R2. Verifique as credenciais e configuracao.",
         ) from exc
 
-    # Configura CORS automaticamente para permitir upload direto do browser
+    # Configura CORS com origens explicitas (nunca wildcard em producao)
     try:
-        r2.ensure_cors()
+        from app.core.config import settings as app_settings
+        cors_origins = app_settings.cors_origins_list or ["*"]
+        r2.ensure_cors(allowed_origins=cors_origins)
     except R2OperationError:
         pass  # CORS e best-effort; conexao ja foi validada
 

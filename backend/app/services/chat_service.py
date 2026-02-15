@@ -664,16 +664,18 @@ class ChatService:
                 ):
                     yield failure_event
                 if isinstance(exc, LLMProviderError):
+                    logger.error("stream llm_error: %s", exc)
                     yield {
                         "type": "error",
                         "code": "llm_error",
-                        "detail": str(exc),
+                        "detail": "Erro no provedor LLM. Tente novamente.",
                     }
                 else:
+                    logger.exception("stream internal_error")
                     yield {
                         "type": "error",
                         "code": "stream_error",
-                        "detail": f"Erro durante streaming: {exc}",
+                        "detail": "Erro interno durante streaming. Tente novamente.",
                     }
                 return
 

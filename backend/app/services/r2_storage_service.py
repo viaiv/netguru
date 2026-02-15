@@ -322,12 +322,18 @@ class R2StorageService:
         Configura regras CORS no bucket para permitir upload direto do browser.
 
         Args:
-            allowed_origins: Lista de origens permitidas. Padrao ["*"].
+            allowed_origins: Lista de origens permitidas.
+                Se nao informado, usa ["*"] (nao recomendado em producao).
 
         Raises:
             R2OperationError: Se falhar ao configurar CORS.
         """
         origins = allowed_origins or ["*"]
+        if "*" in origins:
+            import logging
+            logging.getLogger(__name__).warning(
+                "R2 CORS configurado com wildcard (*) — recomendado restringir em producao"
+            )
         try:
             self._client.put_bucket_cors(
                 Bucket=self._bucket,

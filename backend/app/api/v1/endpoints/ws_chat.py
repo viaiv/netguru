@@ -24,6 +24,7 @@ Close codes:
 """
 import asyncio
 import json
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -39,6 +40,8 @@ from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.services.chat_service import ChatService, ChatServiceError
 from app.services.llm_client import LLMProviderError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -295,16 +298,18 @@ async def websocket_chat(
                                 "detail": exc.detail,
                             })
                         elif isinstance(exc, LLMProviderError):
+                            logger.error("ws llm_error user=%s: %s", user.id, exc)
                             await websocket.send_json({
                                 "type": "error",
                                 "code": "llm_error",
-                                "detail": str(exc),
+                                "detail": "Erro no provedor LLM. Tente novamente.",
                             })
                         else:
+                            logger.exception("ws internal_error user=%s", user.id)
                             await websocket.send_json({
                                 "type": "error",
                                 "code": "internal_error",
-                                "detail": str(exc),
+                                "detail": "Erro interno. Tente novamente.",
                             })
 
                     continue
