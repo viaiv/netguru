@@ -21,6 +21,8 @@ class RAGResult:
     similarity: float
     source: str  # "global" | "local"
     metadata: dict | None = None
+    document_id: str | None = None
+    document_name: str | None = None
 
 
 class RAGService:
@@ -82,10 +84,29 @@ class RAGService:
         parts: list[str] = []
         for i, r in enumerate(results, 1):
             source_label = "Vendor Docs" if r.source == "global" else "Your Documents"
+            doc_ref = f", doc={r.document_name}" if r.document_name else ""
             parts.append(
-                f"[{i}] ({source_label}, similarity={r.similarity:.2f})\n{r.chunk_text}"
+                f"[{i}] ({source_label}, similarity={r.similarity:.2f}{doc_ref})\n{r.chunk_text}"
             )
         return "\n\n---\n\n".join(parts)
+
+    @staticmethod
+    def extract_citations(results: list[RAGResult]) -> list[dict]:
+        """Extrai citacoes estruturadas dos resultados RAG para o metadata."""
+        citations: list[dict] = []
+        for i, r in enumerate(results, 1):
+            citation: dict = {
+                "index": i,
+                "source_type": f"rag_{r.source}",
+                "excerpt": r.chunk_text[:200],
+                "similarity": round(r.similarity, 3),
+            }
+            if r.document_id:
+                citation["document_id"] = r.document_id
+            if r.document_name:
+                citation["document_name"] = r.document_name
+            citations.append(citation)
+        return citations
 
     async def _search(
         self,
@@ -112,12 +133,16 @@ class RAGService:
             }
 
         # Usa CAST() em vez de ::vector para evitar conflito com bind params do asyncpg
+        # LEFT JOIN documents para trazer document_id e filename (citacoes)
         sql = text(f"""
             SELECT
                 e.chunk_text,
                 1 - (e.embedding <=> CAST(:vec AS vector)) AS similarity,
-                e.metadata
+                e.metadata,
+                e.document_id,
+                d.filename AS document_name
             FROM embeddings e
+            LEFT JOIN documents d ON d.id = e.document_id
             WHERE {where_clause}
               AND e.embedding IS NOT NULL
               AND 1 - (e.embedding <=> CAST(:vec AS vector)) >= :min_sim
@@ -134,6 +159,8 @@ class RAGService:
                 similarity=float(row.similarity),
                 source=source,
                 metadata=row.metadata,
+                document_id=str(row.document_id) if row.document_id else None,
+                document_name=row.document_name,
             )
             for row in rows
         ]

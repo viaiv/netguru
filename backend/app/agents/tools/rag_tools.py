@@ -3,12 +3,16 @@ RAG tools para o agent LangGraph — search_rag_global e search_rag_local.
 """
 from __future__ import annotations
 
+import json
 from uuid import UUID
 
 from langchain_core.tools import StructuredTool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.rag_service import RAGService
+
+# Separador para extrair citacoes do output no chat_service
+CITATIONS_SEPARATOR = "\n\n<!-- CITATIONS_JSON:"
 
 
 def create_search_rag_global_tool(db: AsyncSession) -> StructuredTool:
@@ -27,7 +31,11 @@ def create_search_rag_global_tool(db: AsyncSession) -> StructuredTool:
         results = await svc.search_global(query)
         if not results:
             return "No relevant vendor documentation found for this query."
-        return svc.format_context(results)
+        context = svc.format_context(results)
+        citations = svc.extract_citations(results)
+        if citations:
+            context += f"{CITATIONS_SEPARATOR}{json.dumps(citations)} -->"
+        return context
 
     return StructuredTool.from_function(
         coroutine=_search_rag_global,
@@ -55,7 +63,11 @@ def create_search_rag_local_tool(db: AsyncSession, user_id: UUID) -> StructuredT
         results = await svc.search_local(query, user_id)
         if not results:
             return "No relevant information found in your uploaded documents."
-        return svc.format_context(results)
+        context = svc.format_context(results)
+        citations = svc.extract_citations(results)
+        if citations:
+            context += f"{CITATIONS_SEPARATOR}{json.dumps(citations)} -->"
+        return context
 
     return StructuredTool.from_function(
         coroutine=_search_rag_local,

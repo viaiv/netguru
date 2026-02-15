@@ -1209,7 +1209,8 @@ class ChatService:
         memory_resolution: MemoryContextResolution | None,
     ) -> dict | None:
         """
-        Enrich assistant metadata with evidence block and confidence heuristics.
+        Enrich assistant metadata with evidence block, confidence heuristics
+        and RAG citations.
         """
         payload: dict = {}
         if isinstance(metadata, dict):
@@ -1230,6 +1231,12 @@ class ChatService:
             evidence_summary=evidence_summary,
             response_content=response_content,
         )
+
+        # Extrair citacoes RAG dos tool results
+        citations = cls._extract_rag_citations(tool_calls_log)
+        if citations:
+            payload["citations"] = citations
+
         return payload or None
 
     @classmethod
@@ -1462,6 +1469,41 @@ class ChatService:
     @staticmethod
     def _compact_text(value: str) -> str:
         return " ".join(value.split())
+
+    @staticmethod
+    def _extract_rag_citations(tool_calls_log: list[dict]) -> list[dict]:
+        """Extrai citacoes RAG do full_result dos tool calls de search_rag_*."""
+        import json as _json
+
+        from app.agents.tools.rag_tools import CITATIONS_SEPARATOR
+
+        citations: list[dict] = []
+        seen_docs: set[str] = set()
+
+        for tc in tool_calls_log:
+            tool_name = str(tc.get("tool", ""))
+            if not tool_name.startswith("search_rag_"):
+                continue
+            full_result = str(tc.get("full_result", ""))
+            sep_idx = full_result.find(CITATIONS_SEPARATOR)
+            if sep_idx < 0:
+                continue
+            json_str = full_result[sep_idx + len(CITATIONS_SEPARATOR) :].rstrip(" ->")
+            try:
+                parsed = _json.loads(json_str)
+                if isinstance(parsed, list):
+                    for c in parsed:
+                        if not isinstance(c, dict):
+                            continue
+                        dedup_key = f"{c.get('source_type')}:{c.get('document_name', '')}:{c.get('excerpt', '')[:50]}"
+                        if dedup_key in seen_docs:
+                            continue
+                        seen_docs.add(dedup_key)
+                        citations.append(c)
+            except (_json.JSONDecodeError, ValueError):
+                continue
+
+        return citations
 
     @staticmethod
     def _find_tool_call_log(

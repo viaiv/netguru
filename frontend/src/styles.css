@@ -1449,6 +1449,74 @@ textarea:focus {
   overflow: auto;
 }
 
+/* Citation items */
+.evidence-panel__citations {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.evidence-panel__no-citations {
+  margin: 8px 0 0;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.citation-item {
+  border: 1px solid rgba(var(--ink-rgb), 0.12);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(var(--ink-rgb), 0.03);
+}
+
+.citation-item__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.citation-item__index {
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: var(--accent);
+}
+
+.citation-item__source {
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.citation-item__doc {
+  font-size: 0.7rem;
+  color: var(--ink);
+  font-family: 'Fira Code', monospace;
+  background: rgba(var(--ink-rgb), 0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.citation-item__sim {
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  margin-left: auto;
+}
+
+.citation-item__excerpt {
+  margin: 0;
+  font-size: 0.73rem;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  max-height: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .typing-cursor {
   display: inline-block;
   width: 2px;

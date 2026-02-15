@@ -33,6 +33,15 @@ interface ConfidencePayload {
   warning: string | null;
 }
 
+interface Citation {
+  index: number;
+  source_type: string;
+  excerpt: string;
+  similarity: number;
+  document_id?: string;
+  document_name?: string;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return null;
@@ -141,12 +150,36 @@ function prettyKey(key: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function parseCitations(metadata: Record<string, unknown> | null): Citation[] {
+  if (!metadata) return [];
+  const raw = metadata.citations;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((c): c is Record<string, unknown> => typeof c === 'object' && c !== null)
+    .map((c) => ({
+      index: asNumber(c.index, 0),
+      source_type: String(c.source_type ?? 'unknown'),
+      excerpt: String(c.excerpt ?? ''),
+      similarity: asNumber(c.similarity, 0),
+      document_id: typeof c.document_id === 'string' ? c.document_id : undefined,
+      document_name: typeof c.document_name === 'string' ? c.document_name : undefined,
+    }));
+}
+
+function sourceLabel(sourceType: string): string {
+  if (sourceType === 'rag_global') return 'Docs de vendors';
+  if (sourceType === 'rag_local') return 'Seus documentos';
+  return sourceType;
+}
+
 function EvidencePanel({ metadata }: EvidencePanelProps) {
   const evidence = useMemo(() => parseEvidence(metadata), [metadata]);
   const confidence = useMemo(() => parseConfidence(metadata), [metadata]);
+  const citations = useMemo(() => parseCitations(metadata), [metadata]);
   const [expanded, setExpanded] = useState(false);
+  const [citationsExpanded, setCitationsExpanded] = useState(false);
 
-  if (!evidence && !confidence) {
+  if (!evidence && !confidence && citations.length === 0) {
     return null;
   }
 
@@ -221,6 +254,42 @@ function EvidencePanel({ metadata }: EvidencePanelProps) {
           )}
         </>
       ) : null}
+
+      {citations.length > 0 && (
+        <>
+          <button
+            type="button"
+            className="evidence-panel__toggle"
+            onClick={() => setCitationsExpanded((prev) => !prev)}
+          >
+            {citationsExpanded ? 'Ocultar fontes' : `Fontes (${citations.length})`}
+          </button>
+
+          {citationsExpanded && (
+            <div className="evidence-panel__citations">
+              {citations.map((c) => (
+                <div key={`cite-${c.index}`} className="citation-item">
+                  <div className="citation-item__meta">
+                    <span className="citation-item__index">[{c.index}]</span>
+                    <span className="citation-item__source">{sourceLabel(c.source_type)}</span>
+                    {c.document_name && (
+                      <span className="citation-item__doc">{c.document_name}</span>
+                    )}
+                    <span className="citation-item__sim">{Math.round(c.similarity * 100)}%</span>
+                  </div>
+                  <p className="citation-item__excerpt">{c.excerpt}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {citations.length === 0 && confidence && confidence.level === 'low' && (
+        <p className="evidence-panel__no-citations">
+          Sem fontes documentais — resposta baseada em conhecimento geral do modelo.
+        </p>
+      )}
     </div>
   );
 }
