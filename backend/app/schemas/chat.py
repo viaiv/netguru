@@ -48,7 +48,7 @@ class MessageCreate(BaseModel):
     Request schema for appending a message into a conversation.
     """
 
-    role: str = Field(pattern="^(user|assistant|system)$")
+    role: str = Field(pattern="^(user|assistant)$")
     content: str = Field(min_length=1)
     tokens_used: int | None = Field(default=None, ge=0)
     metadata: dict[str, Any] | None = None

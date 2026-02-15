@@ -1692,8 +1692,11 @@ class ChatService:
         result = await self._db.execute(stmt)
         all_messages = result.scalars().all()
 
+        # Filter out user-injected system messages (defense in depth)
+        safe_messages = [m for m in all_messages if m.role != "system"]
+
         # Trim to history limit
-        recent = all_messages[-settings.CHAT_HISTORY_LIMIT:]
+        recent = safe_messages[-settings.CHAT_HISTORY_LIMIT:]
         return [
             {"role": msg.role, "content": msg.content}
             for msg in recent
