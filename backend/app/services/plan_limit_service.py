@@ -35,14 +35,14 @@ class PlanLimitService:
 
     @staticmethod
     async def get_user_plan(db: AsyncSession, user: User) -> Plan:
-        """Resolve the Plan from user.plan_tier (defaults to 'solo')."""
-        tier = getattr(user, "plan_tier", None) or "solo"
+        """Resolve the Plan from user.plan_tier (defaults to 'free')."""
+        tier = getattr(user, "plan_tier", None) or "free"
         stmt = select(Plan).where(Plan.name == tier)
         result = await db.execute(stmt)
         plan = result.scalar_one_or_none()
         if plan is None:
-            # Fallback to solo plan
-            stmt = select(Plan).where(Plan.name == "solo")
+            # Fallback to free plan
+            stmt = select(Plan).where(Plan.name == "free")
             result = await db.execute(stmt)
             plan = result.scalar_one_or_none()
         if plan is None:

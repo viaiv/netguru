@@ -110,7 +110,7 @@ class Settings(BaseSettings):
 
     # Trial
     TRIAL_DAYS: int = 15
-    TRIAL_PLAN_TIER: str = "team"
+    TRIAL_PLAN_TIER: str = "free"
 
     # Stripe
     STRIPE_SECRET_KEY: str = ""

@@ -21,7 +21,6 @@ function RegisterPage() {
         email,
         password,
         full_name: fullName || null,
-        plan_tier: 'solo',
       });
 
       setRegistered(true);

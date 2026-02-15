@@ -105,15 +105,14 @@ async def register(
     is_first_user = first_user_result.scalar_one_or_none() is None
     assigned_role = UserRole.OWNER.value if is_first_user else UserRole.MEMBER.value
 
-    # Create user with trial period
+    # Create user in free tier — upgrade only via Stripe checkout/webhook
     user = User(
         email=user_in.email,
         hashed_password=get_password_hash(user_in.password),
         full_name=user_in.full_name,
         encrypted_api_key=encrypted_api_key,
         llm_provider=user_in.llm_provider,
-        plan_tier=settings.TRIAL_PLAN_TIER,
-        trial_ends_at=datetime.utcnow() + timedelta(days=settings.TRIAL_DAYS),
+        plan_tier="free",
         role=assigned_role,
     )
 
