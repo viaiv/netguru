@@ -70,7 +70,7 @@ export function useWebSocketReconnect({
       const ws = new ChatWebSocket(onEvent);
       wsRef.current = ws;
 
-      ws.connect(
+      void ws.connect(
         convId,
         () => {
           // onOpen — conexao bem-sucedida

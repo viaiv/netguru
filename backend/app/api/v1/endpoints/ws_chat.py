@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select as sa_select
 
 from app.core.database import AsyncSessionLocal
+from app.core.redis import get_redis_client
 from app.core.security import decode_token
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
@@ -46,24 +47,46 @@ async def _authenticate_websocket(
     websocket: WebSocket,
     token: str,
     db: AsyncSession,
+    *,
+    ticket: str = "",
 ) -> User | None:
     """
-    Validate JWT token and return the User, or None if auth fails.
+    Validate auth credential and return the User, or None if auth fails.
+
+    Supports two methods (checked in order):
+    1. Ephemeral ticket (preferred) — short-lived Redis token, one-time use.
+    2. JWT access token (legacy fallback) — passed via query param.
     """
-    payload = decode_token(token)
-    if payload is None:
-        return None
+    user_id: UUID | None = None
 
-    if payload.get("type") != "access":
-        return None
+    # 1. Try ephemeral ticket first
+    if ticket:
+        try:
+            redis = get_redis_client()
+            redis_key = f"ws_ticket:{ticket}"
+            raw = await redis.get(redis_key)
+            if raw:
+                await redis.delete(redis_key)  # one-time use
+                user_id = UUID(raw)
+        except Exception:
+            pass
 
-    raw_user_id = payload.get("sub")
-    if raw_user_id is None:
-        return None
+    # 2. Fallback to JWT token
+    if user_id is None and token:
+        payload = decode_token(token)
+        if payload is None:
+            return None
+        if payload.get("type") != "access":
+            return None
+        raw_user_id = payload.get("sub")
+        if raw_user_id is None:
+            return None
+        try:
+            user_id = UUID(str(raw_user_id))
+        except (TypeError, ValueError):
+            return None
 
-    try:
-        user_id = UUID(str(raw_user_id))
-    except (TypeError, ValueError):
+    if user_id is None:
         return None
 
     stmt = select(User).where(User.id == user_id)
@@ -137,16 +160,17 @@ async def websocket_chat(
     websocket: WebSocket,
     conversation_id: UUID,
     token: str = "",
+    ticket: str = "",
 ):
     """
     Main WebSocket endpoint for real-time chat with streaming LLM responses.
 
-    Authentication is via query parameter: ?token=<jwt_access_token>
+    Authentication: ?ticket=<ephemeral> (preferred) or ?token=<jwt> (legacy).
     """
     # Manual DB session — WebSocket connections are long-lived
     async with AsyncSessionLocal() as db:
         # Authenticate BEFORE accepting the connection
-        user = await _authenticate_websocket(websocket, token, db)
+        user = await _authenticate_websocket(websocket, token, db, ticket=ticket)
         if user is None:
             await websocket.close(code=4001, reason="Authentication failed")
             return

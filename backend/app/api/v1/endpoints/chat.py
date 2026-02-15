@@ -16,6 +16,7 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_workspace, require_permissions
 from app.core.rbac import Permission
 from app.models.conversation import Conversation, Message
+from app.models.llm_model import LlmModel
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.schemas.chat import (
@@ -98,11 +99,27 @@ async def create_conversation(
     Create a conversation for current user within active workspace.
     """
 
+    # Validar model_used contra catalogo de modelos ativos
+    validated_model = None
+    if payload.model_used:
+        result = await db.execute(
+            select(LlmModel).where(
+                LlmModel.model_id == payload.model_used,
+                LlmModel.is_active.is_(True),
+            )
+        )
+        if result.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Modelo '{payload.model_used}' nao encontrado no catalogo ou esta inativo.",
+            )
+        validated_model = payload.model_used
+
     conversation = Conversation(
         user_id=current_user.id,
         workspace_id=workspace.id,
         title=payload.title,
-        model_used=payload.model_used,
+        model_used=validated_model,
     )
     db.add(conversation)
     await db.commit()

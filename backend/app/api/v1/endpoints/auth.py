@@ -7,13 +7,15 @@ import secrets
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.dependencies import get_current_user
+from app.core.rate_limit import check_rate_limit
 from app.core.redis import get_redis
 from app.core.security import (
     verify_password,
@@ -158,6 +160,7 @@ async def register(
 
 @router.post("/login", response_model=Token)
 async def login(
+    request: Request,
     login_request: LoginRequest,
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
@@ -165,6 +168,8 @@ async def login(
     """
     Login with email/password (JSON body) and return JWT tokens.
     """
+    await check_rate_limit(request, prefix="rl:login")
+
     # Find user
     stmt = select(User).where(User.email == login_request.email)
     result = await db.execute(stmt)
@@ -210,6 +215,7 @@ async def login(
 
 @router.post("/refresh", response_model=AccessTokenResponse)
 async def refresh_access_token(
+    request: Request,
     refresh_request: RefreshTokenRequest,
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
@@ -217,6 +223,7 @@ async def refresh_access_token(
     """
     Refresh access token using a valid one-time refresh token.
     """
+    await check_rate_limit(request, prefix="rl:refresh", limit=20)
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or expired refresh token",
@@ -317,6 +324,7 @@ async def verify_email(
 
 @router.post("/forgot-password", status_code=status.HTTP_200_OK)
 async def forgot_password(
+    request: Request,
     body: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
@@ -326,6 +334,7 @@ async def forgot_password(
 
     Always returns 200 to prevent email enumeration.
     """
+    await check_rate_limit(request, prefix="rl:forgot-pw", limit=5)
     stmt = select(User).where(User.email == body.email)
     user = (await db.execute(stmt)).scalar_one_or_none()
 
@@ -374,3 +383,24 @@ async def reset_password(
     await db.commit()
 
     return {"message": "Senha redefinida com sucesso"}
+
+
+# ---------------------------------------------------------------------------
+# WebSocket ticket (ephemeral, short-lived)
+# ---------------------------------------------------------------------------
+
+WS_TICKET_TTL = 30  # seconds
+
+
+@router.post("/ws-ticket", status_code=status.HTTP_200_OK)
+async def create_ws_ticket(
+    current_user: User = Depends(get_current_user),
+    redis: Redis = Depends(get_redis),
+) -> dict:
+    """
+    Generate a short-lived ticket for WebSocket authentication.
+    Avoids sending JWT in the WS query string (visible in logs/proxy).
+    """
+    ticket = secrets.token_urlsafe(32)
+    await redis.setex(f"ws_ticket:{ticket}", WS_TICKET_TTL, str(current_user.id))
+    return {"ticket": ticket, "expires_in": WS_TICKET_TTL}

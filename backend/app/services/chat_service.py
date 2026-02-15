@@ -292,6 +292,21 @@ class ChatService:
         # 7. Build tools + fallback plan
         try:
             model_override = conversation.model_used
+            # Validar override contra catalogo ativo
+            if model_override:
+                from app.models.llm_model import LlmModel
+                _valid = (await self._db.execute(
+                    select(LlmModel).where(
+                        LlmModel.model_id == model_override,
+                        LlmModel.is_active.is_(True),
+                    )
+                )).scalar_one_or_none()
+                if _valid is None:
+                    logger.warning(
+                        "model_override rejected: model=%s user=%s",
+                        model_override, user.id,
+                    )
+                    model_override = None
             if not model_override:
                 # Try plan default if plan-specific provider was used or BYO provider matches
                 if _plan_model and (_used_plan_provider or _plan_model[0] == provider_name):

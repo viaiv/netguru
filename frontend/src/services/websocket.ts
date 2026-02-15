@@ -1,7 +1,7 @@
 /**
  * WebSocket client for real-time chat streaming.
  */
-import { getStoredAccessToken } from './api';
+import { api, getStoredAccessToken } from './api';
 
 export type TWebSocketEventType =
   | 'stream_start'
@@ -46,7 +46,7 @@ export interface IOutgoingAttachmentRef {
 
 type TEventHandler = (event: IWebSocketEvent) => void;
 
-function resolveWsUrl(conversationId: string): string {
+function resolveWsBase(): string {
   const apiUrl = (import.meta.env.VITE_API_URL?.trim() as string) || '';
   let base: string;
 
@@ -58,7 +58,22 @@ function resolveWsUrl(conversationId: string): string {
   }
 
   // http(s) → ws(s)
-  base = base.replace(/^http/, 'ws');
+  return base.replace(/^http/, 'ws');
+}
+
+async function resolveWsUrl(conversationId: string): Promise<string> {
+  const base = resolveWsBase();
+
+  // Prefer ephemeral ticket (not visible in logs/proxy)
+  try {
+    const res = await api.post<{ ticket: string }>('/auth/ws-ticket');
+    const ticket = res.data.ticket;
+    if (ticket) {
+      return `${base}/ws/chat/${conversationId}?ticket=${encodeURIComponent(ticket)}`;
+    }
+  } catch {
+    // Fallback to JWT token if ticket endpoint fails
+  }
 
   const token = getStoredAccessToken() ?? '';
   return `${base}/ws/chat/${conversationId}?token=${encodeURIComponent(token)}`;
@@ -79,17 +94,17 @@ export class ChatWebSocket {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  connect(
+  async connect(
     conversationId: string,
     onOpen?: () => void,
     onClose?: (code: number, reason: string) => void,
-  ): void {
+  ): Promise<void> {
     this.disconnect();
 
     this.onOpen = onOpen ?? null;
     this.onClose = onClose ?? null;
 
-    const url = resolveWsUrl(conversationId);
+    const url = await resolveWsUrl(conversationId);
     this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {
