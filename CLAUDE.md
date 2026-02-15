@@ -8,20 +8,18 @@
 > **⚠️ Manutenção**: Se qualquer procedimento documentado aqui estiver desatualizado, sugira correções e atualize este arquivo.
 
 > **📝 CHECKPOINT TEMPORÁRIO (REMOVER NA PRÓXIMA SESSÃO):**
-> Bugfixes de streaming + logging + Topology mapper:
-> - **Streaming vazio**: Anthropic retorna `chunk.content` como `list` de content blocks
->   (nao `str`) quando tools estao bound. Fix em `network_engineer_agent.py` para tratar ambos.
-> - **Logging para arquivo**: `backend/app/core/logging_config.py` — RotatingFileHandler
->   em `backend/logs/netguru.log` (10MB, 3 backups, somente DEBUG=True)
-> - **Logging de diagnostico**: chat_service.py loga tentativas LLM, respostas vazias,
->   contagem de text chunks; network_engineer_agent.py loga event_count e text_chunks_emitted
-> - **Topology mapper**: modelo `Topology` faltava no `models/__init__.py` — causava
->   `InvalidRequestError` em qualquer query que tocasse Workspace (incluindo PCAP analysis)
-> - **Celery models**: `import app.models` adicionado ao `celery_app.py` para garantir
->   que todos os mappers SQLAlchemy sao inicializados antes de qualquer task rodar
-> - **Outros fixes da sessao anterior**: UUID serialization no audit_log, passive_deletes
->   em Conversation/User/Workspace, features como checkboxes no AdminPlansPage,
->   terminologia "modelo incluso no plano" substituindo "modelo gratuito"
+> Hardening de seguranca — todas as issues SEC fechadas:
+> - **RBAC billing**: checkout/portal/seats exigem `workspace:billing_manage` (owner/admin)
+> - **Webhook Stripe**: fail-fast se `stripe_webhook_secret` vazio
+> - **IDOR PCAP**: `analyze_pcap` escopado por `workspace_id`, fallbacks sem escopo removidos
+> - **SSRF URL ingestion**: validacao DNS + bloqueio IP privado/reservado + revalidacao em redirects
+> - **DELETE api-keys**: permissao corrigida para `API_KEYS_UPDATE_SELF`
+> - **model_used**: validado contra catalogo `llm_models` ativo (criacao + runtime)
+> - **WS ticket efemero**: `POST /auth/ws-ticket` (30s, one-time use) — WS aceita `?ticket=` ou `?token=`
+> - **Rate limiting**: Redis-backed em login (10/min), refresh (20/min), forgot-password (5/min)
+> - **Erros sanitizados**: cliente recebe mensagem generica, `str(exc)` fica nos logs
+> - **CORS R2**: usa `cors_origins_list` do settings em vez de wildcard
+> - **Modelo oculto no chat**: provider/modelo nao exibido quando usa LLM do sistema
 
 ---
 
@@ -625,6 +623,7 @@ GET  /api/v1/agent/tools
 POST /api/v1/billing/seats        # 💺 Pre-compra de assentos
 GET  /api/v1/billing/subscription # 📊 Plano + uso + seat_info
 DELETE /api/v1/users/me/api-keys  # 🔑 Remover API key (inicia grace BYO-LLM)
+POST /api/v1/auth/ws-ticket       # 🎫 Ticket efemero para WS (30s, one-time)
 GET  /api/v1/admin/llm-models     # 📋 Catalogo de modelos LLM
 POST /api/v1/admin/llm-models     # ➕ Criar modelo no catalogo
 PATCH /api/v1/admin/llm-models/:id # ✏️ Editar modelo
@@ -795,7 +794,26 @@ DELETE /api/v1/admin/llm-models/:id # 🗑️ Remover modelo
 - [x] Fix SAWarning DELETE conversations: `passive_deletes=True` em relationships
 - [x] Features como checkboxes no AdminPlansPage (substituiu textarea JSON)
 - [x] Terminologia: "modelo incluso no plano" em vez de "modelo gratuito"
+- [x] Ocultar provider/modelo no chat quando usa LLM do sistema (free fallback)
 - [ ] Testes para streaming com content blocks como lista
+
+### Sprint 12 (Security Hardening) - ✅ Completo
+- [x] **P0 #39**: RBAC `workspace:billing_manage` em checkout/portal/seats (403 para member/viewer)
+- [x] **P0 #40**: Webhook Stripe fail-fast se `webhook_secret` vazio (`StripeNotConfiguredError`)
+- [x] **P0 #41**: IDOR PCAP: `analyze_pcap` escopado por `workspace_id`, fallbacks sem escopo removidos
+- [x] **P0 #42**: SSRF URL ingestion: `_validate_url_target()` com DNS resolve + bloqueio IP privado
+  - Revalidacao apos cada redirect (max 5), hostnames bloqueados (localhost, metadata, .local)
+- [x] **P1 #43**: `model_used` validado contra catalogo `llm_models` ativo (criacao 400 + runtime fallback)
+- [x] **P1 #44**: WS ticket efemero `POST /auth/ws-ticket` (30s, one-time use Redis)
+  - Frontend obtem ticket antes de conectar, fallback para JWT se ticket falhar
+- [x] **P1 #45**: Rate limiting Redis-backed: login 10/min, refresh 20/min, forgot-password 5/min
+  - `backend/app/core/rate_limit.py` — sliding window, fail-open se Redis falhar
+  - Config: `AUTH_RATE_LIMIT_PER_MINUTE` no settings
+- [x] **P1 #46**: DELETE /users/me/api-keys exige `API_KEYS_UPDATE_SELF` (era READ)
+- [x] **P2 #47**: Erros sanitizados ao cliente (mensagem generica + log interno com detalhes)
+- [x] **P2 #48**: CORS R2 usa `cors_origins_list` do settings, warning se wildcard
+- [ ] Testes unitarios para rate limiter e RBAC billing
+- [ ] Testes de integracao para WS ticket efemero
 
 ---
 
