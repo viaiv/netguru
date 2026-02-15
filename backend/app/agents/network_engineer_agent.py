@@ -145,7 +145,44 @@ def _create_chat_model(
             streaming=True,
         )
 
-    raise ValueError(f"Unsupported provider: {provider_name}")
+    if provider_name == "groq":
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1",
+            model=model or settings.DEFAULT_LLM_MODEL_GROQ,
+            temperature=settings.LLM_TEMPERATURE,
+            max_tokens=settings.LLM_MAX_TOKENS,
+            streaming=True,
+        )
+
+    if provider_name == "deepseek":
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(
+            api_key=api_key,
+            base_url="https://api.deepseek.com/v1",
+            model=model or settings.DEFAULT_LLM_MODEL_DEEPSEEK,
+            temperature=settings.LLM_TEMPERATURE,
+            max_tokens=settings.LLM_MAX_TOKENS,
+            streaming=True,
+        )
+
+    if provider_name == "openrouter":
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1",
+            model=model or settings.DEFAULT_LLM_MODEL_OPENROUTER,
+            temperature=settings.LLM_TEMPERATURE,
+            max_tokens=settings.LLM_MAX_TOKENS,
+            streaming=True,
+        )
+
+    supported = ", ".join(settings.SUPPORTED_LLM_PROVIDERS)
+    raise ValueError(f"Unsupported provider: {provider_name}. Choose from: {supported}")
 
 
 def _build_graph(chat_model, tools: list[BaseTool] | None = None) -> StateGraph:

@@ -4,9 +4,13 @@ Pydantic schemas for User API.
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from app.core.config import settings
 from app.core.rbac import UserRole
+
+# Pattern regex gerado a partir da fonte unica de providers
+_PROVIDER_PATTERN = "^(" + "|".join(settings.SUPPORTED_LLM_PROVIDERS) + ")$"
 
 
 class UserBase(BaseModel):
@@ -29,14 +33,14 @@ class UserCreate(BaseModel):
     # BYO-LLM: User's own API key
     api_key: Optional[str] = Field(
         None,
-        description="OpenAI, Anthropic, Azure, or local LLM API key",
+        description="LLM API key (OpenAI, Anthropic, Azure, Google, Groq, DeepSeek, OpenRouter)",
         min_length=10,
         max_length=500
     )
     llm_provider: Optional[str] = Field(
         None,
-        description="openai|anthropic|azure|local",
-        pattern="^(openai|anthropic|azure|local)$"
+        description="LLM provider name",
+        pattern=_PROVIDER_PATTERN,
     )
 
 
@@ -53,7 +57,7 @@ class UserUpdate(BaseModel):
     )
     llm_provider: Optional[str] = Field(
         None,
-        pattern="^(openai|anthropic|azure|local)$"
+        pattern=_PROVIDER_PATTERN,
     )
 
 

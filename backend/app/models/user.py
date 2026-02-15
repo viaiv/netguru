@@ -27,9 +27,9 @@ class User(Base):
     # BYO-LLM: User's own API key (encrypted with Fernet)
     encrypted_api_key = Column(Text, nullable=True)
     llm_provider = Column(
-        String(50), 
+        String(50),
         nullable=True,
-        comment="openai|anthropic|azure|local"
+        comment="openai|anthropic|azure|google|groq|deepseek|openrouter"
     )
     
     # Plan tier for RBAC
