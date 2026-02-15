@@ -1,5 +1,9 @@
 """
 Role-Based Access Control (RBAC) definitions and helpers.
+
+Dois niveis de RBAC:
+- UserRole + Permission: RBAC de sistema (admin global, owner da instancia)
+- WorkspaceRole + WorkspacePermission: RBAC dentro de cada workspace
 """
 from __future__ import annotations
 
@@ -39,6 +43,30 @@ class Permission(str, Enum):
     ADMIN_SETTINGS_MANAGE = "admin:settings_manage"
     ADMIN_SYSTEM_MEMORIES_MANAGE = "admin:system_memories_manage"
     ADMIN_RAG_MANAGE = "admin:rag_manage"
+
+
+# ---------------------------------------------------------------------------
+# Workspace RBAC
+# ---------------------------------------------------------------------------
+
+
+class WorkspaceRole(str, Enum):
+    """Roles dentro de um workspace."""
+
+    OWNER = "owner"
+    ADMIN = "admin"
+    MEMBER = "member"
+    VIEWER = "viewer"
+
+
+class WorkspacePermission(str, Enum):
+    """Permissoes granulares dentro de um workspace."""
+
+    WORKSPACE_READ = "workspace:read"
+    WORKSPACE_UPDATE = "workspace:update"
+    WORKSPACE_DELETE = "workspace:delete"
+    WORKSPACE_MEMBERS_MANAGE = "workspace:members_manage"
+    WORKSPACE_BILLING_MANAGE = "workspace:billing_manage"
 
 
 ROLE_PERMISSIONS: dict[UserRole, frozenset[Permission]] = {
@@ -85,6 +113,29 @@ ADMIN_ASSIGNABLE_ROLES: frozenset[UserRole] = frozenset(
         UserRole.VIEWER,
     }
 )
+
+
+WORKSPACE_ROLE_PERMISSIONS: dict[WorkspaceRole, frozenset[WorkspacePermission]] = {
+    WorkspaceRole.OWNER: frozenset(wp for wp in WorkspacePermission),
+    WorkspaceRole.ADMIN: frozenset(
+        {
+            WorkspacePermission.WORKSPACE_READ,
+            WorkspacePermission.WORKSPACE_UPDATE,
+            WorkspacePermission.WORKSPACE_MEMBERS_MANAGE,
+            WorkspacePermission.WORKSPACE_BILLING_MANAGE,
+        }
+    ),
+    WorkspaceRole.MEMBER: frozenset(
+        {
+            WorkspacePermission.WORKSPACE_READ,
+        }
+    ),
+    WorkspaceRole.VIEWER: frozenset(
+        {
+            WorkspacePermission.WORKSPACE_READ,
+        }
+    ),
+}
 
 
 def normalize_role(role: str | UserRole | None) -> UserRole:
@@ -161,3 +212,61 @@ def can_assign_role(actor_role: str | UserRole | None, target_role: UserRole) ->
         return target_role in ADMIN_ASSIGNABLE_ROLES
 
     return False
+
+
+# ---------------------------------------------------------------------------
+# Workspace RBAC helpers
+# ---------------------------------------------------------------------------
+
+
+def normalize_workspace_role(role: str | WorkspaceRole | None) -> WorkspaceRole:
+    """
+    Normalize string/enum workspace role values.
+
+    Args:
+        role: Raw workspace role value.
+
+    Returns:
+        Normalized role. Falls back to ``WorkspaceRole.MEMBER`` for unknown values.
+    """
+    if isinstance(role, WorkspaceRole):
+        return role
+    if role is None:
+        return WorkspaceRole.MEMBER
+    try:
+        return WorkspaceRole(str(role))
+    except ValueError:
+        return WorkspaceRole.MEMBER
+
+
+def get_workspace_role_permissions(
+    role: str | WorkspaceRole | None,
+) -> frozenset[WorkspacePermission]:
+    """
+    Resolve the permission set for a workspace role.
+
+    Args:
+        role: Workspace role value.
+
+    Returns:
+        Immutable set with granted permissions.
+    """
+    normalized = normalize_workspace_role(role)
+    return WORKSPACE_ROLE_PERMISSIONS.get(normalized, frozenset())
+
+
+def has_workspace_permission(
+    role: str | WorkspaceRole | None,
+    permission: WorkspacePermission,
+) -> bool:
+    """
+    Check if workspace role grants the required permission.
+
+    Args:
+        role: Workspace role value.
+        permission: Required workspace permission.
+
+    Returns:
+        ``True`` if role has the permission.
+    """
+    return permission in get_workspace_role_permissions(role)

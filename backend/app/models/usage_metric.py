@@ -1,5 +1,5 @@
 """
-UsageMetric model — daily usage tracking per user.
+UsageMetric model — daily usage tracking per user within a workspace.
 """
 from datetime import date, datetime
 from uuid import uuid4
@@ -13,16 +13,22 @@ from app.core.database import Base
 
 class UsageMetric(Base):
     """
-    Daily usage counters per user for plan limit enforcement.
-    One row per user per day.
+    Daily usage counters per user per workspace for plan limit enforcement.
+    One row per (workspace, user, day).
     """
 
     __tablename__ = "usage_metrics"
     __table_args__ = (
-        UniqueConstraint("user_id", "metric_date", name="uq_usage_user_date"),
+        UniqueConstraint("workspace_id", "user_id", "metric_date", name="uq_usage_workspace_user_date"),
     )
 
     id = Column(SQLAlchemyUUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
+    workspace_id = Column(
+        SQLAlchemyUUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     user_id = Column(
         SQLAlchemyUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -47,9 +53,10 @@ class UsageMetric(Base):
 
     # Relationships
     user = relationship("User", backref="usage_metrics")
+    workspace = relationship("Workspace", back_populates="usage_metrics")
 
     def __repr__(self) -> str:
         return (
-            f"<UsageMetric(user={self.user_id}, date={self.metric_date}, "
-            f"uploads={self.uploads_count}, msgs={self.messages_count})>"
+            f"<UsageMetric(workspace={self.workspace_id}, user={self.user_id}, "
+            f"date={self.metric_date}, uploads={self.uploads_count}, msgs={self.messages_count})>"
         )

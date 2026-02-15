@@ -112,11 +112,13 @@ class ToolGuardrailService:
         user_role: str | None,
         plan_tier: str | None,
         user_message: str,
+        workspace_plan_tier: str | None = None,
     ) -> None:
         self._db = db
         self._user_id = user_id
         self._user_role = self._normalize_token(user_role)
-        self._plan_tier = self._normalize_token(plan_tier)
+        # Prioridade: workspace_plan_tier > plan_tier (retrocompatibilidade)
+        self._plan_tier = self._normalize_token(workspace_plan_tier or plan_tier)
         self._user_message = self._normalize_text(user_message)
         self._policy_cache: tuple[dict[str, Any], str] | None = None
         self._features_cache: dict[str, bool] | None = None
@@ -292,30 +294,34 @@ class ToolGuardrailService:
             return
 
     async def _load_plan_features(self) -> dict[str, bool]:
-        """Resolve Plan.features do plano efetivo do usuario."""
+        """Resolve Plan.features do plano efetivo (via plan_tier string)."""
         if self._features_cache is not None:
             return self._features_cache
 
         try:
-            from app.services.plan_limit_service import PlanLimitService
-            from app.models.user import User
-
+            from app.models.plan import Plan
             from sqlalchemy import select
-            stmt = select(User).where(User.id == self._user_id)
+
+            tier = self._plan_tier or "free"
+            stmt = select(Plan).where(Plan.name == tier)
             result = await self._db.execute(stmt)
-            user = result.scalar_one_or_none()
-            if user is None:
+            plan = result.scalar_one_or_none()
+            if plan is None:
+                stmt = select(Plan).where(Plan.name == "free")
+                result = await self._db.execute(stmt)
+                plan = result.scalar_one_or_none()
+
+            if plan is None:
                 self._features_cache = {}
                 return self._features_cache
 
-            plan = await PlanLimitService.get_user_plan(self._db, user)
             raw_features = plan.features if plan.features else {}
             self._features_cache = {
                 k: bool(v) for k, v in raw_features.items()
                 if isinstance(k, str)
             }
         except Exception:
-            logger.warning("Falha ao resolver Plan.features user=%s", self._user_id)
+            logger.warning("Falha ao resolver Plan.features tier=%s", self._plan_tier)
             self._features_cache = {}
 
         return self._features_cache

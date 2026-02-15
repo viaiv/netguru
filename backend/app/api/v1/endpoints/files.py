@@ -15,10 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.dependencies import require_permissions
+from app.core.dependencies import get_current_workspace, require_permissions
 from app.core.rbac import Permission
 from app.models.document import Document
 from app.models.user import User
+from app.models.workspace import Workspace
 from app.schemas.document import (
     ConfirmUploadRequest,
     FileDetailResponse,
@@ -121,16 +122,19 @@ def _resolve_file_type(file_type: str | None, extension: str) -> str:
     return normalized
 
 
-async def _get_owned_document(
+async def _get_workspace_document(
     file_id: UUID,
-    user_id: UUID,
+    workspace_id: UUID,
     db: AsyncSession,
 ) -> Document:
     """
-    Return a user-owned document or raise 404.
+    Return a workspace-owned document or raise 404.
     """
 
-    stmt = select(Document).where(Document.id == file_id, Document.user_id == user_id)
+    stmt = select(Document).where(
+        Document.id == file_id,
+        Document.workspace_id == workspace_id,
+    )
     result = await db.execute(stmt)
     document = result.scalar_one_or_none()
     if document is None:
@@ -150,6 +154,7 @@ async def _get_owned_document(
 async def presign_upload(
     body: PresignUploadRequest,
     current_user: User = Depends(require_permissions(Permission.USERS_UPDATE_SELF)),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> PresignUploadResponse:
     """
@@ -160,9 +165,9 @@ async def presign_upload(
     """
     # Plan limit enforcement
     try:
-        await PlanLimitService.check_upload_limit(db, current_user)
+        await PlanLimitService.check_upload_limit(db, workspace)
         file_size_mb = body.file_size_bytes / (1024 * 1024)
-        await PlanLimitService.check_file_size(db, current_user, file_size_mb)
+        await PlanLimitService.check_file_size(db, workspace, file_size_mb)
     except PlanLimitError as exc:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -226,6 +231,7 @@ async def presign_upload(
 
     document = Document(
         user_id=current_user.id,
+        workspace_id=workspace.id,
         filename=object_key.rsplit("/", 1)[-1],
         original_filename=body.filename,
         file_type=resolved_file_type,
@@ -251,6 +257,7 @@ async def presign_upload(
 async def confirm_upload(
     body: ConfirmUploadRequest,
     current_user: User = Depends(require_permissions(Permission.USERS_UPDATE_SELF)),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> FileUploadResponse:
     """
@@ -259,8 +266,8 @@ async def confirm_upload(
     Verifica o objeto no R2 via HEAD, atualiza status para 'uploaded'
     e despacha processamento Celery se aplicavel.
     """
-    document = await _get_owned_document(
-        file_id=body.document_id, user_id=current_user.id, db=db,
+    document = await _get_workspace_document(
+        file_id=body.document_id, workspace_id=workspace.id, db=db,
     )
 
     if document.status != "pending_upload":
@@ -291,7 +298,7 @@ async def confirm_upload(
     await db.refresh(document)
 
     # Track usage
-    await UsageTrackingService.increment_uploads(db, current_user.id)
+    await UsageTrackingService.increment_uploads(db, workspace.id, current_user.id)
     await db.commit()
 
     # Despacha processamento para Celery worker
@@ -321,14 +328,15 @@ async def upload_file(
     file: UploadFile = File(...),
     file_type: str | None = Form(default=None),
     current_user: User = Depends(require_permissions(Permission.USERS_UPDATE_SELF)),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> FileUploadResponse:
     """
-    Upload a file and persist metadata for current user.
+    Upload a file and persist metadata for current user within workspace.
     """
     # Plan limit enforcement
     try:
-        await PlanLimitService.check_upload_limit(db, current_user)
+        await PlanLimitService.check_upload_limit(db, workspace)
     except PlanLimitError as exc:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -397,7 +405,7 @@ async def upload_file(
     # Plan-based file size check (may be stricter than global MAX_FILE_SIZE_MB)
     try:
         file_size_mb = stored_file.file_size_bytes / (1024 * 1024)
-        await PlanLimitService.check_file_size(db, current_user, file_size_mb)
+        await PlanLimitService.check_file_size(db, workspace, file_size_mb)
     except PlanLimitError as exc:
         delete_stored_file(stored_file.storage_path)
         raise HTTPException(
@@ -413,6 +421,7 @@ async def upload_file(
 
     document = Document(
         user_id=current_user.id,
+        workspace_id=workspace.id,
         filename=stored_file.stored_filename,
         original_filename=file.filename,
         file_type=resolved_file_type,
@@ -433,7 +442,7 @@ async def upload_file(
         raise
 
     # Track usage
-    await UsageTrackingService.increment_uploads(db, current_user.id)
+    await UsageTrackingService.increment_uploads(db, workspace.id, current_user.id)
     await db.commit()
 
     # Despacha processamento para Celery worker
@@ -459,13 +468,14 @@ async def list_files(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
     current_user: User = Depends(require_permissions(Permission.USERS_READ_SELF)),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> FileListResponse:
     """
-    List files uploaded by current user.
+    List files within the active workspace (shared among members).
     """
 
-    filters = [Document.user_id == current_user.id]
+    filters = [Document.workspace_id == workspace.id]
     if file_type is not None:
         filters.append(Document.file_type == file_type.strip().lower())
 
@@ -499,16 +509,17 @@ async def list_files(
 @router.get("/storage-usage", response_model=StorageUsageResponse)
 async def get_storage_usage(
     current_user: User = Depends(require_permissions(Permission.USERS_READ_SELF)),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> StorageUsageResponse:
     """
-    Retorna resumo de uso de storage do usuario atual.
+    Retorna resumo de uso de storage do workspace ativo.
     """
 
     stmt = select(
         func.coalesce(func.sum(Document.file_size_bytes), 0),
         func.count(),
-    ).where(Document.user_id == current_user.id)
+    ).where(Document.workspace_id == workspace.id)
     result = await db.execute(stmt)
     total_bytes, total_files = result.one()
 
@@ -522,13 +533,14 @@ async def get_storage_usage(
 async def get_file(
     file_id: UUID,
     current_user: User = Depends(require_permissions(Permission.USERS_READ_SELF)),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> FileDetailResponse:
     """
-    Return metadata for a specific uploaded file.
+    Return metadata for a specific file within the workspace.
     """
 
-    document = await _get_owned_document(file_id=file_id, user_id=current_user.id, db=db)
+    document = await _get_workspace_document(file_id=file_id, workspace_id=workspace.id, db=db)
     file_item = _build_file_item(document)
     return FileDetailResponse(
         **file_item.model_dump(),
@@ -540,16 +552,17 @@ async def get_file(
 async def download_file(
     file_id: UUID,
     current_user: User = Depends(require_permissions(Permission.USERS_READ_SELF)),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> FileResponse | JSONResponse:
     """
-    Download original file content for a user-owned file.
+    Download original file content for a workspace file.
 
     Para arquivos no R2, retorna JSON com URL presigned de download.
     Para arquivos locais, retorna FileResponse.
     """
 
-    document = await _get_owned_document(file_id=file_id, user_id=current_user.id, db=db)
+    document = await _get_workspace_document(file_id=file_id, workspace_id=workspace.id, db=db)
 
     if _is_r2_path(document.storage_path):
         try:
@@ -592,13 +605,14 @@ async def download_file(
 async def delete_file(
     file_id: UUID,
     current_user: User = Depends(require_permissions(Permission.USERS_UPDATE_SELF)),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     """
-    Delete a user-owned file and related metadata.
+    Delete a workspace file and related metadata.
     """
 
-    document = await _get_owned_document(file_id=file_id, user_id=current_user.id, db=db)
+    document = await _get_workspace_document(file_id=file_id, workspace_id=workspace.id, db=db)
     storage_path = document.storage_path
 
     await db.delete(document)

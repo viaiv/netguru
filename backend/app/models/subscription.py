@@ -1,5 +1,5 @@
 """
-Subscription model — user-plan relationship with Stripe billing.
+Subscription model — workspace-plan relationship with Stripe billing.
 """
 from datetime import datetime
 from uuid import uuid4
@@ -13,15 +13,15 @@ from app.core.database import Base
 
 class Subscription(Base):
     """
-    Tracks active and historical subscriptions per user.
+    Tracks active and historical subscriptions per workspace.
     """
 
     __tablename__ = "subscriptions"
 
     id = Column(SQLAlchemyUUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
-    user_id = Column(
+    workspace_id = Column(
         SQLAlchemyUUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -63,11 +63,11 @@ class Subscription(Base):
     )
 
     # Relationships
-    user = relationship("User", backref="subscriptions")
+    workspace = relationship("Workspace", back_populates="subscriptions")
     plan = relationship("Plan", back_populates="subscriptions")
 
     def __repr__(self) -> str:
         return (
-            f"<Subscription(id={self.id}, user_id={self.user_id}, "
+            f"<Subscription(id={self.id}, workspace_id={self.workspace_id}, "
             f"status='{self.status}')>"
         )

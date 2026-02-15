@@ -13,7 +13,8 @@ from app.core.database import Base
 
 class Conversation(Base):
     """
-    Chat conversation container bound to one user.
+    Chat conversation container bound to one user within a workspace.
+    Conversations are private per user (within the workspace).
     """
 
     __tablename__ = "conversations"
@@ -23,6 +24,13 @@ class Conversation(Base):
         SQLAlchemyUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
+    )
+    workspace_id = Column(
+        SQLAlchemyUUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     title = Column(String(255), nullable=False, default="Nova Conversa")
     model_used = Column(String(100), nullable=True)
@@ -35,6 +43,7 @@ class Conversation(Base):
     )
 
     user = relationship("User", back_populates="conversations")
+    workspace = relationship("Workspace", back_populates="conversations")
     messages = relationship(
         "Message",
         back_populates="conversation",

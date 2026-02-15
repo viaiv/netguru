@@ -52,27 +52,27 @@ class RAGService:
     async def search_local(
         self,
         query: str,
-        user_id: UUID,
+        workspace_id: UUID,
         top_k: int | None = None,
     ) -> list[RAGResult]:
-        """Busca embeddings do usuario (user_id = :uid)."""
+        """Busca embeddings do workspace (workspace_id = :wid)."""
         top_k = top_k or settings.RAG_TOP_K_LOCAL
         vector = self._embedding.encode(query)
         return await self._search(
             vector=vector,
             top_k=top_k,
             source="local",
-            user_filter=user_id,
+            workspace_filter=workspace_id,
         )
 
     async def search_hybrid(
         self,
         query: str,
-        user_id: UUID,
+        workspace_id: UUID,
     ) -> list[RAGResult]:
         """Combina busca global + local, ordenada por similarity."""
         global_results = await self.search_global(query)
-        local_results = await self.search_local(query, user_id)
+        local_results = await self.search_local(query, workspace_id)
         combined = global_results + local_results
         combined.sort(key=lambda r: r.similarity, reverse=True)
         return combined
@@ -113,21 +113,22 @@ class RAGService:
         vector: list[float],
         top_k: int,
         source: str,
-        user_filter: UUID | None,
+        workspace_filter: UUID | None = None,
     ) -> list[RAGResult]:
         """Executa query pgvector com cosine similarity."""
-        if user_filter is None:
-            where_clause = "e.user_id IS NULL"
+        if workspace_filter is None:
+            # Global: docs sem workspace (vendor docs)
+            where_clause = "e.workspace_id IS NULL"
             params = {
                 "vec": str(vector),
                 "min_sim": settings.RAG_MIN_SIMILARITY,
                 "top_k": top_k,
             }
         else:
-            where_clause = "e.user_id = :uid"
+            where_clause = "e.workspace_id = :wid"
             params = {
                 "vec": str(vector),
-                "uid": str(user_filter),
+                "wid": str(workspace_filter),
                 "min_sim": settings.RAG_MIN_SIMILARITY,
                 "top_k": top_k,
             }

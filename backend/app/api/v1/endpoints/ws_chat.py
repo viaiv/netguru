@@ -30,9 +30,12 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select as sa_select
+
 from app.core.database import AsyncSessionLocal
 from app.core.security import decode_token
 from app.models.user import User
+from app.models.workspace import Workspace, WorkspaceMember
 from app.services.chat_service import ChatService, ChatServiceError
 from app.services.llm_client import LLMProviderError
 
@@ -73,10 +76,31 @@ async def _authenticate_websocket(
     return user
 
 
+async def _resolve_workspace(user: User, db: AsyncSession) -> Workspace | None:
+    """Resolve o workspace ativo do usuario."""
+    if not user.active_workspace_id:
+        return None
+    stmt = sa_select(Workspace).where(Workspace.id == user.active_workspace_id)
+    result = await db.execute(stmt)
+    workspace = result.scalar_one_or_none()
+    if workspace is None:
+        return None
+    # Verificar membership
+    member_stmt = sa_select(WorkspaceMember).where(
+        WorkspaceMember.workspace_id == workspace.id,
+        WorkspaceMember.user_id == user.id,
+    )
+    member_result = await db.execute(member_stmt)
+    if member_result.scalar_one_or_none() is None:
+        return None
+    return workspace
+
+
 async def _stream_events(
     service: ChatService,
     websocket: WebSocket,
     user: User,
+    workspace: Workspace,
     conversation_id: UUID,
     content: str,
     attachment_document_ids: list[UUID] | None = None,
@@ -84,6 +108,7 @@ async def _stream_events(
     """Consome o generator do ChatService e envia eventos pelo WebSocket."""
     async for event in service.process_user_message(
         user=user,
+        workspace=workspace,
         conversation_id=conversation_id,
         content=content,
         attachment_document_ids=attachment_document_ids,
@@ -124,6 +149,12 @@ async def websocket_chat(
         user = await _authenticate_websocket(websocket, token, db)
         if user is None:
             await websocket.close(code=4001, reason="Authentication failed")
+            return
+
+        # Resolver workspace ativo
+        workspace = await _resolve_workspace(user, db)
+        if workspace is None:
+            await websocket.close(code=4001, reason="No active workspace")
             return
 
         await websocket.accept()
@@ -193,6 +224,7 @@ async def websocket_chat(
                             service,
                             websocket,
                             user,
+                            workspace,
                             conversation_id,
                             content,
                             attachment_document_ids or None,

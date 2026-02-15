@@ -8,10 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, get_current_workspace
 from app.models.plan import Plan
 from app.models.subscription import Subscription
 from app.models.user import User
+from app.models.workspace import Workspace
 from app.schemas.admin import (
     CheckoutSessionRequest,
     CheckoutSessionResponse,
@@ -48,13 +49,15 @@ async def _get_subscription_service(db: AsyncSession) -> SubscriptionService:
 async def create_checkout(
     body: CheckoutSessionRequest,
     current_user: User = Depends(get_current_user),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> CheckoutSessionResponse:
-    """Create a Stripe Checkout session for plan subscription."""
+    """Create a Stripe Checkout session for workspace plan subscription."""
     svc = await _get_subscription_service(db)
     try:
         result = await svc.create_checkout_session(
             db,
+            workspace=workspace,
             user=current_user,
             plan_id=body.plan_id,
             success_url=body.success_url,
@@ -72,6 +75,7 @@ async def create_checkout(
 async def create_portal(
     request: Request,
     current_user: User = Depends(get_current_user),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> CustomerPortalResponse:
     """Create a Stripe Customer Portal session."""
@@ -80,7 +84,7 @@ async def create_portal(
     try:
         result = await svc.create_customer_portal_session(
             db,
-            user=current_user,
+            workspace=workspace,
             return_url=referer,
         )
         return CustomerPortalResponse(**result)
@@ -94,15 +98,16 @@ async def create_portal(
 @router.get("/subscription", response_model=UserSubscriptionResponse)
 async def get_my_subscription(
     current_user: User = Depends(get_current_user),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> UserSubscriptionResponse:
-    """Return the current user's plan, active subscription, and today's usage."""
-    # Resolve plan from user.plan_tier
-    tier = getattr(current_user, "plan_tier", None) or "solo"
+    """Return the workspace's plan, active subscription, and today's usage."""
+    # Resolve plan from workspace.plan_tier
+    tier = getattr(workspace, "plan_tier", None) or "free"
     stmt = select(Plan).where(Plan.name == tier)
     plan = (await db.execute(stmt)).scalar_one_or_none()
     if plan is None:
-        stmt = select(Plan).where(Plan.name == "solo")
+        stmt = select(Plan).where(Plan.name == "free")
         plan = (await db.execute(stmt)).scalar_one_or_none()
     if plan is None:
         raise HTTPException(
@@ -112,11 +117,11 @@ async def get_my_subscription(
 
     plan_data = UserSubscriptionPlan.model_validate(plan)
 
-    # Fetch active subscription (if any)
+    # Fetch active subscription for workspace
     sub_stmt = (
         select(Subscription)
         .where(
-            Subscription.user_id == current_user.id,
+            Subscription.workspace_id == workspace.id,
             Subscription.status.in_(["active", "trialing", "past_due"]),
         )
         .order_by(Subscription.created_at.desc())
@@ -125,12 +130,12 @@ async def get_my_subscription(
     subscription = (await db.execute(sub_stmt)).scalar_one_or_none()
     sub_data = SubscriptionDetail.model_validate(subscription) if subscription else None
 
-    # Fetch today's usage
-    usage = await UsageTrackingService.get_today_usage(db, current_user.id)
+    # Fetch today's usage (workspace-aggregated)
+    ws_usage = await UsageTrackingService.get_workspace_today_usage(db, workspace.id)
     usage_data = UsageTodayResponse(
-        uploads_today=usage.uploads_count if usage else 0,
-        messages_today=usage.messages_count if usage else 0,
-        tokens_today=usage.tokens_used if usage else 0,
+        uploads_today=ws_usage["uploads_total"],
+        messages_today=ws_usage["messages_total"],
+        tokens_today=ws_usage["tokens_total"],
     )
 
     return UserSubscriptionResponse(

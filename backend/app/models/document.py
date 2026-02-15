@@ -33,6 +33,13 @@ class Document(Base):
         SQLAlchemyUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=True,
+        comment="Author tracking — NULL for global vendor docs",
+    )
+    workspace_id = Column(
+        SQLAlchemyUUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
         comment="NULL for global vendor docs",
     )
     filename = Column(String(255), nullable=False)
@@ -52,6 +59,7 @@ class Document(Base):
     processed_at = Column(DateTime, nullable=True)
 
     user = relationship("User", back_populates="documents")
+    workspace = relationship("Workspace", back_populates="documents")
     embeddings = relationship(
         "Embedding",
         back_populates="document",
@@ -77,6 +85,13 @@ class Embedding(Base):
         SQLAlchemyUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=True,
+    )
+    workspace_id = Column(
+        SQLAlchemyUUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        comment="NULL for global vendor docs",
     )
     document_id = Column(
         SQLAlchemyUUID(as_uuid=True),

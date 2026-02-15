@@ -12,9 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Any, Optional
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, get_current_workspace
 from app.models.topology import Topology
 from app.models.user import User
+from app.models.workspace import Workspace
 
 router = APIRouter()
 
@@ -53,12 +54,13 @@ class TopologyListItem(BaseModel):
 async def get_topology(
     topology_id: UUID,
     current_user: User = Depends(get_current_user),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> TopologyResponse:
-    """Get a topology by ID (ownership enforced)."""
+    """Get a topology by ID (workspace-scoped)."""
     stmt = select(Topology).where(
         Topology.id == topology_id,
-        Topology.user_id == current_user.id,
+        Topology.workspace_id == workspace.id,
     )
     result = await db.execute(stmt)
     topo = result.scalar_one_or_none()
@@ -87,12 +89,13 @@ async def get_topology(
 @router.get("", response_model=list[TopologyListItem])
 async def list_topologies(
     current_user: User = Depends(get_current_user),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> list[TopologyListItem]:
-    """List all topologies for the current user."""
+    """List all topologies within the workspace."""
     stmt = (
         select(Topology)
-        .where(Topology.user_id == current_user.id)
+        .where(Topology.workspace_id == workspace.id)
         .order_by(Topology.created_at.desc())
         .limit(50)
     )

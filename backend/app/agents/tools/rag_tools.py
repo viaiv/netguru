@@ -48,19 +48,19 @@ def create_search_rag_global_tool(db: AsyncSession) -> StructuredTool:
     )
 
 
-def create_search_rag_local_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
-    """Cria tool de busca RAG local (documentos do usuario)."""
+def create_search_rag_local_tool(db: AsyncSession, workspace_id: UUID) -> StructuredTool:
+    """Cria tool de busca RAG local (documentos do workspace)."""
 
     async def _search_rag_local(query: str) -> str:
         """
-        Search the user's uploaded documents (configs, logs, notes) for relevant information.
+        Search the workspace's uploaded documents (configs, logs, notes) for relevant information.
         Use this tool when the user asks about their own network, configs, or uploaded files.
 
         Args:
-            query: Question or topic to search in user documents.
+            query: Question or topic to search in workspace documents.
         """
         svc = RAGService(db)
-        results = await svc.search_local(query, user_id)
+        results = await svc.search_local(query, workspace_id)
         if not results:
             return "No relevant information found in your uploaded documents."
         context = svc.format_context(results)
@@ -73,7 +73,7 @@ def create_search_rag_local_tool(db: AsyncSession, user_id: UUID) -> StructuredT
         coroutine=_search_rag_local,
         name="search_rag_local",
         description=(
-            "Search the user's uploaded documents (configs, logs, notes) for relevant information. "
+            "Search the workspace's uploaded documents (configs, logs, notes) for relevant information. "
             "Use when the user asks about their own network, their specific configuration files, "
             "logs they uploaded, or mentions 'my config', 'my network', etc."
         ),

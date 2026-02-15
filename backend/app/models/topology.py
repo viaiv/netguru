@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from sqlalchemy import Column, DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSON, UUID as SQLAlchemyUUID
+from sqlalchemy.orm import relationship
 
 from app.core.database import Base
 
@@ -19,6 +20,12 @@ class Topology(Base):
     __tablename__ = "topologies"
 
     id = Column(SQLAlchemyUUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
+    workspace_id = Column(
+        SQLAlchemyUUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     user_id = Column(
         SQLAlchemyUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -54,6 +61,9 @@ class Topology(Base):
     topology_metadata = Column("metadata", JSON, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    workspace = relationship("Workspace", back_populates="topologies")
 
     def __repr__(self) -> str:
         return f"<Topology(id={self.id}, title='{self.title}')>"

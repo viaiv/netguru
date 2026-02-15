@@ -28,8 +28,9 @@ def get_agent_tools(
     db: AsyncSession,
     user_id: UUID,
     *,
+    workspace_id: UUID | None = None,
     user_role: str | None = None,
-    plan_tier: str | None = None,
+    workspace_plan_tier: str | None = None,
     user_message: str = "",
 ) -> list[BaseTool]:
     """
@@ -38,14 +39,18 @@ def get_agent_tools(
     Args:
         db: Sessao async do banco (compartilhada com o request).
         user_id: UUID do usuario autenticado.
+        workspace_id: UUID do workspace ativo (para RAG local e topology).
         user_role: Role atual do usuario (owner|admin|member|viewer).
-        plan_tier: Plano atual do usuario (solo|team|enterprise).
+        workspace_plan_tier: Plano do workspace (solo|team|enterprise).
         user_message: Ultima mensagem do usuario para regras de confirmacao.
     """
+    # Fallback workspace_id para user_id se nao fornecido (compatibilidade)
+    effective_workspace_id = workspace_id or user_id
+
     tools: list[BaseTool] = [
         # RAG (Phase 3-4)
         create_search_rag_global_tool(db),
-        create_search_rag_local_tool(db, user_id),
+        create_search_rag_local_tool(db, effective_workspace_id),
         # Config Analysis (Phase 5-6)
         create_parse_config_tool(),
         create_validate_config_tool(),
@@ -62,7 +67,7 @@ def get_agent_tools(
         db=db,
         user_id=user_id,
         user_role=user_role,
-        plan_tier=plan_tier,
+        plan_tier=workspace_plan_tier,
         user_message=user_message,
     )
     return guardrails.wrap_tools(tools)

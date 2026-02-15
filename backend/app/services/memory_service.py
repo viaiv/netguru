@@ -86,15 +86,15 @@ class MemoryService:
     async def list_memories(
         self,
         *,
-        user_id: UUID,
+        workspace_id: UUID,
         scope: MemoryScope | None = None,
         scope_name: str | None = None,
         include_inactive: bool = False,
     ) -> list[NetworkMemory]:
         """
-        List user memories with optional filters.
+        List workspace memories with optional filters.
         """
-        stmt = select(NetworkMemory).where(NetworkMemory.user_id == user_id)
+        stmt = select(NetworkMemory).where(NetworkMemory.workspace_id == workspace_id)
         if not include_inactive:
             stmt = stmt.where(NetworkMemory.is_active.is_(True))
         if scope is not None:
@@ -108,16 +108,16 @@ class MemoryService:
     async def get_memory(
         self,
         *,
-        user_id: UUID,
+        workspace_id: UUID,
         memory_id: UUID,
         include_inactive: bool = False,
     ) -> NetworkMemory | None:
         """
-        Get one user memory by ID and owner.
+        Get one workspace memory by ID.
         """
         stmt = select(NetworkMemory).where(
             NetworkMemory.id == memory_id,
-            NetworkMemory.user_id == user_id,
+            NetworkMemory.workspace_id == workspace_id,
         )
         if not include_inactive:
             stmt = stmt.where(NetworkMemory.is_active.is_(True))
@@ -126,14 +126,15 @@ class MemoryService:
     async def create_memory(
         self,
         *,
+        workspace_id: UUID,
         user_id: UUID,
         payload: MemoryCreate,
     ) -> NetworkMemory:
         """
-        Create a user memory entry.
+        Create a workspace memory entry.
         """
-        await self._ensure_user_identity_is_available(
-            user_id=user_id,
+        await self._ensure_workspace_identity_is_available(
+            workspace_id=workspace_id,
             scope=payload.scope.value,
             scope_name=payload.scope_name,
             memory_key=payload.memory_key,
@@ -142,6 +143,7 @@ class MemoryService:
         now = datetime.utcnow()
         expires_at = self._resolve_expiration(now=now, ttl_seconds=payload.ttl_seconds)
         memory = NetworkMemory(
+            workspace_id=workspace_id,
             user_id=user_id,
             scope=payload.scope.value,
             scope_name=payload.scope_name,
@@ -163,14 +165,14 @@ class MemoryService:
     async def update_memory(
         self,
         *,
-        user_id: UUID,
+        workspace_id: UUID,
         memory_id: UUID,
         payload: MemoryUpdate,
     ) -> NetworkMemory:
         """
-        Update a user memory and increment version on meaningful changes.
+        Update a workspace memory and increment version on meaningful changes.
         """
-        memory = await self.get_memory(user_id=user_id, memory_id=memory_id)
+        memory = await self.get_memory(workspace_id=workspace_id, memory_id=memory_id)
         if memory is None:
             raise MemoryServiceError("Memoria nao encontrada.", code="memory_not_found")
 
@@ -187,8 +189,8 @@ class MemoryService:
             or scope_name != memory.scope_name
             or memory_key != memory.memory_key
         ):
-            await self._ensure_user_identity_is_available(
-                user_id=user_id,
+            await self._ensure_workspace_identity_is_available(
+                workspace_id=workspace_id,
                 scope=scope,
                 scope_name=scope_name,
                 memory_key=memory_key,
@@ -209,13 +211,13 @@ class MemoryService:
     async def delete_memory(
         self,
         *,
-        user_id: UUID,
+        workspace_id: UUID,
         memory_id: UUID,
     ) -> NetworkMemory:
         """
-        Soft-delete a user memory.
+        Soft-delete a workspace memory.
         """
-        memory = await self.get_memory(user_id=user_id, memory_id=memory_id)
+        memory = await self.get_memory(workspace_id=workspace_id, memory_id=memory_id)
         if memory is None:
             raise MemoryServiceError("Memoria nao encontrada.", code="memory_not_found")
 
@@ -346,20 +348,20 @@ class MemoryService:
     async def resolve_chat_context(
         self,
         *,
-        user_id: UUID,
+        workspace_id: UUID,
         message_content: str,
         preferred_vendor: str | None = None,
         allow_vendor_prompt: bool = True,
         limit: int = 8,
     ) -> MemoryContextResolution:
         """
-        Resolve relevant user+system memories for a chat turn.
+        Resolve relevant workspace+system memories for a chat turn.
         """
         now = datetime.utcnow()
         user_stmt = (
             select(NetworkMemory)
             .where(
-                NetworkMemory.user_id == user_id,
+                NetworkMemory.workspace_id == workspace_id,
                 NetworkMemory.is_active.is_(True),
                 or_(
                     NetworkMemory.expires_at.is_(None),
@@ -646,10 +648,10 @@ class MemoryService:
         )
         return [item[0] for item in selected_with_score[:limit]], sorted(ambiguous_vendors)
 
-    async def _ensure_user_identity_is_available(
+    async def _ensure_workspace_identity_is_available(
         self,
         *,
-        user_id: UUID,
+        workspace_id: UUID,
         scope: str,
         scope_name: str | None,
         memory_key: str,
@@ -657,7 +659,7 @@ class MemoryService:
     ) -> None:
         self._validate_scope_fields(scope=scope, scope_name=scope_name)
         stmt = select(NetworkMemory).where(
-            NetworkMemory.user_id == user_id,
+            NetworkMemory.workspace_id == workspace_id,
             NetworkMemory.scope == scope,
             NetworkMemory.scope_name == scope_name,
             NetworkMemory.memory_key == memory_key,

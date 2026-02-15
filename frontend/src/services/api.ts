@@ -38,6 +38,13 @@ export interface IRefreshResponse {
   expires_in: number;
 }
 
+export interface IWorkspaceCompact {
+  id: string;
+  name: string;
+  slug: string;
+  plan_tier: string;
+}
+
 export interface IUserResponse {
   id: string;
   email: string;
@@ -50,6 +57,8 @@ export interface IUserResponse {
   is_verified: boolean;
   created_at: string;
   last_login_at: string | null;
+  active_workspace_id: string | null;
+  active_workspace: IWorkspaceCompact | null;
 }
 
 interface IAuthInterceptorConfig {

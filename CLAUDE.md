@@ -8,17 +8,14 @@
 > **⚠️ Manutenção**: Se qualquer procedimento documentado aqui estiver desatualizado, sugira correções e atualize este arquivo.
 
 > **📝 CHECKPOINT TEMPORÁRIO (REMOVER NA PRÓXIMA SESSÃO):**
-> Phase 5-6 (Advanced Agent Tools) implementada:
-> - **ConfigParserService**: parse Cisco (ciscoconfparse) + Juniper (regex), extrai interfaces/routing/ACLs/VLANs
-> - **ConfigValidatorService**: 15 regras rule-based (security, reliability, performance)
-> - **ShowCommandParserService**: textfsm inline para 6 show commands com auto-detecção
-> - **PcapAnalyzerService**: análise scapy via asyncio.to_thread(), protocolo/top-talkers/anomalias
-> - Tools registradas: parse_config, validate_config, parse_show_commands, analyze_pcap
-> - System prompt do agent atualizado com descrição das 6 tools
-> - Frontend ToolCallDisplay com labels das 4 novas tools
-> - Settings: PCAP_MAX_PACKETS=10000, PCAP_ANALYSIS_TIMEOUT=300
-> - Todas as deps já instaladas: ciscoconfparse, textfsm, scapy
-> Próximo: testes end-to-end via WebSocket (config→parse→validate, show output→parse, PCAP→analyze).
+> Layout universal aside + main implementado para todas as paginas autenticadas:
+> - **App.tsx**: grid `.app-body` (aside 240px + main), nav dropdown compartilhado, mobile drawer
+> - **ChatSidebar**: conversations list extraida do ChatPage (new/select/rename/delete)
+> - **FilesSidebar / MemoriesSidebar / ProfileSidebar / GenericSidebar**: sidebars contextuais
+> - **ChatPage**: simplificado — apenas conteudo do chat (messages + input + streaming)
+> - **CSS**: `.app-body`, `.sidebar-*`, `.chat-main > .view`, responsivo 960px (drawer)
+> - Rotas nao autenticadas (login/register) mantidas no layout antigo sem aside
+> - Build ok, todas as features anteriores preservadas
 
 ---
 
@@ -691,6 +688,13 @@ GET  /api/v1/agent/tools
 - [x] Tools registradas no agent (parse_config, validate_config, parse_show_commands, analyze_pcap)
 - [x] System prompt e frontend labels atualizados
 - [ ] Testes end-to-end via WebSocket
+
+### Sprint 7 (Layout & UX) - ✅ Completo
+- [x] Layout universal aside + main para todas as paginas autenticadas
+- [x] Sidebar contextual por rota (ChatSidebar, FilesSidebar, MemoriesSidebar, ProfileSidebar)
+- [x] Nav dropdown compartilhado no aside (todas as paginas)
+- [x] Mobile drawer responsivo (960px breakpoint)
+- [x] ChatPage simplificado (sem aside/nav duplicado)
 
 ---
 

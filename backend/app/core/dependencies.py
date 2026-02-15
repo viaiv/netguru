@@ -9,11 +9,13 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.rbac import Permission, UserRole, has_permission, normalize_role
 from app.core.security import decode_token
 from app.models.user import User
+from app.models.workspace import Workspace, WorkspaceMember
 
 # OAuth2 scheme for JWT bearer token
 security = HTTPBearer()
@@ -66,8 +68,12 @@ async def get_current_user(
     except (TypeError, ValueError):
         raise credentials_exception
     
-    # Get user from database
-    stmt = select(User).where(User.id == user_id)
+    # Get user from database (eagerly load active_workspace to avoid lazy-load in async)
+    stmt = (
+        select(User)
+        .options(selectinload(User.active_workspace))
+        .where(User.id == user_id)
+    )
     result = await db.execute(stmt)
     user = result.scalar_one_or_none()
     
@@ -144,6 +150,54 @@ def require_permissions(*required_permissions: Permission) -> Callable[..., User
         return current_user
 
     return _permission_dependency
+
+
+async def get_current_workspace(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Workspace:
+    """
+    Resolve o workspace ativo do usuario autenticado.
+
+    Args:
+        current_user: Usuario autenticado.
+        db: Database session.
+
+    Returns:
+        Workspace ativo do usuario.
+
+    Raises:
+        HTTPException 400: Se usuario nao tem workspace ativo.
+    """
+    if not current_user.active_workspace_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nenhum workspace ativo. Crie ou selecione um workspace.",
+        )
+
+    stmt = select(Workspace).where(Workspace.id == current_user.active_workspace_id)
+    result = await db.execute(stmt)
+    workspace = result.scalar_one_or_none()
+
+    if workspace is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Workspace ativo nao encontrado.",
+        )
+
+    # Verificar que usuario e membro do workspace
+    member_stmt = select(WorkspaceMember).where(
+        WorkspaceMember.workspace_id == workspace.id,
+        WorkspaceMember.user_id == current_user.id,
+    )
+    member_result = await db.execute(member_stmt)
+    if member_result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Voce nao e membro deste workspace.",
+        )
+
+    return workspace
 
 
 def require_roles(*allowed_roles: UserRole) -> Callable[..., User]:

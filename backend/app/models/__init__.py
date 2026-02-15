@@ -18,9 +18,12 @@ from app.models.stripe_event import StripeEvent
 from app.models.network_memory import NetworkMemory
 from app.models.system_memory import SystemMemory
 from app.models.rag_gap_event import RagGapEvent
+from app.models.workspace import Workspace, WorkspaceMember
 
 __all__ = [
     "User",
+    "Workspace",
+    "WorkspaceMember",
     "Conversation",
     "Message",
     "Document",

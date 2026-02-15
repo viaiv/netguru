@@ -21,6 +21,7 @@ from app.models.plan import Plan
 from app.models.stripe_event import StripeEvent
 from app.models.subscription import Subscription
 from app.models.user import User
+from app.models.workspace import Workspace
 from app.services.system_settings_service import SystemSettingsService
 
 logger = logging.getLogger(__name__)
@@ -151,13 +152,14 @@ class SubscriptionService:
         self,
         db: AsyncSession,
         *,
+        workspace: Workspace,
         user: User,
         plan_id: UUID,
         success_url: str,
         cancel_url: str,
     ) -> dict[str, str]:
         """
-        Create a Stripe Checkout Session for the given plan.
+        Create a Stripe Checkout Session for a workspace plan.
 
         Returns:
             dict with checkout_url and session_id.
@@ -172,18 +174,18 @@ class SubscriptionService:
             )
 
         # Find or skip existing stripe customer
-        existing_sub = await self._get_active_subscription(db, user.id)
+        existing_sub = await self._get_active_subscription(db, workspace.id)
         customer_kwarg: dict[str, Any] = {}
         if existing_sub and existing_sub.stripe_customer_id:
             customer_kwarg["customer"] = existing_sub.stripe_customer_id
         else:
             customer_kwarg["customer_email"] = user.email
 
-        # Apply promo coupon if plan has one and user never used it
+        # Apply promo coupon if workspace never used it
         checkout_kwargs: dict[str, Any] = {}
         promo_applied = False
         if plan.stripe_promo_coupon_id and plan.promo_months:
-            has_used = await self._has_used_promo(db, user.id, plan.id)
+            has_used = await self._has_used_promo(db, workspace.id, plan.id)
             if not has_used:
                 checkout_kwargs["discounts"] = [{"coupon": plan.stripe_promo_coupon_id}]
                 promo_applied = True
@@ -194,6 +196,7 @@ class SubscriptionService:
             success_url=success_url,
             cancel_url=cancel_url,
             metadata={
+                "workspace_id": str(workspace.id),
                 "user_id": str(user.id),
                 "plan_id": str(plan.id),
                 "promo_applied": "1" if promo_applied else "0",
@@ -211,17 +214,17 @@ class SubscriptionService:
         self,
         db: AsyncSession,
         *,
-        user: User,
+        workspace: Workspace,
         return_url: str,
     ) -> dict[str, str]:
         """
-        Create a Stripe Customer Portal session.
+        Create a Stripe Customer Portal session for a workspace.
 
         Returns:
             dict with portal_url.
         """
         self._configure_stripe()
-        sub = await self._get_active_subscription(db, user.id)
+        sub = await self._get_active_subscription(db, workspace.id)
         if not sub or not sub.stripe_customer_id:
             raise SubscriptionServiceError(
                 "Nenhuma assinatura ativa encontrada.",
@@ -318,10 +321,10 @@ class SubscriptionService:
         self, db: AsyncSession, data: dict[str, Any],
     ) -> None:
         """checkout.session.completed — create subscription record."""
-        user_id = data.get("metadata", {}).get("user_id")
+        workspace_id = data.get("metadata", {}).get("workspace_id")
         plan_id = data.get("metadata", {}).get("plan_id")
-        if not user_id or not plan_id:
-            logger.warning("Checkout completed sem metadata user_id/plan_id")
+        if not workspace_id or not plan_id:
+            logger.warning("Checkout completed sem metadata workspace_id/plan_id")
             return
 
         stripe_sub_id = data.get("subscription")
@@ -333,7 +336,7 @@ class SubscriptionService:
         promo_flag = data.get("metadata", {}).get("promo_applied") == "1"
 
         subscription = Subscription(
-            user_id=user_id,
+            workspace_id=workspace_id,
             plan_id=plan_id,
             stripe_customer_id=stripe_customer_id,
             stripe_subscription_id=stripe_sub_id,
@@ -344,14 +347,13 @@ class SubscriptionService:
         )
         db.add(subscription)
 
-        # Update user plan_tier
+        # Update workspace plan_tier
         plan = await self._get_plan(db, UUID(plan_id))
-        stmt = select(User).where(User.id == UUID(user_id))
+        stmt = select(Workspace).where(Workspace.id == UUID(workspace_id))
         result = await db.execute(stmt)
-        user = result.scalar_one_or_none()
-        if user:
-            user.plan_tier = plan.name
-            user.updated_at = datetime.utcnow()
+        workspace = result.scalar_one_or_none()
+        if workspace:
+            workspace.plan_tier = plan.name
 
         await db.flush()
 
@@ -377,7 +379,7 @@ class SubscriptionService:
     async def _handle_subscription_deleted(
         self, db: AsyncSession, data: dict[str, Any],
     ) -> None:
-        """customer.subscription.deleted — cancel and revert to free."""
+        """customer.subscription.deleted — cancel and revert workspace to free."""
         sub = await self._find_subscription_by_stripe_id(db, data["id"])
         if not sub:
             return
@@ -385,13 +387,12 @@ class SubscriptionService:
         sub.status = "canceled"
         sub.canceled_at = datetime.utcnow()
 
-        # Revert user to free tier
-        stmt = select(User).where(User.id == sub.user_id)
+        # Revert workspace to free tier
+        stmt = select(Workspace).where(Workspace.id == sub.workspace_id)
         result = await db.execute(stmt)
-        user = result.scalar_one_or_none()
-        if user:
-            user.plan_tier = "free"
-            user.updated_at = datetime.utcnow()
+        workspace = result.scalar_one_or_none()
+        if workspace:
+            workspace.plan_tier = "free"
 
         await db.flush()
 
@@ -458,13 +459,13 @@ class SubscriptionService:
     # ------------------------------------------------------------------
 
     async def _has_used_promo(
-        self, db: AsyncSession, user_id: UUID, plan_id: UUID,
+        self, db: AsyncSession, workspace_id: UUID, plan_id: UUID,
     ) -> bool:
-        """Check if user has already used a promotional coupon for this plan."""
+        """Check if workspace has already used a promotional coupon for this plan."""
         stmt = (
             select(Subscription)
             .where(
-                Subscription.user_id == user_id,
+                Subscription.workspace_id == workspace_id,
                 Subscription.plan_id == plan_id,
                 Subscription.promo_applied.is_(True),
             )
@@ -485,12 +486,12 @@ class SubscriptionService:
         return plan
 
     async def _get_active_subscription(
-        self, db: AsyncSession, user_id: UUID,
+        self, db: AsyncSession, workspace_id: UUID,
     ) -> Optional[Subscription]:
         stmt = (
             select(Subscription)
             .where(
-                Subscription.user_id == user_id,
+                Subscription.workspace_id == workspace_id,
                 Subscription.status.in_(["active", "trialing", "past_due"]),
             )
             .order_by(Subscription.created_at.desc())

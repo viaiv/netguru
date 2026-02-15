@@ -9,6 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.dependencies import require_permissions
@@ -32,10 +33,18 @@ def _build_user_response(user: User) -> UserResponse:
     """
     Build a safe user response without sensitive fields.
     """
+    from app.schemas.user import WorkspaceResponseCompact
+
     is_on_trial = (
         user.trial_ends_at is not None
         and user.trial_ends_at > datetime.utcnow()
     )
+
+    workspace_compact = None
+    active_workspace = getattr(user, "active_workspace", None)
+    if active_workspace is not None:
+        workspace_compact = WorkspaceResponseCompact.model_validate(active_workspace)
+
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -50,6 +59,8 @@ def _build_user_response(user: User) -> UserResponse:
         last_login_at=user.last_login_at,
         trial_ends_at=user.trial_ends_at,
         is_on_trial=is_on_trial,
+        active_workspace_id=user.active_workspace_id,
+        active_workspace=workspace_compact,
     )
 
 
@@ -121,7 +132,14 @@ async def update_me(
 
     current_user.updated_at = datetime.utcnow()
     await db.commit()
-    await db.refresh(current_user)
+
+    # Reload with active_workspace to avoid lazy-load
+    stmt = (
+        select(User)
+        .options(selectinload(User.active_workspace))
+        .where(User.id == current_user.id)
+    )
+    current_user = (await db.execute(stmt)).scalar_one()
 
     return _build_user_response(current_user)
 
@@ -159,7 +177,11 @@ async def list_users(
     """
     List all users (admin/owner only).
     """
-    stmt = select(User).order_by(User.id)
+    stmt = (
+        select(User)
+        .options(selectinload(User.active_workspace))
+        .order_by(User.id)
+    )
     result = await db.execute(stmt)
     users = result.scalars().all()
     return [_build_user_response(user) for user in users]
@@ -181,7 +203,11 @@ async def update_user_role(
             detail="Users cannot change their own role",
         )
 
-    stmt = select(User).where(User.id == user_id)
+    stmt = (
+        select(User)
+        .options(selectinload(User.active_workspace))
+        .where(User.id == user_id)
+    )
     result = await db.execute(stmt)
     target_user = result.scalar_one_or_none()
     if target_user is None:
@@ -226,7 +252,11 @@ async def update_user_status(
             detail="Users cannot deactivate their own account",
         )
 
-    stmt = select(User).where(User.id == user_id)
+    stmt = (
+        select(User)
+        .options(selectinload(User.active_workspace))
+        .where(User.id == user_id)
+    )
     result = await db.execute(stmt)
     target_user = result.scalar_one_or_none()
     if target_user is None:

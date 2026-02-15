@@ -200,25 +200,32 @@ async def get_user_detail(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    # Usage
-    usage_row = await UsageTrackingService.get_today_usage(db, user.id)
+    # Usage (resolve via active workspace)
+    ws_id = user.active_workspace_id
+    if ws_id:
+        usage_row = await UsageTrackingService.get_today_usage(db, ws_id, user.id)
+    else:
+        usage_row = None
     usage = UsageSummary(
         uploads_today=usage_row.uploads_count if usage_row else 0,
         messages_today=usage_row.messages_count if usage_row else 0,
         tokens_today=usage_row.tokens_used if usage_row else 0,
     )
 
-    # Subscription
-    sub_stmt = (
-        select(Subscription)
-        .where(
-            Subscription.user_id == user.id,
-            Subscription.status.in_(["active", "trialing", "past_due"]),
+    # Subscription (via workspace)
+    from app.models.workspace import Workspace, WorkspaceMember
+    sub = None
+    if ws_id:
+        sub_stmt = (
+            select(Subscription)
+            .where(
+                Subscription.workspace_id == ws_id,
+                Subscription.status.in_(["active", "trialing", "past_due"]),
+            )
+            .order_by(desc(Subscription.created_at))
+            .limit(1)
         )
-        .order_by(desc(Subscription.created_at))
-        .limit(1)
-    )
-    sub = (await db.execute(sub_stmt)).scalar_one_or_none()
+        sub = (await db.execute(sub_stmt)).scalar_one_or_none()
 
     return AdminUserDetailResponse(
         id=user.id,

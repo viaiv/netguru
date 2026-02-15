@@ -45,6 +45,12 @@ class NetworkMemory(Base):
     )
 
     id = Column(SQLAlchemyUUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
+    workspace_id = Column(
+        SQLAlchemyUUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     user_id = Column(
         SQLAlchemyUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -74,6 +80,7 @@ class NetworkMemory(Base):
     )
 
     user = relationship("User", back_populates="network_memories")
+    workspace = relationship("Workspace", back_populates="network_memories")
 
     def __repr__(self) -> str:
         return (

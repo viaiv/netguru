@@ -10,9 +10,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import require_permissions
+from app.core.dependencies import get_current_workspace, require_permissions
 from app.core.rbac import Permission
 from app.models.user import User
+from app.models.workspace import Workspace
 from app.schemas.memory import MemoryCreate, MemoryResponse, MemoryScope, MemoryUpdate
 from app.services.audit_log_service import AuditLogService
 from app.services.memory_service import MemoryService, MemoryServiceError
@@ -55,14 +56,15 @@ async def list_memories(
     scope_name: str | None = Query(default=None),
     include_inactive: bool = Query(default=False),
     current_user: User = Depends(require_permissions(Permission.USERS_READ_SELF)),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> list[MemoryResponse]:
     """
-    List memories from current user with optional filters.
+    List memories within the active workspace.
     """
     service = MemoryService(db)
     memories = await service.list_memories(
-        user_id=current_user.id,
+        workspace_id=workspace.id,
         scope=scope,
         scope_name=scope_name,
         include_inactive=include_inactive,
@@ -75,14 +77,19 @@ async def create_memory(
     payload: MemoryCreate,
     request: Request,
     current_user: User = Depends(require_permissions(Permission.USERS_UPDATE_SELF)),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> MemoryResponse:
     """
-    Create a persistent memory entry.
+    Create a persistent memory entry within the active workspace.
     """
     service = MemoryService(db)
     try:
-        memory = await service.create_memory(user_id=current_user.id, payload=payload)
+        memory = await service.create_memory(
+            workspace_id=workspace.id,
+            user_id=current_user.id,
+            payload=payload,
+        )
     except MemoryServiceError as exc:
         _raise_memory_http_error(exc)
 
@@ -107,13 +114,14 @@ async def update_memory(
     payload: MemoryUpdate,
     request: Request,
     current_user: User = Depends(require_permissions(Permission.USERS_UPDATE_SELF)),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> MemoryResponse:
     """
-    Update a persistent memory entry.
+    Update a persistent memory entry within the active workspace.
     """
     service = MemoryService(db)
-    existing = await service.get_memory(user_id=current_user.id, memory_id=memory_id)
+    existing = await service.get_memory(workspace_id=workspace.id, memory_id=memory_id)
     if existing is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Memoria nao encontrada.")
 
@@ -130,7 +138,7 @@ async def update_memory(
 
     try:
         memory = await service.update_memory(
-            user_id=current_user.id,
+            workspace_id=workspace.id,
             memory_id=memory_id,
             payload=payload,
         )
@@ -174,15 +182,16 @@ async def delete_memory(
     memory_id: UUID,
     request: Request,
     current_user: User = Depends(require_permissions(Permission.USERS_UPDATE_SELF)),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     """
-    Soft-delete a persistent memory entry.
+    Soft-delete a persistent memory entry within the active workspace.
     """
     service = MemoryService(db)
     try:
         memory = await service.delete_memory(
-            user_id=current_user.id,
+            workspace_id=workspace.id,
             memory_id=memory_id,
         )
     except MemoryServiceError as exc:

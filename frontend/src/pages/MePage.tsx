@@ -193,8 +193,16 @@ function MePage() {
             </article>
             <article className="kv-card">
               <p className="kv-label">Plano</p>
-              <p className="kv-value">{user.plan_tier}</p>
+              <p className="kv-value">
+                {user.active_workspace?.plan_tier ?? user.plan_tier}
+              </p>
             </article>
+            {user.active_workspace && (
+              <article className="kv-card">
+                <p className="kv-label">Workspace</p>
+                <p className="kv-value">{user.active_workspace.name}</p>
+              </article>
+            )}
             <article className="kv-card">
               <p className="kv-label">Role</p>
               <p className="kv-value">{user.role}</p>
@@ -212,7 +220,7 @@ function MePage() {
               <p className="kv-value">
                 {user.has_api_key
                   ? `BYO (${user.llm_provider || 'sem provedor'})`
-                  : ['team', 'enterprise'].includes(user.plan_tier)
+                  : ['team', 'enterprise'].includes(user.active_workspace?.plan_tier ?? user.plan_tier)
                     ? 'BYO obrigatorio — configure sua API key'
                     : 'Fallback gratuito'}
               </p>

@@ -18,6 +18,7 @@ from app.core.security import decrypt_api_key
 from app.models.conversation import Conversation, Message
 from app.models.rag_gap_event import RagGapEvent
 from app.models.user import User
+from app.models.workspace import Workspace
 from app.services.attachment_context_service import (
     AttachmentContextResolution,
     AttachmentContextService,
@@ -60,6 +61,7 @@ class ChatService:
     async def process_user_message(
         self,
         user: User,
+        workspace: Workspace,
         conversation_id: UUID,
         content: str,
         attachment_document_ids: list[UUID] | None = None,
@@ -88,10 +90,10 @@ class ChatService:
                 code="message_too_long",
             )
 
-        # 2b. Plan limit enforcement — daily messages and tokens
+        # 2b. Plan limit enforcement — daily messages and tokens (workspace-level)
         try:
-            await PlanLimitService.check_message_limit(self._db, user)
-            await PlanLimitService.check_token_limit(self._db, user)
+            await PlanLimitService.check_message_limit(self._db, workspace)
+            await PlanLimitService.check_token_limit(self._db, workspace)
         except PlanLimitError as exc:
             raise ChatServiceError(
                 exc.detail,
@@ -100,8 +102,8 @@ class ChatService:
 
         # 3. Resolve LLM provider (BYO-LLM ou free fallback via DB)
         #    Consulta Plan.features.allow_system_fallback para determinar se
-        #    o plano do usuario permite uso do LLM gratuito do sistema.
-        plan_allows_fallback = await self._plan_allows_fallback(user)
+        #    o plano do workspace permite uso do LLM gratuito do sistema.
+        plan_allows_fallback = await self._plan_allows_fallback(workspace)
 
         if user.llm_provider and user.encrypted_api_key:
             provider_name = user.llm_provider
@@ -230,7 +232,7 @@ class ChatService:
         # 6. Load conversation history
         history = await self._load_history(conversation_id)
         memory_resolution = await self._resolve_memory_context(
-            user_id=user.id,
+            workspace_id=workspace.id,
             content_for_agent=attachment_resolution.content_for_agent,
             preferred_vendor=active_vendor,
             allow_vendor_prompt=not suppress_vendor_prompt,
@@ -276,8 +278,9 @@ class ChatService:
             tools = get_agent_tools(
                 db=self._db,
                 user_id=user.id,
+                workspace_id=workspace.id,
                 user_role=getattr(user, "role", None),
-                plan_tier=getattr(user, "plan_tier", None),
+                workspace_plan_tier=workspace.plan_tier,
                 user_message=content,
             )
             llm_attempts = await self._build_llm_attempt_chain(
@@ -666,9 +669,9 @@ class ChatService:
 
         # 10. Track usage metrics
         try:
-            await UsageTrackingService.increment_messages(self._db, user.id)
+            await UsageTrackingService.increment_messages(self._db, workspace.id, user.id)
             if total_tokens_used > 0:
-                await UsageTrackingService.increment_tokens(self._db, user.id, total_tokens_used)
+                await UsageTrackingService.increment_tokens(self._db, workspace.id, user.id, total_tokens_used)
             await self._db.commit()
         except Exception:
             pass  # Non-critical — don't fail the response
@@ -743,7 +746,7 @@ class ChatService:
             return
 
         try:
-            await UsageTrackingService.increment_messages(self._db, user.id)
+            await UsageTrackingService.increment_messages(self._db, workspace.id, user.id)
             await self._db.commit()
         except Exception:
             pass
@@ -784,7 +787,7 @@ class ChatService:
     async def _resolve_memory_context(
         self,
         *,
-        user_id: UUID,
+        workspace_id: UUID,
         content_for_agent: str,
         preferred_vendor: str | None = None,
         allow_vendor_prompt: bool = True,
@@ -797,7 +800,7 @@ class ChatService:
         try:
             service = MemoryService(self._db)
             return await service.resolve_chat_context(
-                user_id=user_id,
+                workspace_id=workspace_id,
                 message_content=content_for_agent,
                 preferred_vendor=preferred_vendor,
                 allow_vendor_prompt=allow_vendor_prompt,
@@ -1124,10 +1127,10 @@ class ChatService:
             )
         return attempts
 
-    async def _plan_allows_fallback(self, user: User) -> bool:
-        """Verifica se o plano do usuario permite fallback para LLM gratuito."""
+    async def _plan_allows_fallback(self, workspace: Workspace) -> bool:
+        """Verifica se o plano do workspace permite fallback para LLM gratuito."""
         try:
-            plan = await PlanLimitService.get_user_plan(self._db, user)
+            plan = await PlanLimitService.get_workspace_plan(self._db, workspace)
             features = plan.features if plan.features else {}
             # Default conservador: se nao definido, permite fallback
             return bool(features.get("allow_system_fallback", True))

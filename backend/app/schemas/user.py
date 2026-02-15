@@ -81,8 +81,28 @@ class UserResponse(UserBase):
     trial_ends_at: Optional[datetime] = None
     is_on_trial: bool = False
 
+    # Workspace info
+    active_workspace_id: Optional[UUID] = None
+    active_workspace: Optional["WorkspaceResponseCompact"] = None
+
     class Config:
         from_attributes = True
+
+
+class WorkspaceResponseCompact(BaseModel):
+    """Compact workspace info embedded in UserResponse."""
+
+    id: UUID
+    name: str
+    slug: str
+    plan_tier: str
+
+    class Config:
+        from_attributes = True
+
+
+# Rebuild UserResponse to resolve forward ref
+UserResponse.model_rebuild()
 
 
 class Token(BaseModel):

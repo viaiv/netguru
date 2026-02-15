@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import type { ITokenResponse, IUserResponse } from '../services/api';
+import type { ITokenResponse, IUserResponse, IWorkspaceCompact } from '../services/api';
 import {
   api,
   clearStoredTokens,
@@ -9,6 +9,7 @@ import {
   saveStoredAccessToken,
   saveStoredTokens,
 } from '../services/api';
+import { switchWorkspace as apiSwitchWorkspace } from '../services/workspaceApi';
 
 export type TRefreshStatus = 'idle' | 'refreshing' | 'refreshed' | 'expired';
 
@@ -19,6 +20,7 @@ interface IAuthState {
   refreshStatus: TRefreshStatus;
   lastRefreshAt: number | null;
   user: IUserResponse | null;
+  activeWorkspace: IWorkspaceCompact | null;
   syncFromStorage: () => void;
   setTokens: (tokens: ITokenResponse) => void;
   setAccessToken: (accessToken: string) => void;
@@ -28,6 +30,7 @@ interface IAuthState {
   markRefreshFailure: () => void;
   clearAuth: () => void;
   fetchUser: () => Promise<void>;
+  switchWorkspace: (workspaceId: string) => Promise<void>;
 }
 
 function buildAuthSnapshot(
@@ -47,8 +50,9 @@ function buildAuthSnapshot(
   };
 }
 
-export const useAuthStore = create<IAuthState>((set) => ({
+export const useAuthStore = create<IAuthState>((set, get) => ({
   ...buildAuthSnapshot(getStoredAccessToken(), getStoredRefreshToken()),
+  activeWorkspace: null,
   syncFromStorage: () => {
     set(buildAuthSnapshot(getStoredAccessToken(), getStoredRefreshToken()));
   },
@@ -94,9 +98,25 @@ export const useAuthStore = create<IAuthState>((set) => ({
   fetchUser: async () => {
     try {
       const response = await api.get<IUserResponse>('/users/me');
-      set({ user: response.data });
+      set({
+        user: response.data,
+        activeWorkspace: response.data.active_workspace ?? null,
+      });
     } catch {
       // Non-critical — user data is optional for route guards
     }
+  },
+  switchWorkspace: async (workspaceId: string) => {
+    const ws = await apiSwitchWorkspace(workspaceId);
+    set({
+      activeWorkspace: {
+        id: ws.id,
+        name: ws.name,
+        slug: ws.slug,
+        plan_tier: ws.plan_tier,
+      },
+    });
+    // Refresh user to sync active_workspace_id
+    await get().fetchUser();
   },
 }));

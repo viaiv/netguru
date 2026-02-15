@@ -23,8 +23,11 @@ from app.core.security import (
     encrypt_api_key,
     decode_token,
 )
+from sqlalchemy.orm import selectinload
+
 from app.core.rbac import UserRole
 from app.models.user import User
+from app.services.workspace_service import WorkspaceService
 from app.schemas.user import (
     AccessTokenResponse,
     ForgotPasswordRequest,
@@ -48,10 +51,18 @@ def _build_user_response(user: User) -> UserResponse:
     """
     Build a safe user response without sensitive fields.
     """
+    from app.schemas.user import WorkspaceResponseCompact
+
     is_on_trial = (
         user.trial_ends_at is not None
         and user.trial_ends_at > datetime.utcnow()
     )
+
+    workspace_compact = None
+    active_workspace = getattr(user, "active_workspace", None)
+    if active_workspace is not None:
+        workspace_compact = WorkspaceResponseCompact.model_validate(active_workspace)
+
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -66,6 +77,8 @@ def _build_user_response(user: User) -> UserResponse:
         last_login_at=user.last_login_at,
         trial_ends_at=user.trial_ends_at,
         is_on_trial=is_on_trial,
+        active_workspace_id=user.active_workspace_id,
+        active_workspace=workspace_compact,
     )
 
 
@@ -117,8 +130,21 @@ async def register(
     )
 
     db.add(user)
+    await db.flush()
+
+    # Auto-criar workspace pessoal
+    workspace_svc = WorkspaceService(db)
+    await workspace_svc.create_workspace(owner=user, name=user_in.email)
+
     await db.commit()
-    await db.refresh(user)
+
+    # Reload user with active_workspace eagerly loaded
+    stmt_reload = (
+        select(User)
+        .options(selectinload(User.active_workspace))
+        .where(User.id == user.id)
+    )
+    user = (await db.execute(stmt_reload)).scalar_one()
 
     # Dispatch email verification task
     token = secrets.token_urlsafe(48)

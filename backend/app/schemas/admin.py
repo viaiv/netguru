@@ -83,7 +83,7 @@ class SubscriptionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    user_id: UUID
+    workspace_id: UUID
     plan_id: UUID
     stripe_customer_id: Optional[str]
     stripe_subscription_id: Optional[str]

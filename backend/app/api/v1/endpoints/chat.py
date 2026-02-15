@@ -13,10 +13,11 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import require_permissions
+from app.core.dependencies import get_current_workspace, require_permissions
 from app.core.rbac import Permission
 from app.models.conversation import Conversation, Message
 from app.models.user import User
+from app.models.workspace import Workspace
 from app.schemas.chat import (
     ConversationCreate,
     ConversationResponse,
@@ -90,14 +91,16 @@ async def _get_owned_conversation(
 async def create_conversation(
     payload: ConversationCreate,
     current_user: User = Depends(require_permissions(Permission.USERS_UPDATE_SELF)),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> ConversationResponse:
     """
-    Create a conversation for current user.
+    Create a conversation for current user within active workspace.
     """
 
     conversation = Conversation(
         user_id=current_user.id,
+        workspace_id=workspace.id,
         title=payload.title,
         model_used=payload.model_used,
     )
@@ -137,15 +140,19 @@ async def list_conversations(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     current_user: User = Depends(require_permissions(Permission.USERS_READ_SELF)),
+    workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ) -> list[ConversationResponse]:
     """
-    List conversations from current user ordered by recent update.
+    List conversations from current user within active workspace.
     """
 
     stmt = (
         select(Conversation)
-        .where(Conversation.user_id == current_user.id)
+        .where(
+            Conversation.user_id == current_user.id,
+            Conversation.workspace_id == workspace.id,
+        )
         .order_by(desc(Conversation.updated_at))
         .offset(offset)
         .limit(limit)
