@@ -198,9 +198,11 @@ export async function fetchPcapData(messageId: string): Promise<Record<string, u
 
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
-    const axiosError = error as AxiosError<{ detail?: string }>;
-    if (axiosError.response?.data?.detail) {
-      return axiosError.response.data.detail;
+    const axiosError = error as AxiosError<{ detail?: string | { message?: string } }>;
+    const detail = axiosError.response?.data?.detail;
+    if (detail) {
+      if (typeof detail === 'string') return detail;
+      if (typeof detail === 'object' && detail.message) return detail.message;
     }
   }
 

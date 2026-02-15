@@ -3,12 +3,16 @@ Plan limit enforcement service — centralizes plan resolution and limit checks.
 """
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.plan import Plan
 from app.models.user import User
 from app.services.usage_tracking_service import UsageTrackingService
+
+logger = logging.getLogger(__name__)
 
 
 class PlanLimitError(Exception):
@@ -64,6 +68,10 @@ class PlanLimitService:
         limit_value = plan.upload_limit_daily
 
         if current >= limit_value:
+            logger.warning(
+                "plan_limit_exceeded: uploads user=%s plan=%s current=%d limit=%d",
+                user.id, plan.name, current, limit_value,
+            )
             raise PlanLimitError(
                 detail=(
                     f"Limite diario de uploads atingido ({current}/{limit_value}). "
@@ -82,6 +90,10 @@ class PlanLimitService:
         limit_value = plan.max_file_size_mb
 
         if size_mb > limit_value:
+            logger.warning(
+                "plan_limit_exceeded: file_size user=%s plan=%s size=%.1fMB limit=%dMB",
+                user.id, plan.name, size_mb, limit_value,
+            )
             raise PlanLimitError(
                 detail=(
                     f"Arquivo excede o limite do plano ({size_mb:.1f} MB / {limit_value} MB). "
@@ -102,6 +114,10 @@ class PlanLimitService:
         limit_value = plan.max_conversations_daily
 
         if current >= limit_value:
+            logger.warning(
+                "plan_limit_exceeded: messages user=%s plan=%s current=%d limit=%d",
+                user.id, plan.name, current, limit_value,
+            )
             raise PlanLimitError(
                 detail=(
                     f"Limite diario de mensagens atingido ({current}/{limit_value}). "
@@ -124,6 +140,10 @@ class PlanLimitService:
         current = usage.tokens_used if usage else 0
 
         if current >= limit_value:
+            logger.warning(
+                "plan_limit_exceeded: tokens user=%s plan=%s current=%d limit=%d",
+                user.id, plan.name, current, limit_value,
+            )
             raise PlanLimitError(
                 detail=(
                     f"Limite diario de tokens atingido ({current:,}/{limit_value:,}). "

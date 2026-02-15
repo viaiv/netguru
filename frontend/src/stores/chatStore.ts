@@ -103,6 +103,7 @@ interface IChatState {
 
   // Error
   error: string | null;
+  errorCode: string | null;
 
   // REST actions
   fetchConversations: () => Promise<void>;
@@ -141,7 +142,7 @@ interface IChatState {
     resultPreview: string,
     durationMs: number,
   ) => void;
-  handleWsError: (detail: string) => void;
+  handleWsError: (detail: string, code?: string) => void;
   setConnected: (connected: boolean) => void;
   clearError: () => void;
 }
@@ -162,6 +163,7 @@ export const useChatStore = create<IChatState>((set, get) => ({
   messages: [],
   isConnected: false,
   error: null,
+  errorCode: null,
 
   fetchConversations: async () => {
     try {
@@ -505,9 +507,10 @@ export const useChatStore = create<IChatState>((set, get) => ({
     });
   },
 
-  handleWsError: (detail: string) => {
+  handleWsError: (detail: string, code?: string) => {
     set({
       error: detail,
+      errorCode: code ?? null,
       isStreaming: false,
       streamingContent: '',
       streamingMessageId: null,
@@ -526,6 +529,6 @@ export const useChatStore = create<IChatState>((set, get) => ({
   },
 
   clearError: () => {
-    set({ error: null });
+    set({ error: null, errorCode: null });
   },
 }));

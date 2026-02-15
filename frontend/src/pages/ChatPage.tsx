@@ -8,9 +8,27 @@ import FileAttachmentChip from '../components/chat/FileAttachmentChip';
 import MarkdownContent from '../components/chat/MarkdownContent';
 import ToolCallDisplay from '../components/chat/ToolCallDisplay';
 import { useWebSocketReconnect } from '../hooks/useWebSocketReconnect';
+import { getErrorMessage } from '../services/api';
 import { ALLOWED_EXTENSIONS, uploadFile, validateFile } from '../services/fileApi';
 import type { IWebSocketEvent } from '../services/websocket';
 import { useChatStore, type IMessage } from '../stores/chatStore';
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                           */
+/* ------------------------------------------------------------------ */
+
+function extractLimitCode(err: unknown): string | null {
+  if (
+    typeof err === 'object' &&
+    err !== null &&
+    'response' in err
+  ) {
+    const resp = (err as { response?: { data?: { detail?: { code?: string } } } }).response;
+    const code = resp?.data?.detail?.code;
+    if (typeof code === 'string' && code.endsWith('_limit_exceeded')) return code;
+  }
+  return null;
+}
 
 /* ------------------------------------------------------------------ */
 /*  ChatPage — chat content (messages + input), sem aside/sidebar     */
@@ -26,6 +44,7 @@ function ChatPage() {
     activeToolCalls,
     usingFreeLlm,
     error,
+    errorCode,
     fetchConversations,
     createConversation,
     selectConversation,
@@ -113,7 +132,7 @@ function ChatPage() {
           }
           break;
         case 'error':
-          handleWsError(event.detail ?? 'Erro desconhecido');
+          handleWsError(event.detail ?? 'Erro desconhecido', event.code);
           break;
         case 'pong':
           break;
@@ -235,10 +254,11 @@ function ChatPage() {
         setInputValue('');
       } catch (err) {
         setUploadProgress(null);
-        const msg = err instanceof Error ? err.message : 'Falha no upload';
+        const msg = getErrorMessage(err);
         setUploadError(msg);
-        // Mostrar erro tambem no banner do chat para garantir visibilidade
-        handleWsError(`Upload falhou: ${msg}. Anexe o arquivo novamente para continuar.`);
+        // Detectar codigo de limite de plano na resposta HTTP
+        const limitCode = extractLimitCode(err);
+        handleWsError(`Upload falhou: ${msg}`, limitCode ?? undefined);
       }
       return;
     }
@@ -448,11 +468,18 @@ function ChatPage() {
 
           {/* Error banner */}
           {error && (
-            <div className="error-banner chat-error">
-              {error}
-              <button type="button" className="ghost-btn chat-dismiss" onClick={clearError}>
-                fechar
-              </button>
+            <div className={`error-banner chat-error${errorCode?.endsWith('_limit_exceeded') ? ' chat-error--limit' : ''}`}>
+              <span>{error}</span>
+              <span className="chat-error-actions">
+                {errorCode?.endsWith('_limit_exceeded') && (
+                  <a href="/me" className="ghost-btn chat-upgrade-cta">
+                    Fazer upgrade
+                  </a>
+                )}
+                <button type="button" className="ghost-btn chat-dismiss" onClick={clearError}>
+                  fechar
+                </button>
+              </span>
             </div>
           )}
 

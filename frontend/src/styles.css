@@ -1543,6 +1543,28 @@ textarea:focus {
   justify-content: space-between;
 }
 
+.chat-error-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.chat-upgrade-cta {
+  font-size: 0.72rem;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff !important;
+  text-decoration: none;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.chat-upgrade-cta:hover {
+  opacity: 0.85;
+}
+
 .chat-dismiss {
   font-size: 0.72rem;
   padding: 4px 8px;

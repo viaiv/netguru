@@ -87,29 +87,6 @@ class UsageTrackingService:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def check_limit(
-        db: AsyncSession,
-        user_id: UUID,
-        metric: str,
-        limit_value: int,
-    ) -> bool:
-        """
-        Check if user is within daily limit for the given metric.
-
-        Args:
-            metric: One of "uploads_count", "messages_count", "tokens_used".
-            limit_value: Maximum allowed value.
-
-        Returns:
-            True if within limit, False if exceeded.
-        """
-        usage = await UsageTrackingService.get_today_usage(db, user_id)
-        if usage is None:
-            return True
-        current = getattr(usage, metric, 0)
-        return current < limit_value
-
-    @staticmethod
     async def get_usage_range(
         db: AsyncSession,
         user_id: UUID,

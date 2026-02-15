@@ -163,7 +163,13 @@ async def presign_upload(
     except PlanLimitError as exc:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=exc.detail,
+            detail={
+                "message": exc.detail,
+                "code": exc.code,
+                "limit_name": exc.limit_name,
+                "current": exc.current_value,
+                "max": exc.max_value,
+            },
         ) from exc
 
     try:
@@ -314,7 +320,13 @@ async def upload_file(
     except PlanLimitError as exc:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=exc.detail,
+            detail={
+                "message": exc.detail,
+                "code": exc.code,
+                "limit_name": exc.limit_name,
+                "current": exc.current_value,
+                "max": exc.max_value,
+            },
         ) from exc
 
     if not file.filename:
@@ -349,6 +361,23 @@ async def upload_file(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
+        ) from exc
+
+    # Plan-based file size check (may be stricter than global MAX_FILE_SIZE_MB)
+    try:
+        file_size_mb = stored_file.file_size_bytes / (1024 * 1024)
+        await PlanLimitService.check_file_size(db, current_user, file_size_mb)
+    except PlanLimitError as exc:
+        delete_stored_file(stored_file.storage_path)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "message": exc.detail,
+                "code": exc.code,
+                "limit_name": exc.limit_name,
+                "current": exc.current_value,
+                "max": exc.max_value,
+            },
         ) from exc
 
     document = Document(
