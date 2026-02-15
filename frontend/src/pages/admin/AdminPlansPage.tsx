@@ -10,6 +10,36 @@ import { getErrorMessage } from '../../services/api';
 import { useAdminStore } from '../../stores/adminStore';
 import { useAuthStore } from '../../stores/authStore';
 
+interface IFeaturesForm {
+  rag_global: boolean;
+  rag_local: boolean;
+  config_tools: boolean;
+  pcap_analysis: boolean;
+  topology_generation: boolean;
+  custom_tools: boolean;
+  allow_system_fallback: boolean;
+}
+
+const FEATURE_LABELS: Record<keyof IFeaturesForm, string> = {
+  rag_global: 'RAG Global (docs de vendors)',
+  rag_local: 'RAG Local (docs do cliente)',
+  config_tools: 'Config Tools (parse/validate)',
+  pcap_analysis: 'Analise de PCAP',
+  topology_generation: 'Geracao de topologia',
+  custom_tools: 'Tools customizadas',
+  allow_system_fallback: 'Fallback LLM gratuito (sem BYO)',
+};
+
+const DEFAULT_FEATURES: IFeaturesForm = {
+  rag_global: true,
+  rag_local: false,
+  config_tools: true,
+  pcap_analysis: false,
+  topology_generation: false,
+  custom_tools: false,
+  allow_system_fallback: true,
+};
+
 interface IPlanFormData {
   name: string;
   display_name: string;
@@ -22,7 +52,7 @@ interface IPlanFormData {
   max_conversations_daily: number;
   max_tokens_daily: number;
   default_llm_model_id: string;
-  features_json: string;
+  features: IFeaturesForm;
   is_active: boolean;
   sort_order: number;
 }
@@ -39,12 +69,18 @@ const EMPTY_FORM: IPlanFormData = {
   max_conversations_daily: 50,
   max_tokens_daily: 100000,
   default_llm_model_id: '',
-  features_json: '{}',
+  features: { ...DEFAULT_FEATURES },
   is_active: true,
   sort_order: 0,
 };
 
 function planToForm(plan: IPlan): IPlanFormData {
+  const raw = plan.features ?? {};
+  const features: IFeaturesForm = { ...DEFAULT_FEATURES };
+  for (const key of Object.keys(DEFAULT_FEATURES) as (keyof IFeaturesForm)[]) {
+    if (key in raw) features[key] = Boolean(raw[key]);
+  }
+
   return {
     name: plan.name,
     display_name: plan.display_name,
@@ -57,23 +93,13 @@ function planToForm(plan: IPlan): IPlanFormData {
     max_conversations_daily: plan.max_conversations_daily,
     max_tokens_daily: plan.max_tokens_daily,
     default_llm_model_id: plan.default_llm_model_id || '',
-    features_json: plan.features ? JSON.stringify(plan.features, null, 2) : '{}',
+    features,
     is_active: plan.is_active,
     sort_order: plan.sort_order,
   };
 }
 
 function formToPayload(form: IPlanFormData): IPlanCreate {
-  let features: Record<string, boolean> | undefined;
-  try {
-    const parsed = JSON.parse(form.features_json);
-    if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-      features = parsed;
-    }
-  } catch {
-    // ignore invalid JSON — backend will use null
-  }
-
   return {
     name: form.name,
     display_name: form.display_name,
@@ -86,7 +112,7 @@ function formToPayload(form: IPlanFormData): IPlanCreate {
     max_conversations_daily: form.max_conversations_daily,
     max_tokens_daily: form.max_tokens_daily,
     default_llm_model_id: form.default_llm_model_id || null,
-    features,
+    features: { ...form.features },
     is_active: form.is_active,
     sort_order: form.sort_order,
   };
@@ -257,7 +283,7 @@ function AdminPlansPage() {
                   <dt style={{ gridColumn: '1 / -1', fontWeight: 600, fontSize: '0.75rem' }}>Features</dt>
                   {Object.entries(plan.features).map(([key, value]) => (
                     <span key={key} style={{ fontSize: '0.75rem' }}>
-                      {key}: {value ? 'sim' : 'nao'}
+                      {FEATURE_LABELS[key as keyof IFeaturesForm] ?? key}: {value ? 'sim' : 'nao'}
                       {' '}
                     </span>
                   ))}
@@ -471,16 +497,24 @@ function AdminPlansPage() {
 
               {/* Features */}
               <fieldset className="plan-form__fieldset">
-                <legend>Features (JSON)</legend>
-                <div className="plan-form__row">
-                  <textarea
-                    value={formData.features_json}
-                    onChange={(e) => set('features_json', e.target.value)}
-                    rows={5}
-                    style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
-                    placeholder='{"rag_global": true, "rag_local": false, "pcap_analysis": true}'
-                  />
-                </div>
+                <legend>Features</legend>
+                {(Object.keys(FEATURE_LABELS) as (keyof IFeaturesForm)[]).map((key) => (
+                  <div key={key} className="plan-form__row">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.features[key]}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            features: { ...prev.features, [key]: e.target.checked },
+                          }))
+                        }
+                      />
+                      {FEATURE_LABELS[key]}
+                    </label>
+                  </div>
+                ))}
               </fieldset>
 
               <div className="modal__actions">
