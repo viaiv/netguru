@@ -442,6 +442,22 @@ class StripeEventListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Brainwork Crawler
+# ---------------------------------------------------------------------------
+
+class BrainworkCrawlRequest(BaseModel):
+    max_pages: Optional[int] = Field(None, ge=1, le=1000)
+
+
+class BrainworkCrawlResponse(BaseModel):
+    total_urls: int
+    new_urls: int
+    ingested: int
+    failed: int
+    errors: list[str] = []
+
+
+# ---------------------------------------------------------------------------
 # Celery Task Events
 # ---------------------------------------------------------------------------
 

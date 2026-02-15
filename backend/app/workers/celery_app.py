@@ -39,6 +39,7 @@ celery_app.conf.include = [
     "app.workers.tasks.pcap_tasks",
     "app.workers.tasks.email_tasks",
     "app.workers.tasks.billing_tasks",
+    "app.workers.tasks.brainwork_tasks",
 ]
 
 # Garantir que todos os models SQLAlchemy sao importados antes de qualquer task
@@ -81,5 +82,9 @@ celery_app.conf.beat_schedule = {
     "check-byollm-discount-eligibility": {
         "task": "app.workers.tasks.billing_tasks.check_byollm_discount_eligibility",
         "schedule": settings.BYOLLM_CHECK_HOURS * 3600,
+    },
+    "crawl-brainwork-blog": {
+        "task": "app.workers.tasks.brainwork_tasks.crawl_brainwork_blog",
+        "schedule": settings.BRAINWORK_CRAWL_HOURS * 3600,
     },
 }

@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import {
+  crawlBrainwork,
   deleteRagDocument,
   fetchRagDocuments,
   fetchRagGaps,
@@ -13,6 +14,7 @@ import {
   ingestRagUrl,
   reprocessRagDocument,
   uploadRagDocument,
+  type IBrainworkCrawlResponse,
   type IPaginationMeta,
   type IRagDocument,
   type IRagGapItem,
@@ -463,6 +465,10 @@ function AdminRagPage() {
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Brainwork Crawler
+  const [crawling, setCrawling] = useState(false);
+  const [crawlResult, setCrawlResult] = useState<IBrainworkCrawlResponse | null>(null);
+
   // General
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -593,6 +599,29 @@ function AdminRagPage() {
     }
   }
 
+  // -- Brainwork Crawler --
+  async function handleCrawlBrainwork() {
+    setCrawling(true);
+    setError(null);
+    setMessage(null);
+    setCrawlResult(null);
+    try {
+      const result = await crawlBrainwork();
+      setCrawlResult(result);
+      if (result.ingested > 0) {
+        setMessage(`Brainwork: ${result.ingested} posts ingeridos com sucesso.`);
+        void loadDocuments(1);
+        setPage(1);
+      } else {
+        setMessage('Brainwork: nenhum post novo encontrado.');
+      }
+    } catch (e) {
+      setError(getErrorMessage(e));
+    } finally {
+      setCrawling(false);
+    }
+  }
+
   // -- Effects --
   useEffect(() => {
     if (activeTab === 'stats') {
@@ -705,6 +734,46 @@ function AdminRagPage() {
                 {ingesting ? 'Ingerindo...' : 'Ingerir URL'}
               </button>
             </form>
+          </div>
+
+          {/* Brainwork Crawler */}
+          <div className="admin-card" style={{ marginBottom: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h4 style={{ margin: 0 }}>Brainwork Crawler</h4>
+                <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  Ingere posts do brainwork.com.br no RAG Global via sitemap.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={crawling}
+                onClick={() => void handleCrawlBrainwork()}
+              >
+                {crawling ? 'Executando...' : 'Executar Crawler'}
+              </button>
+            </div>
+            {crawlResult && (
+              <div style={{ marginTop: 12, fontSize: 13 }}>
+                <p>
+                  URLs no sitemap: <strong>{crawlResult.total_urls}</strong> |
+                  Novas: <strong>{crawlResult.new_urls}</strong> |
+                  Ingeridas: <strong>{crawlResult.ingested}</strong> |
+                  Falhas: <strong>{crawlResult.failed}</strong>
+                </p>
+                {crawlResult.errors.length > 0 && (
+                  <details style={{ marginTop: 4 }}>
+                    <summary className="text-muted">Erros ({crawlResult.errors.length})</summary>
+                    <ul style={{ fontSize: 12, marginTop: 4 }}>
+                      {crawlResult.errors.map((err, i) => (
+                        <li key={i}>{err}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
           </div>
 
           {listLoading ? (

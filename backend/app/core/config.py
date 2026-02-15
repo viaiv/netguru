@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     BYOLLM_GRACE_PERIOD_DAYS: int = 7
     BYOLLM_CHECK_HOURS: int = 6
     ORPHAN_UPLOAD_AGE_HOURS: int = 72
+    BRAINWORK_CRAWL_HOURS: int = 24
+    BRAINWORK_CRAWL_MAX_PAGES: int = 50
+    BRAINWORK_CRAWL_DELAY_SECONDS: float = 1.0
     
     # File Upload
     MAX_FILE_SIZE_MB: int = 100

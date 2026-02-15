@@ -643,6 +643,22 @@ export interface IRagReprocessResponse {
   message: string;
 }
 
+export interface IBrainworkCrawlResponse {
+  total_urls: number;
+  new_urls: number;
+  ingested: number;
+  failed: number;
+  errors: string[];
+}
+
+export async function crawlBrainwork(maxPages?: number): Promise<IBrainworkCrawlResponse> {
+  const r = await api.post<IBrainworkCrawlResponse>(
+    '/admin/rag/crawl-brainwork',
+    maxPages ? { max_pages: maxPages } : {},
+  );
+  return r.data;
+}
+
 export async function fetchRagStats(): Promise<IRagStats> {
   const r = await api.get<IRagStats>('/admin/rag/stats');
   return r.data;

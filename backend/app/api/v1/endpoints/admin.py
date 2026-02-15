@@ -34,6 +34,8 @@ from app.schemas.admin import (
     AdminUserUpdate,
     AuditLogListResponse,
     AuditLogResponse,
+    BrainworkCrawlRequest,
+    BrainworkCrawlResponse,
     CeleryTaskEventListResponse,
     CeleryTaskEventResponse,
     DashboardStats,
@@ -1502,4 +1504,49 @@ async def get_rag_gap_stats(
         global_gaps=global_gaps,
         local_gaps=local_gaps,
         top_queries=top_queries,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Brainwork Crawler
+# ---------------------------------------------------------------------------
+
+@router.post("/rag/crawl-brainwork", response_model=BrainworkCrawlResponse)
+async def crawl_brainwork(
+    body: BrainworkCrawlRequest | None = None,
+    request: Request = None,
+    current_user: User = Depends(require_permissions(Permission.ADMIN_RAG_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> BrainworkCrawlResponse:
+    """Executa crawler do brainwork.com.br para ingestao no RAG Global."""
+    from app.services.brainwork_crawler_service import BrainworkCrawlerService
+
+    max_pages = body.max_pages if body else None
+
+    service = BrainworkCrawlerService(db)
+    result = await service.crawl(max_pages=max_pages)
+
+    await AuditLogService.record(
+        db,
+        actor_id=current_user.id,
+        action="rag.brainwork_crawl",
+        target_type="crawler",
+        target_id="brainwork",
+        changes={
+            "max_pages": max_pages,
+            "total_urls": result.total_urls,
+            "new_urls": result.new_urls,
+            "ingested": result.ingested,
+            "failed": result.failed,
+        },
+        ip_address=_client_ip(request) if request else "unknown",
+        user_agent=request.headers.get("user-agent") if request else None,
+    )
+
+    return BrainworkCrawlResponse(
+        total_urls=result.total_urls,
+        new_urls=result.new_urls,
+        ingested=result.ingested,
+        failed=result.failed,
+        errors=result.errors,
     )
