@@ -190,6 +190,7 @@ async def test_analyze_pcap_tool_returns_worker_formatted_result(
         file_type="pcap",
         original_filename="capture.pcap",
         storage_path="uploads/test/capture.pcap",
+        status="uploaded",
     )
 
     class FakeResult:

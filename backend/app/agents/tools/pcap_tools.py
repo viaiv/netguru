@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from uuid import UUID
 
 from langchain_core.tools import StructuredTool
@@ -16,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.document import Document
+
+logger = logging.getLogger(__name__)
 
 
 def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
@@ -85,8 +88,27 @@ def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
                     document = result.scalar_one_or_none()
 
             if not document:
+                logger.warning(
+                    "analyze_pcap: document not found. "
+                    "document_id=%s user_id=%s",
+                    document_id,
+                    user_id,
+                )
+                # Listar PCAPs recentes do usuario para ajudar o LLM
+                return await _build_not_found_message(document_id)
+
+            if document.status == "pending_upload":
+                logger.warning(
+                    "analyze_pcap: document still pending upload. "
+                    "document_id=%s status=%s user_id=%s",
+                    document.id,
+                    document.status,
+                    user_id,
+                )
                 return (
-                    f"Document '{document_id}' not found."
+                    f"O arquivo '{document.original_filename}' ainda esta sendo "
+                    f"enviado (status: pending_upload). Aguarde o upload completar "
+                    f"e tente novamente."
                 )
 
             if document.file_type not in ("pcap", "pcapng"):
@@ -116,7 +138,47 @@ def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
             )
             return f"{formatted}\n<!-- PCAP_DATA:{pcap_data} -->"
         except Exception as e:
+            logger.exception(
+                "analyze_pcap: unexpected error. document_id=%s user_id=%s",
+                document_id,
+                user_id,
+            )
             return f"Error analyzing PCAP: {e}"
+
+    async def _build_not_found_message(document_id: str) -> str:
+        """Monta mensagem de 'not found' com lista de PCAPs disponiveis."""
+        try:
+            result = await db.execute(
+                select(Document)
+                .where(
+                    Document.user_id == user_id,
+                    Document.file_type.in_(("pcap", "pcapng")),
+                    Document.status == "uploaded",
+                )
+                .order_by(Document.created_at.desc())
+                .limit(5)
+            )
+            recent_pcaps = result.scalars().all()
+        except Exception:
+            recent_pcaps = []
+
+        msg = f"Document '{document_id}' not found."
+        if recent_pcaps:
+            pcap_list = ", ".join(
+                f"{doc.original_filename} (UUID: {doc.id})"
+                for doc in recent_pcaps
+            )
+            msg += (
+                f" PCAPs disponiveis para este usuario: {pcap_list}. "
+                f"Use o UUID correto do arquivo desejado."
+            )
+        else:
+            msg += (
+                " Nenhum PCAP foi encontrado para este usuario. "
+                "O arquivo pode nao ter sido enviado corretamente. "
+                "Solicite ao usuario que reenvie o arquivo."
+            )
+        return msg
 
     return StructuredTool.from_function(
         coroutine=_analyze_pcap,

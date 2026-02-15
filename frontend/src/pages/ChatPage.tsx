@@ -247,6 +247,8 @@ function ChatPage() {
         setUploadProgress(null);
         const msg = err instanceof Error ? err.message : 'Falha no upload';
         setUploadError(msg);
+        // Mostrar erro tambem no banner do chat para garantir visibilidade
+        handleWsError(`Upload falhou: ${msg}. Anexe o arquivo novamente para continuar.`);
       }
       return;
     }
