@@ -8,16 +8,20 @@
 > **⚠️ Manutenção**: Se qualquer procedimento documentado aqui estiver desatualizado, sugira correções e atualize este arquivo.
 
 > **📝 CHECKPOINT TEMPORÁRIO (REMOVER NA PRÓXIMA SESSÃO):**
-> Per-seat billing implementado para planos Team/Enterprise:
-> - **Plan**: `max_members` (team=3, enterprise=10), `price_per_extra_seat_cents`
-> - **Subscription**: `seat_quantity` rastreia quantity cobrada no Stripe
-> - **SeatService**: check_seat_limit, sync_stripe_quantity, get_seat_info
-> - **Checkout**: quantity = max(plan.max_members, member_count)
-> - **Invite**: retorna 402 quando seats esgotados, sync Stripe apos invite/remove
-> - **POST /billing/seats**: pre-compra de assentos com proration
-> - **Celery**: reconcile_seat_quantities a cada 6h
-> - **Frontend**: secao de assentos no MePage, seats na tabela do PricingPage
-> - Migration: `f5a6b7c8d9e0_add_per_seat_billing.py` (depende de `e2a3b4c5d6f7`)
+> Desconto BYO-LLM com revogacao via grace period implementado:
+> - **Plan**: `byollm_discount_cents` (solo=R$15, team=R$45), `stripe_byollm_coupon_id`
+> - **Subscription**: `byollm_discount_applied`, `byollm_grace_notified_at`
+> - **Checkout**: aplica Stripe coupon "forever" quando owner tem API key
+> - **Webhook**: sincroniza `byollm_discount_applied` via discount.coupon.id
+> - **Grace period**: task periodica (6h) verifica elegibilidade:
+>   - Owner sem API key + grace nao iniciado → email warning + seta `byollm_grace_notified_at`
+>   - Grace expirado (7 dias) → `stripe.Subscription.delete_discount()` + limpa flags
+>   - Owner reconfigura key → limpa grace, desconto mantido
+> - **DELETE /users/me/api-keys**: remove API key e provider LLM
+> - **EmailService**: `send_byollm_discount_warning()` + task Celery com retry
+> - **Config**: `BYOLLM_GRACE_PERIOD_DAYS=7`, `BYOLLM_CHECK_HOURS=6`
+> - **Frontend**: botao "Remover API Key" no MePage, desconto BYO-LLM em HomePage/PricingPage
+> - Migrations: `a6b7c8d9e0f1` (colunas discount) → `b7c8d9e0f1a2` (grace + email template)
 
 ---
 
@@ -620,6 +624,7 @@ POST /api/v1/files/upload
 GET  /api/v1/agent/tools
 POST /api/v1/billing/seats        # 💺 Pre-compra de assentos
 GET  /api/v1/billing/subscription # 📊 Plano + uso + seat_info
+DELETE /api/v1/users/me/api-keys  # 🔑 Remover API key (inicia grace BYO-LLM)
 ```
 
 ### Troubleshooting Comum
@@ -712,6 +717,23 @@ GET  /api/v1/billing/subscription # 📊 Plano + uso + seat_info
 - [x] Task Celery reconcile_seat_quantities a cada 6h
 - [x] Frontend: secao de assentos no MePage, seats na tabela do PricingPage
 - [ ] Testes unitarios e integracao para SeatService
+
+### Sprint 9 (BYO-LLM discount + grace period) - ✅ Completo
+- [x] Plan.byollm_discount_cents e stripe_byollm_coupon_id (solo=R$15, team=R$45)
+- [x] Subscription.byollm_discount_applied e byollm_grace_notified_at
+- [x] Checkout aplica Stripe coupon quando owner tem API key configurada
+- [x] Webhook sincroniza byollm_discount_applied (checkout.completed, subscription.updated)
+- [x] Task periodica check_byollm_discount_eligibility (a cada 6h):
+  - Grace period 7 dias com email warning ao owner
+  - Revogacao automatica via stripe.Subscription.delete_discount
+  - Restauracao automatica se owner reconfigura API key
+- [x] EmailService.send_byollm_discount_warning + task Celery com autoretry
+- [x] Email template seed (byollm_discount_warning) na migration
+- [x] DELETE /users/me/api-keys para remocao da API key
+- [x] Frontend: botao "Remover API Key" no MePage com aviso de grace period
+- [x] Frontend: exibicao do desconto BYO-LLM em HomePage, PricingPage e MePage
+- [ ] Testes unitarios para check_byollm_discount_eligibility
+- [ ] Testes de integracao para DELETE /users/me/api-keys
 
 ---
 
