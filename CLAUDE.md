@@ -8,19 +8,20 @@
 > **⚠️ Manutenção**: Se qualquer procedimento documentado aqui estiver desatualizado, sugira correções e atualize este arquivo.
 
 > **📝 CHECKPOINT TEMPORÁRIO (REMOVER NA PRÓXIMA SESSÃO):**
-> Catalogo de modelos LLM + modelo default por plano implementado:
-> - **LlmModel**: tabela `llm_models` (provider, model_id, display_name, is_active, sort_order)
-> - **Plan**: `default_llm_model_id` FK para `llm_models` (modelo padrao por plano)
-> - **Catalogo**: 27 modelos seeded (OpenAI 11, Anthropic 4, Google 5, Groq 2, DeepSeek 2, OpenRouter 3)
-> - **CRUD admin**: GET/POST/PATCH/DELETE `/admin/llm-models` com audit log
-> - **API keys por provider**: 7 chaves Fernet (`free_llm_api_key_{provider}`) no ENCRYPTED_KEYS
-> - **Resolucao de modelo**: `LLMModelResolverService.resolve_plan_model()` — cadeia:
->   - `conversation.model_used` → `Plan.default_llm_model` → system setting → code default
->   - Free fallback: plan provider+key especifica → global fallback
->   - BYO-LLM: usa modelo do plan se provider bater
-> - **Frontend**: catalogo CRUD inline em AdminSettingsPage, dropdown por provider em AdminPlansPage
-> - **Config defaults**: `gpt-4.1` (OpenAI), `claude-sonnet-4-5-20250929` (Anthropic), `gemini-2.5-flash` (Google)
-> - Migrations: `c8d9e0f1a2b3` (tabela + seed + FK) → `d9e0f1a2b3c4` (catalogo atualizado) → `e3f4a5b6c7d8` (GPT-5 family + o3-pro)
+> Bugfixes de streaming + logging + Topology mapper:
+> - **Streaming vazio**: Anthropic retorna `chunk.content` como `list` de content blocks
+>   (nao `str`) quando tools estao bound. Fix em `network_engineer_agent.py` para tratar ambos.
+> - **Logging para arquivo**: `backend/app/core/logging_config.py` — RotatingFileHandler
+>   em `backend/logs/netguru.log` (10MB, 3 backups, somente DEBUG=True)
+> - **Logging de diagnostico**: chat_service.py loga tentativas LLM, respostas vazias,
+>   contagem de text chunks; network_engineer_agent.py loga event_count e text_chunks_emitted
+> - **Topology mapper**: modelo `Topology` faltava no `models/__init__.py` — causava
+>   `InvalidRequestError` em qualquer query que tocasse Workspace (incluindo PCAP analysis)
+> - **Celery models**: `import app.models` adicionado ao `celery_app.py` para garantir
+>   que todos os mappers SQLAlchemy sao inicializados antes de qualquer task rodar
+> - **Outros fixes da sessao anterior**: UUID serialization no audit_log, passive_deletes
+>   em Conversation/User/Workspace, features como checkboxes no AdminPlansPage,
+>   terminologia "modelo incluso no plano" substituindo "modelo gratuito"
 
 ---
 
@@ -650,6 +651,21 @@ DELETE /api/v1/admin/llm-models/:id # 🗑️ Remover modelo
    which python  # Deve mostrar path do venv
    ```
 
+5. **Resposta do assistente vazia (0 text chunks)**
+   - ✅ Verificar `backend/logs/netguru.log` — procurar `EMPTY_RESPONSE` ou `ZERO text chunks`
+   - ✅ Anthropic retorna `chunk.content` como lista quando tools estao bound — fix em `network_engineer_agent.py`
+   - ✅ API key vazia/invalida pode causar falha silenciosa
+
+6. **Mapper failed to initialize (Topology, etc)**
+   - ✅ Todo modelo SQLAlchemy DEVE ser importado em `models/__init__.py`
+   - ✅ Celery worker tem `import app.models` no `celery_app.py`
+   - ✅ Reiniciar backend E Celery worker apos adicionar novo modelo
+
+7. **Logs do backend**
+   - Em dev: `backend/logs/netguru.log` (RotatingFileHandler, 10MB x 3)
+   - Console: sempre ativo (stdout)
+   - SQL queries: controlado por `LOG_LEVEL` no `.env`
+
 ---
 
 ## ✅ Checklist de Desenvolvimento
@@ -761,6 +777,25 @@ DELETE /api/v1/admin/llm-models/:id # 🗑️ Remover modelo
 - [x] Config defaults atualizados: gpt-4.1, claude-sonnet-4-5, gemini-2.5-flash
 - [ ] Testes unitarios para resolve_plan_model e CRUD llm-models
 - [ ] Testes de integracao para resolucao de modelo no chat
+
+### Sprint 11 (Bugfixes + Observabilidade) - ✅ Completo
+- [x] Fix resposta vazia do streaming: tratar `chunk.content` como lista de content blocks
+  (Anthropic retorna lista quando tools estao bound, nao string)
+- [x] Logging para arquivo em dev: `backend/app/core/logging_config.py`
+  - RotatingFileHandler → `backend/logs/netguru.log` (10MB, 3 backups)
+  - DEBUG=True: console + arquivo; prod: apenas console
+  - Loggers barulhentos silenciados (httpcore, httpx, asyncio)
+- [x] Logging de diagnostico no streaming:
+  - chat_service.py: log de tentativas LLM (providers, models, source)
+  - chat_service.py: warning EMPTY_RESPONSE quando accumulated vazio
+  - network_engineer_agent.py: event_count, text_chunks_emitted, warning se zero
+- [x] Fix Topology mapper: registrar modelo em `models/__init__.py`
+- [x] Fix Celery mapper: `import app.models` no `celery_app.py` (previne mapper failures)
+- [x] Fix UUID serialization no audit_log: `_json_safe()` recursivo
+- [x] Fix SAWarning DELETE conversations: `passive_deletes=True` em relationships
+- [x] Features como checkboxes no AdminPlansPage (substituiu textarea JSON)
+- [x] Terminologia: "modelo incluso no plano" em vez de "modelo gratuito"
+- [ ] Testes para streaming com content blocks como lista
 
 ---
 
