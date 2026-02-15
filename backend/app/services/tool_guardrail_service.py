@@ -1,9 +1,12 @@
 """
 ToolGuardrailService — role/plan authorization and critical-action confirmation for agent tools.
+
+Entitlements resolvidos a partir de Plan.features (fonte unica).
 """
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -14,8 +17,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.audit_log_service import AuditLogService
 from app.services.system_settings_service import SystemSettingsService
 
+logger = logging.getLogger(__name__)
 
 GUARDRAIL_SETTINGS_KEY = "agent_tool_guardrails_policy"
+
+# Mapa canonico feature (Plan.features) → tools que a feature habilita
+FEATURE_TOOL_MAP: dict[str, list[str]] = {
+    "rag_global": ["search_rag_global"],
+    "rag_local": ["search_rag_local"],
+    "pcap_analysis": ["analyze_pcap"],
+    "topology_generation": ["generate_topology"],
+    "config_tools": ["parse_config", "validate_config", "parse_show_commands", "diff_config_risk", "pre_change_review"],
+}
+
+# Inverso: tool → feature que governa acesso
+TOOL_FEATURE_MAP: dict[str, str] = {
+    tool: feature
+    for feature, tools in FEATURE_TOOL_MAP.items()
+    for tool in tools
+}
 
 DEFAULT_GUARDRAIL_POLICY: dict[str, Any] = {
     "version": 2,
@@ -99,6 +119,7 @@ class ToolGuardrailService:
         self._plan_tier = self._normalize_token(plan_tier)
         self._user_message = self._normalize_text(user_message)
         self._policy_cache: tuple[dict[str, Any], str] | None = None
+        self._features_cache: dict[str, bool] | None = None
 
     def wrap_tools(self, tools: list[BaseTool]) -> list[BaseTool]:
         """
@@ -138,7 +159,12 @@ class ToolGuardrailService:
 
     async def authorize_tool(self, *, tool_name: str) -> GuardrailDecision:
         """
-        Evaluate access for a tool call and return allow/deny decision.
+        Evaluate access for a tool call.
+
+        Precedencia:
+        1. Plan.features (fonte unica de entitlements)
+        2. Policy de guardrails (role, confirmation)
+        3. DEFAULT_GUARDRAIL_POLICY como fallback de politica
         """
         policy, policy_source = await self._load_policy()
         tools_policy = policy.get("tools", {}) if isinstance(policy, dict) else {}
@@ -150,9 +176,31 @@ class ToolGuardrailService:
             tool_policy = {}
 
         allowed_roles = self._normalize_tokens(tool_policy.get("allowed_roles"))
-        allowed_plans = self._normalize_tokens(tool_policy.get("allowed_plans"))
         require_confirmation = bool(tool_policy.get("require_confirmation", False))
 
+        # 1. Check: Plan.features (fonte unica de entitlements)
+        required_feature = TOOL_FEATURE_MAP.get(tool_name)
+        if required_feature:
+            features = await self._load_plan_features()
+            # Default seguro: feature nao presente = nao permitido
+            if not features.get(required_feature, False):
+                return await self._deny(
+                    tool_name=tool_name,
+                    policy_source="plan_features",
+                    reason_code="plan_denied",
+                    details={
+                        "user_plan": self._plan_tier,
+                        "required_feature": required_feature,
+                        "user_role": self._user_role,
+                    },
+                    next_step=(
+                        f"A ferramenta '{tool_name}' requer a feature '{required_feature}' "
+                        f"que nao esta disponivel no plano {self._plan_tier}. "
+                        f"Faca upgrade em /pricing para acessar este recurso."
+                    ),
+                )
+
+        # 2. Check: Role authorization (da policy de guardrails)
         if allowed_roles and self._user_role not in allowed_roles:
             return await self._deny(
                 tool_name=tool_name,
@@ -168,23 +216,7 @@ class ToolGuardrailService:
                 ),
             )
 
-        if allowed_plans and self._plan_tier not in allowed_plans:
-            return await self._deny(
-                tool_name=tool_name,
-                policy_source=policy_source,
-                reason_code="plan_denied",
-                details={
-                    "user_plan": self._plan_tier,
-                    "allowed_plans": sorted(allowed_plans),
-                    "user_role": self._user_role,
-                },
-                next_step=(
-                    f"A ferramenta '{tool_name}' nao esta disponivel no plano "
-                    f"{self._plan_tier}. Faca upgrade em /pricing para acessar "
-                    f"este recurso."
-                ),
-            )
-
+        # 3. Check: Sensitive tool confirmation (da policy de guardrails)
         if require_confirmation and not self._has_explicit_confirmation(
             tool_name=tool_name,
             policy=policy,
@@ -258,6 +290,35 @@ class ToolGuardrailService:
         except Exception:
             # Guardrail logging must never break the user response flow.
             return
+
+    async def _load_plan_features(self) -> dict[str, bool]:
+        """Resolve Plan.features do plano efetivo do usuario."""
+        if self._features_cache is not None:
+            return self._features_cache
+
+        try:
+            from app.services.plan_limit_service import PlanLimitService
+            from app.models.user import User
+
+            from sqlalchemy import select
+            stmt = select(User).where(User.id == self._user_id)
+            result = await self._db.execute(stmt)
+            user = result.scalar_one_or_none()
+            if user is None:
+                self._features_cache = {}
+                return self._features_cache
+
+            plan = await PlanLimitService.get_user_plan(self._db, user)
+            raw_features = plan.features if plan.features else {}
+            self._features_cache = {
+                k: bool(v) for k, v in raw_features.items()
+                if isinstance(k, str)
+            }
+        except Exception:
+            logger.warning("Falha ao resolver Plan.features user=%s", self._user_id)
+            self._features_cache = {}
+
+        return self._features_cache
 
     async def _load_policy(self) -> tuple[dict[str, Any], str]:
         if self._policy_cache is not None:

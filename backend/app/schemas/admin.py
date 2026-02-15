@@ -248,6 +248,21 @@ class AdminUserDetailResponse(AdminUserListItem):
     subscription: Optional[SubscriptionResponse] = None
 
 
+class EntitlementToolStatus(BaseModel):
+    tool: str
+    feature: str
+    allowed: bool
+    reason: Optional[str] = None
+
+
+class UserEntitlementDiagnostic(BaseModel):
+    user_id: UUID
+    email: str
+    plan_name: str
+    plan_features: dict[str, bool]
+    tools: list[EntitlementToolStatus]
+
+
 class AdminUserUpdate(BaseModel):
     role: Optional[str] = Field(None, pattern="^(owner|admin|member|viewer)$")
     is_active: Optional[bool] = None

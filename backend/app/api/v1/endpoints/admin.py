@@ -36,6 +36,7 @@ from app.schemas.admin import (
     CeleryTaskEventListResponse,
     CeleryTaskEventResponse,
     DashboardStats,
+    EntitlementToolStatus,
     PaginationMeta,
     PlanCreate,
     PlanResponse,
@@ -43,6 +44,7 @@ from app.schemas.admin import (
     SubscriptionResponse,
     SystemHealthResponse,
     UsageSummary,
+    UserEntitlementDiagnostic,
 )
 from app.schemas.rag import (
     FileTypeDistribution,
@@ -232,6 +234,49 @@ async def get_user_detail(
         has_api_key=bool(user.encrypted_api_key),
         usage=usage,
         subscription=SubscriptionResponse.model_validate(sub) if sub else None,
+    )
+
+
+@router.get("/users/{user_id}/entitlements", response_model=UserEntitlementDiagnostic)
+async def get_user_entitlements(
+    user_id: UUID,
+    _current_user: User = Depends(require_permissions(Permission.ADMIN_USERS_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> UserEntitlementDiagnostic:
+    """Diagnostico de entitlements efetivos: features do plano e acesso a cada tool."""
+    from app.services.plan_limit_service import PlanLimitService
+    from app.services.tool_guardrail_service import FEATURE_TOOL_MAP, TOOL_FEATURE_MAP
+
+    stmt = select(User).where(User.id == user_id)
+    user = (await db.execute(stmt)).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    plan = await PlanLimitService.get_user_plan(db, user)
+    raw_features = plan.features if plan.features else {}
+    features: dict[str, bool] = {
+        k: bool(v) for k, v in raw_features.items() if isinstance(k, str)
+    }
+
+    tools: list[EntitlementToolStatus] = []
+    for feature, tool_names in FEATURE_TOOL_MAP.items():
+        enabled = features.get(feature, False)
+        for tool_name in tool_names:
+            tools.append(
+                EntitlementToolStatus(
+                    tool=tool_name,
+                    feature=feature,
+                    allowed=enabled,
+                    reason=None if enabled else f"feature '{feature}' desabilitada no plano '{plan.name}'",
+                )
+            )
+
+    return UserEntitlementDiagnostic(
+        user_id=user.id,
+        email=user.email,
+        plan_name=plan.name,
+        plan_features=features,
+        tools=tools,
     )
 
 
