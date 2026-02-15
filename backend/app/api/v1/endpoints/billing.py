@@ -3,10 +3,13 @@ Billing endpoints — Stripe checkout, customer portal, webhook, subscription in
 """
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_current_workspace
 from app.core.rbac import (
@@ -40,6 +43,35 @@ from app.services.subscription_service import (
 from app.services.usage_tracking_service import UsageTrackingService
 
 router = APIRouter()
+
+
+def _validate_return_url(url: str) -> None:
+    """
+    Validate that a return URL belongs to an allowed origin.
+
+    Uses CORS_ORIGINS as the allowlist. Rejects URLs pointing to
+    external hosts to prevent open-redirect after Stripe flows.
+
+    Raises:
+        HTTPException 400 if the URL host is not in the allowlist.
+    """
+    allowed_origins = settings.cors_origins_list
+    # Wildcard CORS = skip validation (dev only, logged as warning elsewhere)
+    if "*" in allowed_origins:
+        return
+
+    parsed = urlparse(url)
+    url_origin = f"{parsed.scheme}://{parsed.netloc}"
+
+    for origin in allowed_origins:
+        origin = origin.strip().rstrip("/")
+        if url_origin == origin:
+            return
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"URL de retorno nao permitida: host '{parsed.netloc}' fora da allowlist.",
+    )
 
 
 async def _require_billing_permission(
@@ -85,6 +117,8 @@ async def create_checkout(
     db: AsyncSession = Depends(get_db),
 ) -> CheckoutSessionResponse:
     """Create a Stripe Checkout session for workspace plan subscription."""
+    _validate_return_url(body.success_url)
+    _validate_return_url(body.cancel_url)
     await _require_billing_permission(workspace, current_user, db)
     svc = await _get_subscription_service(db)
     try:
@@ -115,6 +149,7 @@ async def create_portal(
     await _require_billing_permission(workspace, current_user, db)
     svc = await _get_subscription_service(db)
     referer = request.headers.get("referer", "/")
+    _validate_return_url(referer)
     try:
         result = await svc.create_customer_portal_session(
             db,
