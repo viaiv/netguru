@@ -29,3 +29,10 @@ export function useMediaQuery(query: string): boolean {
 export function useMobile(): boolean {
   return useMediaQuery('(max-width: 768px)');
 }
+
+/**
+ * Shorthand: true when viewport width <= 960px (sidebar collapses to drawer).
+ */
+export function useSidebarCollapsed(): boolean {
+  return useMediaQuery('(max-width: 960px)');
+}

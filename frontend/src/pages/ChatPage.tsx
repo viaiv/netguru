@@ -7,19 +7,17 @@ import EvidencePanel from '../components/chat/EvidencePanel';
 import FileAttachmentChip from '../components/chat/FileAttachmentChip';
 import MarkdownContent from '../components/chat/MarkdownContent';
 import ToolCallDisplay from '../components/chat/ToolCallDisplay';
-import { useMobile } from '../hooks/useMediaQuery';
 import { useWebSocketReconnect } from '../hooks/useWebSocketReconnect';
 import { ALLOWED_EXTENSIONS, uploadFile, validateFile } from '../services/fileApi';
 import type { IWebSocketEvent } from '../services/websocket';
 import { useChatStore, type IMessage } from '../stores/chatStore';
 
 /* ------------------------------------------------------------------ */
-/*  ChatPage — full-screen chat with sidebar + message area + input   */
+/*  ChatPage — chat content (messages + input), sem aside/sidebar     */
 /* ------------------------------------------------------------------ */
 
 function ChatPage() {
   const {
-    conversations,
     currentConversationId,
     messages,
     isStreaming,
@@ -30,8 +28,6 @@ function ChatPage() {
     error,
     fetchConversations,
     createConversation,
-    deleteConversation,
-    renameConversation,
     selectConversation,
     fetchMessages,
     addUserMessage,
@@ -50,12 +46,6 @@ function ChatPage() {
 
   const chatWindowRef = useRef<HTMLDivElement>(null);
   const [inputValue, setInputValue] = useState('');
-  const isMobile = useMobile();
-  const [showSidebar, setShowSidebar] = useState(false);
-
-  // ---- Inline rename state ----
-  const [editingConvId, setEditingConvId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState('');
 
   // ---- File attachment state ----
 
@@ -266,15 +256,6 @@ function ChatPage() {
     }
   }
 
-  // ---- Create new conversation ----
-
-  async function handleNewConversation(): Promise<void> {
-    const conv = await createConversation();
-    if (conv) {
-      selectConversation(conv.id);
-    }
-  }
-
   // ---- Suggestion from EmptyState ----
 
   async function handleSuggestion(text: string): Promise<void> {
@@ -286,48 +267,6 @@ function ChatPage() {
         setInputValue(text);
       }, 100);
     }
-  }
-
-  // ---- Delete conversation ----
-
-  async function handleDeleteConversation(e: React.MouseEvent, convId: string): Promise<void> {
-    e.stopPropagation();
-    await deleteConversation(convId);
-  }
-
-  // ---- Rename conversation ----
-
-  function handleStartRename(e: React.MouseEvent, convId: string, currentTitle: string): void {
-    e.stopPropagation();
-    setEditingConvId(convId);
-    setEditingTitle(currentTitle);
-  }
-
-  async function handleFinishRename(): Promise<void> {
-    if (!editingConvId) return;
-    const trimmed = editingTitle.trim();
-    if (trimmed && trimmed.length <= 255) {
-      await renameConversation(editingConvId, trimmed);
-    }
-    setEditingConvId(null);
-    setEditingTitle('');
-  }
-
-  function handleRenameKeyDown(e: React.KeyboardEvent): void {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleFinishRename();
-    } else if (e.key === 'Escape') {
-      setEditingConvId(null);
-      setEditingTitle('');
-    }
-  }
-
-  // ---- Mobile sidebar helpers ----
-
-  function handleSelectConversation(convId: string): void {
-    selectConversation(convId);
-    if (isMobile) setShowSidebar(false);
   }
 
   // ---- Derived state ----
@@ -407,8 +346,20 @@ function ChatPage() {
             />
           );
         })()}
-        <div className={`message-bubble ${isUser ? 'message-bubble--user' : 'message-bubble--assistant'}`}>
-          <p className="message-role">{isUser ? 'Voce' : 'NetGuru'}</p>
+        <div className={`message-block ${isUser ? 'message-block--user' : 'message-block--assistant'}`}>
+          <p className="message-role">
+            {isUser ? (
+              <>
+                <svg className="message-role-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                Voce
+              </>
+            ) : (
+              <>
+                <svg className="message-role-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                NetGuru
+              </>
+            )}
+          </p>
           {isUser ? (
             <div className="message-content">{msg.content}</div>
           ) : (
@@ -435,232 +386,145 @@ function ChatPage() {
     );
   }
 
+  if (!currentConversationId) {
+    return <EmptyState onSuggestion={handleSuggestion} />;
+  }
+
   return (
-    <div className="chat-page">
-      {/* ---- Mobile drawer overlay ---- */}
-      {isMobile && showSidebar && (
-        <div className="chat-drawer-overlay" onClick={() => setShowSidebar(false)} />
-      )}
+    <>
+      {/* Connection status */}
+      <div className="chat-toolbar">
+        <ConnectionStatus
+          isConnected={isConnected}
+          isReconnecting={isReconnecting}
+          reconnectAttempt={reconnectAttempt}
+          onRetry={manualRetry}
+        />
+      </div>
 
-      {/* ---- Sidebar ---- */}
-      <aside className={`chat-sidebar ${isMobile && showSidebar ? 'chat-sidebar--open' : ''}`}>
-        <button type="button" className="btn btn-primary chat-new-btn" onClick={handleNewConversation}>
-          + Nova Conversa
-        </button>
+      {/* Messages */}
+      <div className="chat-window" ref={chatWindowRef}>
+        <div className="chat-content-container">
+          {messages.map((msg, idx) => renderMessage(msg, idx))}
 
-        <div className="conversation-list">
-          {conversations.map((conv) => (
-            <div
-              key={conv.id}
-              className={`conversation-item ${conv.id === currentConversationId ? 'conversation-item--active' : ''}`}
-            >
-              {editingConvId === conv.id ? (
-                <div className="conversation-item-body">
-                  <input
-                    className="conversation-title-input"
-                    value={editingTitle}
-                    onChange={(e) => setEditingTitle(e.target.value)}
-                    onBlur={handleFinishRename}
-                    onKeyDown={handleRenameKeyDown}
-                    maxLength={255}
-                    autoFocus
-                  />
-                </div>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className="conversation-item-body"
-                    onClick={() => handleSelectConversation(conv.id)}
-                  >
-                    <span className="conversation-title">{conv.title}</span>
-                    <span className="conversation-date">
-                      {new Date(conv.updated_at).toLocaleDateString('pt-BR')}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="conversation-action-btn conversation-rename-btn"
-                    title="Renomear conversa"
-                    onClick={(e) => handleStartRename(e, conv.id, conv.title)}
-                  >
-                    &#9998;
-                  </button>
-                  <button
-                    type="button"
-                    className="conversation-action-btn conversation-delete-btn"
-                    title="Excluir conversa"
-                    onClick={(e) => handleDeleteConversation(e, conv.id)}
-                  >
-                    &times;
-                  </button>
-                </>
-              )}
+          {/* Tool calls display */}
+          {isStreaming && activeToolCalls.length > 0 && (
+            <ToolCallDisplay
+              toolCalls={activeToolCalls}
+              messageId={streamingMessageId ?? undefined}
+              onConfirm={() => {
+                addUserMessage('confirmo');
+                sendMessage('confirmo');
+              }}
+            />
+          )}
+
+          {/* Streaming block */}
+          {isStreaming && streamingContent && (
+            <div className="message-block message-block--assistant">
+              <p className="message-role">
+                <svg className="message-role-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                NetGuru
+                {usingFreeLlm && <span className="chip chip-free-llm">Modelo gratuito</span>}
+              </p>
+              <MarkdownContent content={streamingContent} isStreaming />
+              <span className="typing-cursor" />
             </div>
-          ))}
-          {conversations.length === 0 && (
-            <p className="chat-empty-hint">Nenhuma conversa ainda. Crie uma para comecar!</p>
+          )}
+
+          {/* Waiting indicator (streaming started but no text yet) */}
+          {isStreaming && !streamingContent && activeToolCalls.length === 0 && (
+            <div className="message-block message-block--assistant">
+              <p className="message-role">
+                <svg className="message-role-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                NetGuru
+                {usingFreeLlm && <span className="chip chip-free-llm">Modelo gratuito</span>}
+              </p>
+              <div className="message-content">
+                <span className="typing-cursor" />
+              </div>
+            </div>
+          )}
+
+          {/* Error banner */}
+          {error && (
+            <div className="error-banner chat-error">
+              {error}
+              <button type="button" className="ghost-btn chat-dismiss" onClick={clearError}>
+                fechar
+              </button>
+            </div>
+          )}
+
+          <div />
+        </div>
+      </div>
+
+      {/* Input wrapper — centralizado */}
+      <div className="chat-input-wrapper">
+        {/* File attachment preview */}
+        {attachedFile && (
+          <div className="chat-input-attachment">
+            <FileAttachmentChip
+              file={attachedFile}
+              uploadProgress={uploadProgress}
+              uploadError={uploadError}
+              onRemove={handleRemoveFile}
+            />
+          </div>
+        )}
+
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          style={{ display: 'none' }}
+          accept={ALLOWED_EXTENSIONS.join(',')}
+          onChange={handleFileChange}
+        />
+
+        {/* Input area */}
+        <div className="chat-input-area">
+          <button
+            type="button"
+            className="chat-attach-btn"
+            onClick={handleAttachClick}
+            disabled={!isConnected || isStreaming || attachedFile !== null}
+            title="Anexar arquivo"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            </svg>
+          </button>
+          <AutoResizeTextarea
+            placeholder={isConnected ? 'Digite sua mensagem...' : 'Aguardando conexao...'}
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={!isConnected || isStreaming}
+            maxRows={8}
+          />
+          {isStreaming ? (
+            <button
+              type="button"
+              className="btn btn-danger chat-send-btn"
+              onClick={sendCancel}
+            >
+              Cancelar
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-primary chat-send-btn"
+              onClick={handleSend}
+              disabled={!canSend}
+            >
+              Enviar
+            </button>
           )}
         </div>
-      </aside>
-
-      {/* ---- Main chat area ---- */}
-      <section className="chat-main">
-        {!currentConversationId ? (
-          <>
-            {isMobile && (
-              <div className="chat-toolbar">
-                <button
-                  type="button"
-                  className="chat-drawer-toggle"
-                  onClick={() => setShowSidebar((v) => !v)}
-                  aria-label="Conversas"
-                >
-                  &#9776;
-                </button>
-              </div>
-            )}
-            <EmptyState onSuggestion={handleSuggestion} />
-          </>
-        ) : (
-          <>
-            {/* Connection status */}
-            <div className="chat-toolbar">
-              <button
-                type="button"
-                className="chat-drawer-toggle"
-                onClick={() => setShowSidebar((v) => !v)}
-                aria-label="Conversas"
-              >
-                &#9776;
-              </button>
-              <ConnectionStatus
-                isConnected={isConnected}
-                isReconnecting={isReconnecting}
-                reconnectAttempt={reconnectAttempt}
-                onRetry={manualRetry}
-              />
-            </div>
-
-            {/* Messages */}
-            <div className="chat-window" ref={chatWindowRef}>
-              {messages.map((msg, idx) => renderMessage(msg, idx))}
-
-              {/* Tool calls display */}
-              {isStreaming && activeToolCalls.length > 0 && (
-                <ToolCallDisplay
-                  toolCalls={activeToolCalls}
-                  messageId={streamingMessageId ?? undefined}
-                  onConfirm={() => {
-                    addUserMessage('confirmo');
-                    sendMessage('confirmo');
-                  }}
-                />
-              )}
-
-              {/* Streaming bubble */}
-              {isStreaming && streamingContent && (
-                <div className="message-bubble message-bubble--assistant">
-                  <p className="message-role">
-                    NetGuru
-                    {usingFreeLlm && <span className="chip chip-free-llm">Modelo gratuito</span>}
-                  </p>
-                  <MarkdownContent content={streamingContent} isStreaming />
-                  <span className="typing-cursor" />
-                </div>
-              )}
-
-              {/* Waiting indicator (streaming started but no text yet) */}
-              {isStreaming && !streamingContent && activeToolCalls.length === 0 && (
-                <div className="message-bubble message-bubble--assistant">
-                  <p className="message-role">
-                    NetGuru
-                    {usingFreeLlm && <span className="chip chip-free-llm">Modelo gratuito</span>}
-                  </p>
-                  <div className="message-content">
-                    <span className="typing-cursor" />
-                  </div>
-                </div>
-              )}
-
-              {/* Error banner */}
-              {error && (
-                <div className="error-banner chat-error">
-                  {error}
-                  <button type="button" className="ghost-btn chat-dismiss" onClick={clearError}>
-                    fechar
-                  </button>
-                </div>
-              )}
-
-              <div />
-            </div>
-
-            {/* File attachment preview */}
-            {attachedFile && (
-              <div className="chat-input-attachment">
-                <FileAttachmentChip
-                  file={attachedFile}
-                  uploadProgress={uploadProgress}
-                  uploadError={uploadError}
-                  onRemove={handleRemoveFile}
-                />
-              </div>
-            )}
-
-            {/* Hidden file input */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              style={{ display: 'none' }}
-              accept={ALLOWED_EXTENSIONS.join(',')}
-              onChange={handleFileChange}
-            />
-
-            {/* Input area */}
-            <div className="chat-input-area">
-              <button
-                type="button"
-                className="chat-attach-btn"
-                onClick={handleAttachClick}
-                disabled={!isConnected || isStreaming || attachedFile !== null}
-                title="Anexar arquivo"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                </svg>
-              </button>
-              <AutoResizeTextarea
-                placeholder={isConnected ? 'Digite sua mensagem...' : 'Aguardando conexao...'}
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={!isConnected || isStreaming}
-                maxRows={8}
-              />
-              {isStreaming ? (
-                <button
-                  type="button"
-                  className="btn btn-danger chat-send-btn"
-                  onClick={sendCancel}
-                >
-                  Cancelar
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="btn btn-primary chat-send-btn"
-                  onClick={handleSend}
-                  disabled={!canSend}
-                >
-                  Enviar
-                </button>
-              )}
-            </div>
-          </>
-        )}
-      </section>
-    </div>
+      </div>
+    </>
   );
 }
 

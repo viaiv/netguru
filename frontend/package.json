@@ -30,6 +30,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "axios-mock-adapter": "^2.1.0",
     "jsdom": "^25.0.1",
+    "playwright": "^1.58.2",
     "typescript": "^5.7.2",
     "vite": "^5.4.10",
     "vitest": "^2.1.8"

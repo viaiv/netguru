@@ -7,10 +7,10 @@ interface EmptyStateProps {
 }
 
 const SUGGESTIONS = [
-  'Como configurar OSPF area 0?',
-  'Valide esta config Cisco',
-  'Analise minha topologia BGP',
-  'Diferenca entre OSPF e EIGRP',
+  { title: 'Configurar OSPF', desc: 'Area 0, autenticacao, timers' },
+  { title: 'Validar config Cisco', desc: 'Best practices e seguranca' },
+  { title: 'Analisar topologia BGP', desc: 'Peers, AS-path, communities' },
+  { title: 'OSPF vs EIGRP', desc: 'Comparativo de protocolos' },
 ];
 
 function EmptyState({ onSuggestion }: EmptyStateProps) {
@@ -21,15 +21,16 @@ function EmptyState({ onSuggestion }: EmptyStateProps) {
         Seu assistente AI para engenharia de redes. Pergunte sobre configuracoes,
         protocolos, troubleshooting ou envie arquivos para analise.
       </p>
-      <div className="empty-state-chips">
-        {SUGGESTIONS.map((text) => (
+      <div className="empty-state-grid">
+        {SUGGESTIONS.map((s) => (
           <button
-            key={text}
+            key={s.title}
             type="button"
-            className="empty-state-chip"
-            onClick={() => onSuggestion(text)}
+            className="empty-state-card"
+            onClick={() => onSuggestion(s.title)}
           >
-            {text}
+            <span className="empty-state-card-title">{s.title}</span>
+            <span className="empty-state-card-desc">{s.desc}</span>
           </button>
         ))}
       </div>
