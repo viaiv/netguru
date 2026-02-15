@@ -88,13 +88,14 @@ class ChatService:
                 code="message_too_long",
             )
 
-        # 2b. Plan limit enforcement — daily messages
+        # 2b. Plan limit enforcement — daily messages and tokens
         try:
             await PlanLimitService.check_message_limit(self._db, user)
+            await PlanLimitService.check_token_limit(self._db, user)
         except PlanLimitError as exc:
             raise ChatServiceError(
                 exc.detail,
-                code="message_limit_exceeded",
+                code=exc.code or "plan_limit_exceeded",
             ) from exc
 
         # 3. Resolve LLM provider (BYO-LLM ou free fallback via DB)
@@ -307,6 +308,7 @@ class ChatService:
         active_tool_calls: dict[str, dict] = {}
         llm_attempt_audit: list[dict] = []
         selected_llm_attempt: dict | None = None
+        total_tokens_used: int = 0
 
         total_attempts = len(llm_attempts)
         for attempt_index, llm_attempt in enumerate(llm_attempts):
@@ -514,6 +516,9 @@ class ChatService:
                                     )
                                 )
 
+                    elif event_type == "usage":
+                        total_tokens_used += int(event.get("total_tokens", 0) or 0)
+
                 attempt_duration_ms = int((time.monotonic() - attempt_started_at) * 1000)
                 llm_attempt_audit.append(
                     self._build_llm_attempt_audit_entry(
@@ -601,8 +606,13 @@ class ChatService:
             }
             return
 
+        # 8b. Token count — real from provider or estimated fallback
+        if total_tokens_used <= 0 and accumulated:
+            total_tokens_used = max(1, len(accumulated) // 4)
+
         # 9. Persist assistant message
         assistant_msg.content = accumulated
+        assistant_msg.tokens_used = total_tokens_used or None
         assistant_metadata: dict = {}
         if tool_calls_log:
             assistant_metadata["tool_calls"] = tool_calls_log
@@ -645,6 +655,8 @@ class ChatService:
         # 10. Track usage metrics
         try:
             await UsageTrackingService.increment_messages(self._db, user.id)
+            if total_tokens_used > 0:
+                await UsageTrackingService.increment_tokens(self._db, user.id, total_tokens_used)
             await self._db.commit()
         except Exception:
             pass  # Non-critical — don't fail the response
@@ -652,7 +664,7 @@ class ChatService:
         stream_end_event = {
             "type": "stream_end",
             "message_id": str(assistant_msg.id),
-            "tokens_used": None,
+            "tokens_used": total_tokens_used or None,
         }
         if assistant_msg.message_metadata is not None:
             stream_end_event["metadata"] = assistant_msg.message_metadata

@@ -261,6 +261,8 @@ class NetworkEngineerAgent:
 
         tool_state: dict[str, dict] = {}
         tool_ids_by_name: dict[str, list[str]] = {}
+        total_input_tokens = 0
+        total_output_tokens = 0
         events_iter = self._compiled.astream_events(
             {"messages": lc_messages},
             version="v2",
@@ -359,11 +361,29 @@ class NetworkEngineerAgent:
                         "duration_ms": duration_ms,
                         "full_result": result_str,
                     }
+
+                elif kind == "on_chat_model_end":
+                    output = event.get("data", {}).get("output")
+                    if output and hasattr(output, "usage_metadata"):
+                        um = output.usage_metadata
+                        if um:
+                            total_input_tokens += int(um.get("input_tokens", 0) or 0)
+                            total_output_tokens += int(um.get("output_tokens", 0) or 0)
+
         finally:
             if next_event_task is not None and not next_event_task.done():
                 next_event_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await next_event_task
+
+        total_tokens = total_input_tokens + total_output_tokens
+        if total_tokens > 0:
+            yield {
+                "type": "usage",
+                "input_tokens": total_input_tokens,
+                "output_tokens": total_output_tokens,
+                "total_tokens": total_tokens,
+            }
 
     @staticmethod
     def _expected_duration_ms(tool_name: str) -> int:

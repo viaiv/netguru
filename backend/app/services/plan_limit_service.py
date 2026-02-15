@@ -112,3 +112,25 @@ class PlanLimitService:
                 current_value=current,
                 max_value=limit_value,
             )
+
+    @staticmethod
+    async def check_token_limit(db: AsyncSession, user: User) -> None:
+        """Raise PlanLimitError if daily token limit is exceeded."""
+        plan = await PlanLimitService.get_user_plan(db, user)
+        limit_value = plan.max_tokens_daily
+        if not limit_value or limit_value <= 0:
+            return
+        usage = await UsageTrackingService.get_today_usage(db, user.id)
+        current = usage.tokens_used if usage else 0
+
+        if current >= limit_value:
+            raise PlanLimitError(
+                detail=(
+                    f"Limite diario de tokens atingido ({current:,}/{limit_value:,}). "
+                    f"Faca upgrade do seu plano para continuar."
+                ),
+                code="token_limit_exceeded",
+                limit_name="max_tokens_daily",
+                current_value=current,
+                max_value=limit_value,
+            )
