@@ -10,6 +10,8 @@ export interface IPublicPlan {
   display_name: string;
   price_cents: number;
   billing_period: string;
+  promo_price_cents: number | null;
+  promo_months: number | null;
   upload_limit_daily: number;
   max_file_size_mb: number;
   max_conversations_daily: number;

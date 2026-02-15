@@ -44,6 +44,9 @@ class Subscription(Base):
         comment="active|past_due|canceled|incomplete|trialing|unpaid",
     )
 
+    # Promotional
+    promo_applied = Column(Boolean, default=False, nullable=False, comment="True if promo coupon was applied")
+
     # Billing period
     current_period_start = Column(DateTime, nullable=True)
     current_period_end = Column(DateTime, nullable=True)

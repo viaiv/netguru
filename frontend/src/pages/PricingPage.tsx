@@ -128,13 +128,20 @@ function PricingPage() {
                       ? 'Sob consulta'
                       : plan.price_cents === 0
                         ? 'Gratis'
-                        : formatPrice(plan.price_cents)}
+                        : plan.promo_price_cents
+                          ? formatPrice(plan.promo_price_cents)
+                          : formatPrice(plan.price_cents)}
                     {plan.price_cents > 0 && (
                       <span style={{ fontSize: '0.875rem', fontWeight: 400, opacity: 0.7 }}>
                         /{plan.billing_period === 'monthly' ? 'mes' : 'ano'}
                       </span>
                     )}
                   </p>
+                  {plan.promo_price_cents && plan.promo_months && (
+                    <p style={{ fontSize: '0.78rem', color: 'var(--ink-soft)', margin: '-0.25rem 0 0.5rem' }}>
+                      por {plan.promo_months} meses, depois {formatPrice(plan.price_cents)}/mes
+                    </p>
+                  )}
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: '1rem 0', flex: 1 }}>
                     <li style={{ marginBottom: '0.5rem' }}>

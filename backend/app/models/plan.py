@@ -35,6 +35,11 @@ class Plan(Base):
         comment="monthly|yearly",
     )
 
+    # Promotional pricing
+    promo_price_cents = Column(Integer, nullable=True, comment="Promotional price in cents (BRL)")
+    promo_months = Column(Integer, nullable=True, comment="Duration of promo in months")
+    stripe_promo_coupon_id = Column(String(255), nullable=True, comment="Stripe Coupon ID for promo")
+
     # Usage limits
     upload_limit_daily = Column(Integer, nullable=False, default=10)
     max_file_size_mb = Column(Integer, nullable=False, default=100)

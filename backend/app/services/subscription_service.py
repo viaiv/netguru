@@ -179,13 +179,27 @@ class SubscriptionService:
         else:
             customer_kwarg["customer_email"] = user.email
 
+        # Apply promo coupon if plan has one and user never used it
+        checkout_kwargs: dict[str, Any] = {}
+        promo_applied = False
+        if plan.stripe_promo_coupon_id and plan.promo_months:
+            has_used = await self._has_used_promo(db, user.id, plan.id)
+            if not has_used:
+                checkout_kwargs["discounts"] = [{"coupon": plan.stripe_promo_coupon_id}]
+                promo_applied = True
+
         session = stripe.checkout.Session.create(
             mode="subscription",
             line_items=[{"price": plan.stripe_price_id, "quantity": 1}],
             success_url=success_url,
             cancel_url=cancel_url,
-            metadata={"user_id": str(user.id), "plan_id": str(plan.id)},
+            metadata={
+                "user_id": str(user.id),
+                "plan_id": str(plan.id),
+                "promo_applied": "1" if promo_applied else "0",
+            },
             **customer_kwarg,
+            **checkout_kwargs,
         )
 
         return {
@@ -316,12 +330,15 @@ class SubscriptionService:
         # Fetch Stripe subscription details
         stripe_sub = stripe.Subscription.retrieve(stripe_sub_id)
 
+        promo_flag = data.get("metadata", {}).get("promo_applied") == "1"
+
         subscription = Subscription(
             user_id=user_id,
             plan_id=plan_id,
             stripe_customer_id=stripe_customer_id,
             stripe_subscription_id=stripe_sub_id,
             status="active",
+            promo_applied=promo_flag,
             current_period_start=datetime.fromtimestamp(stripe_sub.current_period_start),
             current_period_end=datetime.fromtimestamp(stripe_sub.current_period_end),
         )
@@ -439,6 +456,22 @@ class SubscriptionService:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    async def _has_used_promo(
+        self, db: AsyncSession, user_id: UUID, plan_id: UUID,
+    ) -> bool:
+        """Check if user has already used a promotional coupon for this plan."""
+        stmt = (
+            select(Subscription)
+            .where(
+                Subscription.user_id == user_id,
+                Subscription.plan_id == plan_id,
+                Subscription.promo_applied.is_(True),
+            )
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none() is not None
 
     async def _get_plan(self, db: AsyncSession, plan_id: UUID) -> Plan:
         stmt = select(Plan).where(Plan.id == plan_id, Plan.is_active.is_(True))
