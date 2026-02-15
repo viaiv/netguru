@@ -2,20 +2,22 @@
 # 🤖 Claude AI Assistant - NetGuru Project Guide
 
 **Versão:** 1.0  
-**Última Atualização:** Fevereiro 2026  
+**Última Atualização:** 15 Fevereiro 2026
 **Propósito:** Guia completo para assistência AI no desenvolvimento do NetGuru
 
 > **⚠️ Manutenção**: Se qualquer procedimento documentado aqui estiver desatualizado, sugira correções e atualize este arquivo.
 
 > **📝 CHECKPOINT TEMPORÁRIO (REMOVER NA PRÓXIMA SESSÃO):**
-> Layout universal aside + main implementado para todas as paginas autenticadas:
-> - **App.tsx**: grid `.app-body` (aside 240px + main), nav dropdown compartilhado, mobile drawer
-> - **ChatSidebar**: conversations list extraida do ChatPage (new/select/rename/delete)
-> - **FilesSidebar / MemoriesSidebar / ProfileSidebar / GenericSidebar**: sidebars contextuais
-> - **ChatPage**: simplificado — apenas conteudo do chat (messages + input + streaming)
-> - **CSS**: `.app-body`, `.sidebar-*`, `.chat-main > .view`, responsivo 960px (drawer)
-> - Rotas nao autenticadas (login/register) mantidas no layout antigo sem aside
-> - Build ok, todas as features anteriores preservadas
+> Per-seat billing implementado para planos Team/Enterprise:
+> - **Plan**: `max_members` (team=3, enterprise=10), `price_per_extra_seat_cents`
+> - **Subscription**: `seat_quantity` rastreia quantity cobrada no Stripe
+> - **SeatService**: check_seat_limit, sync_stripe_quantity, get_seat_info
+> - **Checkout**: quantity = max(plan.max_members, member_count)
+> - **Invite**: retorna 402 quando seats esgotados, sync Stripe apos invite/remove
+> - **POST /billing/seats**: pre-compra de assentos com proration
+> - **Celery**: reconcile_seat_quantities a cada 6h
+> - **Frontend**: secao de assentos no MePage, seats na tabela do PricingPage
+> - Migration: `f5a6b7c8d9e0_add_per_seat_billing.py` (depende de `e2a3b4c5d6f7`)
 
 ---
 
@@ -616,6 +618,8 @@ POST /api/v1/chat/message         # 🤖 Agent
 WS   /ws/chat/{conversation_id}   # Streaming
 POST /api/v1/files/upload
 GET  /api/v1/agent/tools
+POST /api/v1/billing/seats        # 💺 Pre-compra de assentos
+GET  /api/v1/billing/subscription # 📊 Plano + uso + seat_info
 ```
 
 ### Troubleshooting Comum
@@ -696,6 +700,19 @@ GET  /api/v1/agent/tools
 - [x] Mobile drawer responsivo (960px breakpoint)
 - [x] ChatPage simplificado (sem aside/nav duplicado)
 
+### Sprint 8 (Billing per-seat) - ✅ Completo
+- [x] Plan.max_members e price_per_extra_seat_cents (team=3/R$33, enterprise=10/R$25)
+- [x] Subscription.seat_quantity para rastrear quantity no Stripe
+- [x] SeatService (check_seat_limit, sync_stripe_quantity, get_seat_info)
+- [x] Checkout com quantity dinamica: max(plan.max_members, member_count)
+- [x] Webhook sync de seat_quantity (checkout.completed, subscription.updated)
+- [x] POST /billing/seats para pre-compra de assentos com proration
+- [x] Invite retorna 402 quando seats esgotados, sync apos invite/remove
+- [x] PlanLimitService.check_seat_limit delegando ao SeatService
+- [x] Task Celery reconcile_seat_quantities a cada 6h
+- [x] Frontend: secao de assentos no MePage, seats na tabela do PricingPage
+- [ ] Testes unitarios e integracao para SeatService
+
 ---
 
 ## 📚 Documentação Relacionada
@@ -727,6 +744,6 @@ Você tem contexto completo do NetGuru. Use para:
 ---
 
 **Versão:** 1.0
-**Última atualização:** 14 de Fevereiro de 2026
+**Última atualização:** 15 de Fevereiro de 2026
 
 **Boa construção! 🚀🤖**
