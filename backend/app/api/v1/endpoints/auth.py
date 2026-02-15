@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.core.database import get_db
 from app.core.config import settings
@@ -115,6 +115,11 @@ async def register(
         encrypted_api_key = encrypt_api_key(user_in.api_key)
 
     # Bootstrap RBAC: first account becomes owner.
+    # Advisory lock prevents race condition where concurrent registrations
+    # both see an empty table and both get owner role.
+    # Lock ID 737001 is arbitrary but fixed — released on commit/rollback.
+    await db.execute(text("SELECT pg_advisory_xact_lock(737001)"))
+
     first_user_stmt = select(User.id).limit(1)
     first_user_result = await db.execute(first_user_stmt)
     is_first_user = first_user_result.scalar_one_or_none() is None
