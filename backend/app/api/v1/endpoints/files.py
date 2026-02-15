@@ -31,12 +31,15 @@ from app.schemas.document import (
     StorageUsageResponse,
 )
 from app.services.file_storage import (
+    FileContentMismatchError,
     FileStorageError,
     FileTooLargeError,
     delete_stored_file,
     ensure_extension_allowed,
     persist_uploaded_file,
     resolve_storage_path,
+    validate_magic_bytes,
+    validate_mime_type,
 )
 from app.services.plan_limit_service import PlanLimitError, PlanLimitService
 from app.services.r2_storage_service import (
@@ -177,6 +180,15 @@ async def presign_upload(
     except FileStorageError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    # MIME policy check (valida Content-Type antes do upload ao R2)
+    try:
+        validate_mime_type(extension, body.content_type)
+    except FileContentMismatchError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
 
@@ -343,6 +355,15 @@ async def upload_file(
             detail=str(exc),
         ) from exc
 
+    # MIME policy check
+    try:
+        validate_mime_type(extension, file.content_type)
+    except FileContentMismatchError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
     resolved_file_type = _resolve_file_type(file_type, extension)
     max_size_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
 
@@ -360,6 +381,16 @@ async def upload_file(
     except FileStorageError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    # Magic bytes validation (verifica assinatura do conteudo)
+    try:
+        validate_magic_bytes(Path(stored_file.storage_path), extension)
+    except FileContentMismatchError as exc:
+        delete_stored_file(stored_file.storage_path)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
 

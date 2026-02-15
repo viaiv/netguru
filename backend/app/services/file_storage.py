@@ -3,6 +3,7 @@ File storage helpers for upload and retrieval workflows.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -10,6 +11,8 @@ from uuid import UUID, uuid4
 from fastapi import UploadFile
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class FileStorageError(Exception):
@@ -24,6 +27,12 @@ class FileTooLargeError(FileStorageError):
     """
 
 
+class FileContentMismatchError(FileStorageError):
+    """
+    Raised when file content (magic bytes) does not match its extension.
+    """
+
+
 @dataclass(slots=True)
 class StoredFile:
     """
@@ -33,6 +42,124 @@ class StoredFile:
     storage_path: str
     stored_filename: str
     file_size_bytes: int
+
+
+# ---------------------------------------------------------------------------
+#  Magic bytes / file signature validation
+# ---------------------------------------------------------------------------
+
+# Mapa de extensao → lista de assinaturas aceitas (prefixo dos primeiros bytes)
+_MAGIC_SIGNATURES: dict[str, list[bytes]] = {
+    "pdf": [b"%PDF"],
+    "pcap": [
+        b"\xd4\xc3\xb2\xa1",  # pcap little-endian
+        b"\xa1\xb2\xc3\xd4",  # pcap big-endian
+    ],
+    "pcapng": [
+        b"\x0a\x0d\x0d\x0a",  # pcapng Section Header Block
+    ],
+    "cap": [
+        b"\xd4\xc3\xb2\xa1",  # pcap little-endian
+        b"\xa1\xb2\xc3\xd4",  # pcap big-endian
+    ],
+}
+
+# Extensoes de texto que nao tem magic bytes — aceitar qualquer conteudo legivel
+_TEXT_EXTENSIONS: set[str] = {"txt", "conf", "cfg", "log", "md"}
+
+# Mapa de extensao → MIME types aceitos (do Content-Type do upload)
+MIME_POLICY: dict[str, set[str]] = {
+    "pdf": {"application/pdf"},
+    "pcap": {
+        "application/vnd.tcpdump.pcap",
+        "application/octet-stream",
+        "application/x-pcap",
+    },
+    "cap": {
+        "application/vnd.tcpdump.pcap",
+        "application/octet-stream",
+        "application/x-pcap",
+    },
+    "pcapng": {
+        "application/octet-stream",
+        "application/x-pcapng",
+    },
+    "txt": {"text/plain", "application/octet-stream"},
+    "conf": {"text/plain", "application/octet-stream"},
+    "cfg": {"text/plain", "application/octet-stream"},
+    "log": {"text/plain", "application/octet-stream"},
+    "md": {"text/plain", "text/markdown", "application/octet-stream"},
+}
+
+
+def validate_magic_bytes(file_path: Path, extension: str) -> None:
+    """
+    Validate file content matches expected magic bytes for the extension.
+
+    Text-based formats (txt, conf, cfg, log, md) are checked for
+    non-binary content instead. Binary formats are checked against
+    known magic byte signatures.
+
+    Raises FileContentMismatchError if validation fails.
+    """
+    if extension in _TEXT_EXTENSIONS:
+        # Texto: verificar que nao contem bytes nulos (indicativo de binario)
+        with file_path.open("rb") as f:
+            sample = f.read(8192)
+        if b"\x00" in sample:
+            logger.warning(
+                "upload_rejected: magic_bytes reason=binary_in_text ext=%s path=%s",
+                extension, file_path.name,
+            )
+            raise FileContentMismatchError(
+                f"Arquivo .{extension} contem conteudo binario — esperado texto."
+            )
+        return
+
+    signatures = _MAGIC_SIGNATURES.get(extension)
+    if not signatures:
+        # Extensao sem assinatura conhecida — aceitar (cap redireciona para pcap)
+        return
+
+    with file_path.open("rb") as f:
+        header = f.read(8)
+
+    for sig in signatures:
+        if header[: len(sig)] == sig:
+            return
+
+    logger.warning(
+        "upload_rejected: magic_bytes reason=signature_mismatch ext=%s header=%s path=%s",
+        extension, header[:8].hex(), file_path.name,
+    )
+    raise FileContentMismatchError(
+        f"Conteudo do arquivo nao corresponde a extensao .{extension}. "
+        f"Verifique se o arquivo esta correto."
+    )
+
+
+def validate_mime_type(extension: str, content_type: str | None) -> None:
+    """
+    Validate Content-Type against MIME policy for the extension.
+
+    Raises FileContentMismatchError if the MIME type is not allowed.
+    """
+    if not content_type:
+        return  # Sem Content-Type — aceitar (fallback para magic bytes)
+
+    allowed = MIME_POLICY.get(extension)
+    if not allowed:
+        return  # Sem politica — aceitar
+
+    normalized = content_type.split(";")[0].strip().lower()
+    if normalized not in allowed:
+        logger.warning(
+            "upload_rejected: mime_mismatch ext=%s mime=%s allowed=%s",
+            extension, normalized, allowed,
+        )
+        raise FileContentMismatchError(
+            f"Tipo MIME '{normalized}' nao e compativel com extensao .{extension}."
+        )
 
 
 def get_allowed_extensions() -> set[str]:
