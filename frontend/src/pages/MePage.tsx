@@ -208,6 +208,16 @@ function MePage() {
               <p className="kv-value">{user.has_api_key ? 'Configurada' : 'Ausente'}</p>
             </article>
             <article className="kv-card">
+              <p className="kv-label">Modo LLM</p>
+              <p className="kv-value">
+                {user.has_api_key
+                  ? `BYO (${user.llm_provider || 'sem provedor'})`
+                  : ['team', 'enterprise'].includes(user.plan_tier)
+                    ? 'BYO obrigatorio — configure sua API key'
+                    : 'Fallback gratuito'}
+              </p>
+            </article>
+            <article className="kv-card">
               <p className="kv-label">Ativo</p>
               <p className="kv-value">{user.is_active ? 'Sim' : 'Não'}</p>
             </article>

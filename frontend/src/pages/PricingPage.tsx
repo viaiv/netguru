@@ -23,8 +23,12 @@ const FEATURE_LABELS: Record<string, string> = {
   rag_local: 'RAG Local',
   pcap_analysis: 'Analise PCAP',
   topology_generation: 'Topologia',
+  config_tools: 'Config tools',
   custom_tools: 'Custom tools',
 };
+
+/** Features internas que nao devem aparecer nos cards do pricing. */
+const HIDDEN_FEATURES = new Set(['allow_system_fallback']);
 
 function PricingPage() {
   const [plans, setPlans] = useState<IPublicPlan[]>([]);
@@ -74,7 +78,7 @@ function PricingPage() {
         <p className="eyebrow">Planos</p>
         <h2 className="view-title">Escolha o plano ideal</h2>
         <p className="view-subtitle">
-          Todos os planos incluem acesso ao Agent AI, RAG e ferramentas de rede.
+          Voce paga apenas pela plataforma. Custos de tokens da IA ficam com seu provedor (BYO-LLM).
         </p>
       </div>
 
@@ -156,18 +160,25 @@ function PricingPage() {
                     <li style={{ marginBottom: '0.5rem' }}>
                       {formatLimit(plan.max_tokens_daily)} tokens/dia
                     </li>
+                    <li style={{ marginBottom: '0.5rem', fontSize: '0.82rem', color: 'var(--ink-soft)' }}>
+                      {plan.features?.allow_system_fallback
+                        ? 'LLM gratuito incluso como fallback'
+                        : 'BYO-LLM obrigatorio'}
+                    </li>
                   </ul>
 
                   {plan.features && Object.keys(plan.features).length > 0 && (
                     <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 1rem', fontSize: '0.85rem', opacity: 0.8 }}>
-                      {Object.entries(plan.features).map(([key, value]) => {
-                        const label = FEATURE_LABELS[key] || key;
-                        return (
-                          <li key={key} style={{ marginBottom: '0.25rem' }}>
-                            {value === true ? `✓ ${label}` : value === false ? `— ${label}` : `${label}: ${String(value)}`}
-                          </li>
-                        );
-                      })}
+                      {Object.entries(plan.features)
+                        .filter(([key]) => !HIDDEN_FEATURES.has(key))
+                        .map(([key, value]) => {
+                          const label = FEATURE_LABELS[key] || key;
+                          return (
+                            <li key={key} style={{ marginBottom: '0.25rem' }}>
+                              {value === true ? `✓ ${label}` : value === false ? `— ${label}` : `${label}: ${String(value)}`}
+                            </li>
+                          );
+                        })}
                     </ul>
                   )}
 
@@ -270,6 +281,12 @@ function PricingPage() {
                   ))}
                 </tr>
                 <tr>
+                  <td>LLM gratuito (fallback)</td>
+                  {plans.map((p) => (
+                    <td key={p.id}>{p.features?.allow_system_fallback ? '✓' : '—'}</td>
+                  ))}
+                </tr>
+                <tr>
                   <td>RAG Global</td>
                   {plans.map((p) => (
                     <td key={p.id}>{p.features?.rag_global ? '✓' : '—'}</td>
@@ -294,6 +311,12 @@ function PricingPage() {
                   ))}
                 </tr>
                 <tr>
+                  <td>Config tools</td>
+                  {plans.map((p) => (
+                    <td key={p.id}>{p.features?.config_tools ? '✓' : '—'}</td>
+                  ))}
+                </tr>
+                <tr>
                   <td>Custom tools</td>
                   {plans.map((p) => (
                     <td key={p.id}>{p.features?.custom_tools ? '✓' : '—'}</td>
@@ -301,6 +324,71 @@ function PricingPage() {
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          {/* FAQ */}
+          <div className="view-head" style={{ textAlign: 'center', marginTop: '3rem' }}>
+            <p className="eyebrow">FAQ</p>
+            <h2 className="view-title">Perguntas frequentes</h2>
+          </div>
+
+          <div className="pricing-faq">
+            <details className="faq-item">
+              <summary>O que e BYO-LLM?</summary>
+              <p>
+                BYO-LLM (Bring Your Own LLM) significa que voce usa sua propria API key de um
+                provedor de IA (OpenAI, Anthropic, Google, Azure, etc). O custo dos tokens de IA
+                e cobrado diretamente pelo seu provedor — o NetGuru cobra apenas pela plataforma.
+              </p>
+            </details>
+
+            <details className="faq-item">
+              <summary>Quanto vou pagar de tokens de IA?</summary>
+              <p>
+                O custo de tokens depende do provedor e modelo que voce escolher. Por exemplo,
+                GPT-4o custa ~$2.50/1M tokens de input. O NetGuru mostra seu consumo em
+                Perfil &gt; Uso BYO-LLM. A plataforma NetGuru nao cobra por token — apenas
+                a assinatura mensal do plano.
+              </p>
+            </details>
+
+            <details className="faq-item">
+              <summary>O que e o LLM gratuito (fallback)?</summary>
+              <p>
+                Nos planos Free e Solo, o sistema oferece um LLM gratuito como backup caso
+                voce nao tenha uma API key configurada ou seu provedor esteja indisponivel.
+                Nos planos Team e Enterprise, o BYO-LLM e obrigatorio para garantir
+                privacidade e controle total dos dados.
+              </p>
+            </details>
+
+            <details className="faq-item">
+              <summary>Posso fazer upgrade ou downgrade a qualquer momento?</summary>
+              <p>
+                Sim. Upgrades sao aplicados imediatamente com cobranca proporcional. Downgrades
+                entram em vigor no final do ciclo de faturamento atual. Voce pode gerenciar
+                sua assinatura em Perfil &gt; Assinatura.
+              </p>
+            </details>
+
+            <details className="faq-item">
+              <summary>O que acontece se eu exceder os limites do meu plano?</summary>
+              <p>
+                Ao atingir o limite diario de mensagens, tokens ou uploads, o sistema bloqueia
+                novas acoes ate o dia seguinte. Os limites sao reiniciados a cada 24 horas.
+                Voce pode fazer upgrade para aumentar seus limites imediatamente.
+              </p>
+            </details>
+
+            <details className="faq-item">
+              <summary>Como funciona o plano Team?</summary>
+              <p>
+                O plano Team e ideal para equipes de rede. Inclui RAG Local compartilhado
+                entre membros, todas as ferramentas avancadas (PCAP, topologia, config tools)
+                e limites expandidos. BYO-LLM e obrigatorio no Team para garantir
+                privacidade organizacional.
+              </p>
+            </details>
           </div>
         </>
       )}
