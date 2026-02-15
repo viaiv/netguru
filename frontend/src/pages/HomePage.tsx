@@ -8,6 +8,7 @@ interface IPublicPlan {
   display_name: string;
   price_cents: number;
   billing_period: string;
+  byollm_discount_cents: number;
   features: Record<string, boolean> | null;
   sort_order: number;
 }
@@ -187,6 +188,11 @@ function HomePage() {
                     {price}
                     {period && <span className="landing-plan-period">{period}</span>}
                   </p>
+                  {p.byollm_discount_cents > 0 && (
+                    <p style={{ fontSize: '0.78rem', color: 'var(--accent, #6366f1)', margin: '-0.25rem 0 0.5rem' }}>
+                      Com BYO-LLM: R${((p.price_cents - p.byollm_discount_cents) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mes
+                    </p>
+                  )}
                   <ul className="landing-plan-features">
                     {FEATURE_ORDER.map(({ key, label }) => {
                       const enabled = !!p.features?.[key];

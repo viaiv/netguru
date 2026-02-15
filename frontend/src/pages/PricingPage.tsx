@@ -144,6 +144,12 @@ function PricingPage() {
                       por {plan.promo_months} meses, depois {formatPrice(plan.price_cents)}/mes
                     </p>
                   )}
+                  {plan.byollm_discount_cents > 0 && (
+                    <p style={{ fontSize: '0.78rem', color: 'var(--accent, #6366f1)', margin: '0 0 0.5rem' }}>
+                      Com BYO-LLM: {formatPrice(plan.price_cents - plan.byollm_discount_cents)}/mes
+                      {' '}(desconto de {formatPrice(plan.byollm_discount_cents)})
+                    </p>
+                  )}
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: '1rem 0', flex: 1 }}>
                     <li style={{ marginBottom: '0.5rem' }}>
@@ -291,6 +297,16 @@ function PricingPage() {
                   ))}
                 </tr>
                 <tr>
+                  <td>Desconto BYO-LLM</td>
+                  {plans.map((p) => (
+                    <td key={p.id}>
+                      {p.byollm_discount_cents > 0
+                        ? formatPrice(p.byollm_discount_cents)
+                        : '—'}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
                   <td>LLM gratuito (fallback)</td>
                   {plans.map((p) => (
                     <td key={p.id}>{p.features?.allow_system_fallback ? '✓' : '—'}</td>
@@ -341,6 +357,17 @@ function PricingPage() {
                 voce nao tenha uma API key configurada ou seu provedor esteja indisponivel.
                 Nos planos Team e Enterprise, o BYO-LLM e obrigatorio para garantir
                 privacidade e controle total dos dados.
+              </p>
+            </details>
+
+            <details className="faq-item">
+              <summary>O que e o desconto BYO-LLM?</summary>
+              <p>
+                Se voce ja tem uma API key configurada no momento da assinatura, recebe um
+                desconto automatico no valor do plano. Isso porque, com BYO-LLM, os custos de
+                tokens ficam diretamente com seu provedor de IA — reduzindo nossos custos de
+                infraestrutura. O desconto e aplicado na hora do checkout e vale enquanto a
+                assinatura estiver ativa.
               </p>
             </details>
 

@@ -169,6 +169,26 @@ async def get_my_api_keys(
     )
 
 
+@router.delete("/me/api-keys", status_code=204)
+async def delete_my_api_key(
+    current_user: User = Depends(require_permissions(Permission.API_KEYS_READ_SELF)),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """
+    Remove a API key e provider LLM do usuario atual.
+    """
+    if not current_user.encrypted_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No API key configured",
+        )
+
+    current_user.encrypted_api_key = None
+    current_user.llm_provider = None
+    current_user.updated_at = datetime.utcnow()
+    await db.commit()
+
+
 @router.get("", response_model=list[UserResponse])
 async def list_users(
     _current_user: User = Depends(require_permissions(Permission.USERS_LIST)),

@@ -200,6 +200,10 @@ export function resetApiInterceptorsForTests(): void {
   interceptorsConfigured = false;
 }
 
+export async function deleteApiKey(): Promise<void> {
+  await api.delete('/users/me/api-keys');
+}
+
 export async function fetchPcapData(messageId: string): Promise<Record<string, unknown>> {
   const res = await api.get(`/chat/messages/${messageId}/pcap-data`);
   return res.data;

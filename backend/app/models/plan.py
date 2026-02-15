@@ -40,6 +40,14 @@ class Plan(Base):
     promo_months = Column(Integer, nullable=True, comment="Duration of promo in months")
     stripe_promo_coupon_id = Column(String(255), nullable=True, comment="Stripe Coupon ID for promo")
 
+    # BYO-LLM discount
+    byollm_discount_cents = Column(
+        Integer, nullable=False, default=0, comment="BYO-LLM discount in cents (BRL)"
+    )
+    stripe_byollm_coupon_id = Column(
+        String(255), nullable=True, comment="Stripe Coupon ID for BYO-LLM discount"
+    )
+
     # Seat limits
     max_members = Column(Integer, nullable=False, default=1, comment="Seats included in base price")
     price_per_extra_seat_cents = Column(

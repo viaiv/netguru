@@ -17,6 +17,7 @@ class SubscriptionDetail(BaseModel):
     status: str
     stripe_subscription_id: Optional[str] = None
     seat_quantity: int = 1
+    byollm_discount_applied: bool = False
     current_period_start: Optional[datetime] = None
     current_period_end: Optional[datetime] = None
     cancel_at_period_end: bool = False
@@ -54,6 +55,7 @@ class UserSubscriptionPlan(BaseModel):
     billing_period: str
     promo_price_cents: Optional[int] = None
     promo_months: Optional[int] = None
+    byollm_discount_cents: int = 0
     max_members: int
     price_per_extra_seat_cents: int
     upload_limit_daily: int

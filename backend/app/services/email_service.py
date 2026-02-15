@@ -306,6 +306,55 @@ class EmailService:
             recipient_user_id=user_id,
         )
 
+    def send_byollm_discount_warning(
+        self,
+        to_email: str,
+        full_name: Optional[str] = None,
+        grace_days: int = 7,
+        *,
+        user_id: Optional[UUID] = None,
+    ) -> None:
+        """Envia aviso de revogacao do desconto BYO-LLM apos remocao da API key."""
+        greeting = full_name or "usuario"
+        action_url = f"{settings.FRONTEND_URL}/me"
+
+        fallback_body = f"""
+            <p>Ola, {greeting}!</p>
+            <p>Notamos que sua <strong>API key BYO-LLM</strong> foi removida da sua conta no
+            <strong>NetGuru</strong>.</p>
+            <p>Seu desconto BYO-LLM sera <strong>revogado automaticamente em {grace_days} dias</strong>
+            caso a chave nao seja reconfigurada.</p>
+            <div style="text-align:center;margin:30px 0">
+              <a href="{action_url}"
+                 style="background:linear-gradient(110deg,#81d742,#a7e375);color:#17330d;
+                        padding:12px 32px;border-radius:12px;text-decoration:none;
+                        font-weight:700;display:inline-block;text-transform:uppercase;
+                        letter-spacing:0.06em;font-size:14px">
+                Reconfigurar API Key
+              </a>
+            </div>
+            <p style="color:#4c5448;font-size:13px">
+              Se voce removeu intencionalmente a API key e nao deseja mais o desconto,
+              nenhuma acao e necessaria.
+            </p>
+            """
+
+        subject, html = self._render_from_template(
+            "byollm_discount_warning",
+            {
+                "user_name": greeting,
+                "grace_days": str(grace_days),
+                "action_url": action_url,
+            },
+            fallback_subject="Seu desconto BYO-LLM sera revogado - NetGuru",
+            fallback_body=fallback_body,
+        )
+        self._send(
+            to_email, subject, html,
+            email_type="byollm_discount_warning",
+            recipient_user_id=user_id,
+        )
+
     def send_test_email(
         self,
         to_email: str,

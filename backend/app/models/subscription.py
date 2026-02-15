@@ -52,6 +52,15 @@ class Subscription(Base):
     # Promotional
     promo_applied = Column(Boolean, default=False, nullable=False, comment="True if promo coupon was applied")
 
+    # BYO-LLM discount
+    byollm_discount_applied = Column(
+        Boolean, default=False, nullable=False, comment="True if BYO-LLM coupon was applied at checkout"
+    )
+    byollm_grace_notified_at = Column(
+        DateTime, nullable=True,
+        comment="When BYO-LLM removal warning was sent; NULL = no pending grace",
+    )
+
     # Billing period
     current_period_start = Column(DateTime, nullable=True)
     current_period_end = Column(DateTime, nullable=True)

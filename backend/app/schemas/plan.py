@@ -19,6 +19,7 @@ class PublicPlanResponse(BaseModel):
     billing_period: str
     promo_price_cents: Optional[int] = None
     promo_months: Optional[int] = None
+    byollm_discount_cents: int = 0
     max_members: int
     price_per_extra_seat_cents: int
     upload_limit_daily: int

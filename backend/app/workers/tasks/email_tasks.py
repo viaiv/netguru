@@ -87,3 +87,32 @@ def send_welcome_email(
             return {"status": "skipped", "reason": "email_not_configured"}
         svc.send_welcome_email(to_email, full_name, user_id=uid)
         return {"status": "sent", "to": to_email}
+
+
+@celery_app.task(
+    name="app.workers.tasks.email_tasks.send_byollm_discount_warning_email",
+    autoretry_for=(Exception,),
+    max_retries=3,
+    retry_backoff=True,
+)
+def send_byollm_discount_warning_email(
+    to_email: str,
+    full_name: Optional[str] = None,
+    grace_days: int = 7,
+    user_id: Optional[str] = None,
+) -> dict:
+    """Envia aviso de revogacao do desconto BYO-LLM."""
+    from uuid import UUID
+    from app.core.database_sync import get_sync_db
+    from app.services.email_service import EmailService
+
+    uid = UUID(user_id) if user_id else None
+
+    with get_sync_db() as db:
+        svc = EmailService(db)
+        if not svc.is_configured():
+            logger.info("Email nao configurado, pulando byollm warning para %s", to_email)
+            svc.log_skipped(to_email, "byollm_discount_warning", recipient_user_id=uid)
+            return {"status": "skipped", "reason": "email_not_configured"}
+        svc.send_byollm_discount_warning(to_email, full_name, grace_days, user_id=uid)
+        return {"status": "sent", "to": to_email}

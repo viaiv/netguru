@@ -74,4 +74,8 @@ celery_app.conf.beat_schedule = {
         "task": "app.workers.tasks.billing_tasks.reconcile_seat_quantities",
         "schedule": settings.SEAT_RECONCILIATION_HOURS * 3600,
     },
+    "check-byollm-discount-eligibility": {
+        "task": "app.workers.tasks.billing_tasks.check_byollm_discount_eligibility",
+        "schedule": settings.BYOLLM_CHECK_HOURS * 3600,
+    },
 }

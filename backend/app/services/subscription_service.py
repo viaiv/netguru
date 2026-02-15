@@ -190,6 +190,14 @@ class SubscriptionService:
                 checkout_kwargs["discounts"] = [{"coupon": plan.stripe_promo_coupon_id}]
                 promo_applied = True
 
+        # BYO-LLM discount: apply coupon if owner has API key
+        byollm_applied = False
+        if plan.stripe_byollm_coupon_id and user.encrypted_api_key:
+            discounts = checkout_kwargs.get("discounts", [])
+            discounts.append({"coupon": plan.stripe_byollm_coupon_id})
+            checkout_kwargs["discounts"] = discounts
+            byollm_applied = True
+
         # Calculate initial seat quantity: max(plan.max_members, current_members)
         member_count_stmt = (
             select(func.count())
@@ -209,6 +217,7 @@ class SubscriptionService:
                 "user_id": str(user.id),
                 "plan_id": str(plan.id),
                 "promo_applied": "1" if promo_applied else "0",
+                "byollm_applied": "1" if byollm_applied else "0",
             },
             **customer_kwarg,
             **checkout_kwargs,
@@ -347,6 +356,7 @@ class SubscriptionService:
         seat_quantity = stripe_items[0]["quantity"] if stripe_items else 1
 
         promo_flag = data.get("metadata", {}).get("promo_applied") == "1"
+        byollm_flag = data.get("metadata", {}).get("byollm_applied") == "1"
 
         subscription = Subscription(
             workspace_id=workspace_id,
@@ -356,6 +366,7 @@ class SubscriptionService:
             status="active",
             seat_quantity=seat_quantity,
             promo_applied=promo_flag,
+            byollm_discount_applied=byollm_flag,
             current_period_start=datetime.fromtimestamp(stripe_sub.current_period_start),
             current_period_end=datetime.fromtimestamp(stripe_sub.current_period_end),
         )
@@ -392,6 +403,15 @@ class SubscriptionService:
         stripe_items = data.get("items", {}).get("data", [])
         if stripe_items:
             sub.seat_quantity = stripe_items[0].get("quantity", sub.seat_quantity)
+
+        # Sync BYO-LLM discount state from Stripe discount
+        plan = await self._get_plan(db, sub.plan_id)
+        discount_data = data.get("discount")
+        if discount_data and plan.stripe_byollm_coupon_id:
+            coupon_id = discount_data.get("coupon", {}).get("id")
+            sub.byollm_discount_applied = coupon_id == plan.stripe_byollm_coupon_id
+        elif not discount_data:
+            sub.byollm_discount_applied = False
 
         await db.flush()
 

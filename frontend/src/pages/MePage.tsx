@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import {
   api,
+  deleteApiKey,
   getErrorMessage,
   type IUserResponse,
 } from '../services/api';
@@ -83,6 +84,7 @@ function MePage() {
   const [apiKey, setApiKey] = useState('');
   const [llmSaving, setLlmSaving] = useState(false);
   const [llmSuccess, setLlmSuccess] = useState(false);
+  const [apiKeyRemoving, setApiKeyRemoving] = useState(false);
 
   async function loadProfile(): Promise<void> {
     setError(null);
@@ -144,6 +146,26 @@ function MePage() {
       setError(getErrorMessage(requestError));
     } finally {
       setLlmSaving(false);
+    }
+  }
+
+  async function handleDeleteApiKey(): Promise<void> {
+    const confirmed = window.confirm(
+      'Tem certeza que deseja remover sua API key?\n\n' +
+      'Se voce possui desconto BYO-LLM, ele sera revogado automaticamente em 7 dias ' +
+      'caso a chave nao seja reconfigurada.',
+    );
+    if (!confirmed) return;
+
+    setApiKeyRemoving(true);
+    setError(null);
+    try {
+      await deleteApiKey();
+      await loadProfile();
+    } catch (requestError) {
+      setError(getErrorMessage(requestError));
+    } finally {
+      setApiKeyRemoving(false);
     }
   }
 
@@ -270,6 +292,14 @@ function MePage() {
                     </p>
                   </article>
                 )}
+                <article className="kv-card">
+                  <p className="kv-label">Desconto BYO-LLM</p>
+                  <p className="kv-value">
+                    {subscription.subscription?.byollm_discount_applied
+                      ? `Ativo (${subscription.plan.byollm_discount_cents > 0 ? `R$ ${(subscription.plan.byollm_discount_cents / 100).toFixed(2).replace('.', ',')}/mes` : '—'})`
+                      : 'Inativo'}
+                  </p>
+                </article>
               </div>
 
               {/* Daily usage bars */}
@@ -509,6 +539,16 @@ function MePage() {
               >
                 {llmSaving ? 'Salvando...' : 'Salvar configuracao'}
               </button>
+              {user.has_api_key && (
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  disabled={apiKeyRemoving}
+                  onClick={() => void handleDeleteApiKey()}
+                >
+                  {apiKeyRemoving ? 'Removendo...' : 'Remover API Key'}
+                </button>
+              )}
               {llmSuccess ? (
                 <span className="chip chip-live">Salvo com sucesso</span>
               ) : null}

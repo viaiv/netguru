@@ -12,6 +12,7 @@ export interface IPublicPlan {
   billing_period: string;
   promo_price_cents: number | null;
   promo_months: number | null;
+  byollm_discount_cents: number;
   max_members: number;
   price_per_extra_seat_cents: number;
   upload_limit_daily: number;
@@ -28,6 +29,7 @@ export interface ISubscriptionDetail {
   status: string;
   stripe_subscription_id: string | null;
   seat_quantity: number;
+  byollm_discount_applied: boolean;
   current_period_start: string | null;
   current_period_end: string | null;
   cancel_at_period_end: boolean;
@@ -55,6 +57,7 @@ export interface IUserSubscriptionPlan {
   display_name: string;
   price_cents: number;
   billing_period: string;
+  byollm_discount_cents: number;
   max_members: number;
   price_per_extra_seat_cents: number;
   upload_limit_daily: number;
