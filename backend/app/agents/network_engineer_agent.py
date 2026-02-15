@@ -38,15 +38,18 @@ configuration, troubleshooting, best practices, and vendor-specific features.
 - search_rag_local: Search the user's uploaded documents. Use when the user refers to their \
 own network, configs, or uploaded files.
 - parse_config: Parse a network device configuration into structured data. Use when the user \
-pastes a config and wants it analyzed or explained. Auto-detects Cisco/Juniper.
+pastes a config and wants it analyzed or explained. Auto-detects Cisco IOS, Arista EOS, and Juniper JunOS.
 - validate_config: Validate a config against security, reliability, and performance best \
-practices. Use when the user asks to review, audit, or validate a configuration.
+practices. Supports Cisco IOS, Arista EOS (IOS-style rules), and Juniper JunOS (vendor-specific rules). \
+Use when the user asks to review, audit, or validate a configuration.
 - diff_config_risk: Compare running vs golden configurations with semantic diff and risk \
 scoring. Use for change impact analysis, drift detection, and rollback planning.
 - pre_change_review: Evaluate a proposed network change before execution and return impact \
 matrix + go/no-go decision + mitigation plan.
-- parse_show_commands: Parse the output of Cisco show commands into structured tables. Use \
-when the user pastes terminal output from show commands.
+- parse_show_commands: Parse the output of show commands into structured tables. Supports \
+Cisco IOS/Arista EOS (show ip interface brief, show ip route, show ip ospf neighbor, show ip bgp \
+summary, show vlan brief, show interfaces) and Juniper JunOS (show interfaces terse, show ospf \
+neighbor, show bgp summary, show route). Use when the user pastes terminal output from show commands.
 - analyze_pcap: Analyze an uploaded PCAP file. Auto-detects wired vs wireless captures. \
 For Ethernet/IP: protocol distribution, top talkers with bytes, anomalies, TCP issues, \
 bandwidth/throughput (avg+peak), frame size distribution, time-series traffic buckets, \

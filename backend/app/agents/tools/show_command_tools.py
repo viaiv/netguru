@@ -18,17 +18,20 @@ def create_parse_show_commands_tool() -> StructuredTool:
         command_hint: str = "",
     ) -> str:
         """
-        Parse the output of a Cisco show command into structured data.
-        Supports: show ip interface brief, show ip route, show ip ospf neighbor,
-        show ip bgp summary, show vlan brief, show interfaces.
+        Parse the output of a show command into structured data.
+        Supports Cisco IOS/Arista EOS: show ip interface brief, show ip route,
+        show ip ospf neighbor, show ip bgp summary, show vlan brief, show interfaces.
+        Supports Juniper JunOS: show interfaces terse, show ospf neighbor,
+        show bgp summary, show route.
 
         Use this tool when the user pastes output from a show command and wants
         it analyzed, parsed, or explained.
 
         Args:
             output: The raw output of the show command as copied from the terminal.
-            command_hint: Optional name of the command (e.g. "show ip ospf neighbor").
-                         Helps with detection if auto-detect fails.
+            command_hint: Optional name of the command (e.g. "show ip ospf neighbor"
+                         or "show ospf neighbor" for Juniper). Helps with detection
+                         if auto-detect fails.
         """
         try:
             svc = ShowCommandParserService()
@@ -41,9 +44,10 @@ def create_parse_show_commands_tool() -> StructuredTool:
         coroutine=_parse_show_commands,
         name="parse_show_commands",
         description=(
-            "Parse the output of a Cisco show command into structured data with analysis. "
-            "Supports: show ip interface brief, show ip route, show ip ospf neighbor, "
-            "show ip bgp summary, show vlan brief, show interfaces. "
+            "Parse the output of a show command into structured data with analysis. "
+            "Supports Cisco IOS/Arista EOS (show ip interface brief, show ip route, "
+            "show ip ospf neighbor, show ip bgp summary, show vlan brief, show interfaces) "
+            "and Juniper JunOS (show interfaces terse, show ospf neighbor, show bgp summary, show route). "
             "Use when the user pastes terminal output from a show command. "
             "Provide the raw output text and optionally the command name as hint."
         ),

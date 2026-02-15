@@ -1,7 +1,8 @@
 """
 ConfigParserService — Parse e analisa configuracoes de rede.
 
-Suporta Cisco IOS/IOS-XE/NX-OS (via ciscoconfparse) e Juniper (regex-based).
+Suporta Cisco IOS/IOS-XE/NX-OS, Arista EOS (via ciscoconfparse)
+e Juniper JunOS (regex-based).
 """
 from __future__ import annotations
 
@@ -62,13 +63,13 @@ class ParsedConfig:
 
 
 class ConfigParserService:
-    """Parse e analisa configuracoes de rede (Cisco IOS/NX-OS, Juniper)."""
+    """Parse e analisa configuracoes de rede (Cisco IOS/NX-OS, Arista EOS, Juniper)."""
 
     def detect_vendor(self, config_text: str) -> str:
         """Detecta o vendor baseado em padroes da configuracao.
 
         Returns:
-            "cisco" | "juniper" | "unknown"
+            "cisco" | "arista" | "juniper" | "unknown"
         """
         lines = config_text.strip().splitlines()
         text_lower = config_text.lower()
@@ -79,6 +80,28 @@ class ConfigParserService:
             return "juniper"
         if "{" in config_text and "}" in config_text and "interfaces {" in text_lower:
             return "juniper"
+
+        # Arista EOS: detectar antes de Cisco pois compartilha sintaxe '!'
+        # Padroes exclusivos do Arista EOS:
+        arista_patterns = [
+            r"! device:\s*eos",
+            r"! Arista",
+            r"switchport port-security",
+            r"management api ",
+            r"daemon ",
+            r"ip routing vrf ",
+            r"vrf instance ",
+            r"ip virtual-router ",
+            r"hardware tcam",
+            r"monitor session .+ source",
+            r"platform\s+sand\b",
+        ]
+        arista_score = sum(
+            1 for p in arista_patterns
+            if re.search(p, config_text, re.IGNORECASE | re.MULTILINE)
+        )
+        if arista_score >= 2:
+            return "arista"
 
         # Cisco: linhas com '!' e keywords tipicas
         bang_count = sum(1 for l in lines if l.strip() == "!")
@@ -100,19 +123,23 @@ class ConfigParserService:
         if not vendor:
             vendor = self.detect_vendor(config_text)
 
-        if vendor == "cisco":
-            return self.parse_cisco_config(config_text)
         if vendor == "juniper":
             return self.parse_juniper_config(config_text)
+        if vendor in ("cisco", "arista"):
+            return self._parse_ios_style_config(config_text, vendor)
 
-        # Fallback: tenta Cisco parser (mais tolerante)
-        return self.parse_cisco_config(config_text)
+        # Fallback: tenta Cisco-style parser (mais tolerante)
+        return self._parse_ios_style_config(config_text, "cisco")
 
-    def parse_cisco_config(self, config_text: str) -> ParsedConfig:
-        """Usa ciscoconfparse para extrair estrutura de config Cisco."""
+    def _parse_ios_style_config(self, config_text: str, vendor: str) -> ParsedConfig:
+        """Parse Cisco IOS ou Arista EOS (mesma sintaxe CLI)."""
+        return self.parse_cisco_config(config_text, vendor=vendor)
+
+    def parse_cisco_config(self, config_text: str, vendor: str = "cisco") -> ParsedConfig:
+        """Usa ciscoconfparse para extrair estrutura de config Cisco/Arista."""
         lines = config_text.strip().splitlines()
         parse = CiscoConfParse(lines)
-        result = ParsedConfig(vendor="cisco")
+        result = ParsedConfig(vendor=vendor)
 
         # --- Hostname ---
         hostname_objs = parse.find_objects(r"^hostname\s+")

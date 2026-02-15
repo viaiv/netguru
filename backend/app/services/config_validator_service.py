@@ -29,7 +29,8 @@ class ConfigValidatorService:
     """Valida configs contra best practices de networking."""
 
     def __init__(self) -> None:
-        self._rules: list[RuleFunc] = [
+        # Rules que usam sintaxe Cisco IOS / Arista EOS (mesma CLI)
+        self._ios_rules: list[RuleFunc] = [
             # Security
             self._check_telnet_enabled,
             self._check_password_encryption,
@@ -51,30 +52,47 @@ class ConfigValidatorService:
             self._check_ip_route_cache,
         ]
 
+        # Rules especificas para Juniper JunOS
+        self._juniper_rules: list[RuleFunc] = [
+            self._check_juniper_telnet,
+            self._check_juniper_root_password,
+            self._check_juniper_ntp,
+            self._check_juniper_syslog,
+            self._check_juniper_ospf_auth,
+            self._check_juniper_bgp_auth,
+        ]
+
     def validate(self, config_text: str, vendor: str = "cisco") -> list[ValidationIssue]:
-        """Executa todas as regras e retorna issues encontradas.
+        """Executa regras de validacao de acordo com o vendor.
 
         Args:
             config_text: Texto da configuracao.
-            vendor: Vendor da config (apenas 'cisco' suportado para validacao).
+            vendor: Vendor da config ("cisco" | "arista" | "juniper").
 
         Returns:
             Lista de ValidationIssue ordenada por severity.
         """
-        if vendor != "cisco":
-            return [
+        issues: list[ValidationIssue] = []
+
+        if vendor in ("cisco", "arista"):
+            for rule in self._ios_rules:
+                issues.extend(rule(config_text))
+        elif vendor == "juniper":
+            for rule in self._juniper_rules:
+                issues.extend(rule(config_text))
+        else:
+            # Vendor desconhecido: tenta regras IOS como fallback
+            issues.append(
                 ValidationIssue(
                     severity="info",
                     category="general",
-                    description=f"Validation rules are optimized for Cisco IOS. "
-                    f"Vendor '{vendor}' may have false positives.",
-                    recommendation="Review results considering vendor-specific syntax.",
+                    description=f"Vendor '{vendor}' not specifically supported. "
+                    "Applying Cisco IOS rules as fallback — review for false positives.",
+                    recommendation="Specify vendor for more accurate validation.",
                 )
-            ]
-
-        issues: list[ValidationIssue] = []
-        for rule in self._rules:
-            issues.extend(rule(config_text))
+            )
+            for rule in self._ios_rules:
+                issues.extend(rule(config_text))
 
         # Ordena: critical > warning > info
         severity_order = {"critical": 0, "warning": 1, "info": 2}
@@ -495,4 +513,120 @@ class ConfigValidatorService:
                     line_reference="no ip route-cache",
                 )
             )
+        return issues
+
+    # ─────────────────────────────────────────────────────────
+    #  Juniper JunOS Rules
+    # ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _check_juniper_telnet(config: str) -> list[ValidationIssue]:
+        """Telnet habilitado no Juniper."""
+        issues: list[ValidationIssue] = []
+        if re.search(r"set system services telnet", config) or re.search(
+            r"telnet\s*;", config
+        ):
+            issues.append(
+                ValidationIssue(
+                    severity="critical",
+                    category="security",
+                    description="Telnet is enabled. Telnet transmits credentials in plaintext.",
+                    recommendation="Disable telnet with 'delete system services telnet' and use SSH only.",
+                    line_reference="system services telnet",
+                )
+            )
+        return issues
+
+    @staticmethod
+    def _check_juniper_root_password(config: str) -> list[ValidationIssue]:
+        """Root sem senha criptografada no Juniper."""
+        issues: list[ValidationIssue] = []
+        if re.search(r"root-authentication.*plain-text-password", config, re.IGNORECASE):
+            issues.append(
+                ValidationIssue(
+                    severity="critical",
+                    category="security",
+                    description="Root authentication uses plain-text password.",
+                    recommendation="Use encrypted-password or ssh-rsa key authentication for root.",
+                    line_reference="root-authentication plain-text-password",
+                )
+            )
+        if not re.search(r"root-authentication", config):
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    category="security",
+                    description="No root authentication configured.",
+                    recommendation="Configure 'set system root-authentication encrypted-password'.",
+                )
+            )
+        return issues
+
+    @staticmethod
+    def _check_juniper_ntp(config: str) -> list[ValidationIssue]:
+        """Sem NTP no Juniper."""
+        issues: list[ValidationIssue] = []
+        has_ntp = bool(re.search(r"ntp\s+server\s+|set system ntp server", config))
+        if not has_ntp:
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    category="reliability",
+                    description="No NTP server configured. Accurate time is critical for logging and certificates.",
+                    recommendation="Configure NTP with 'set system ntp server <IP>'.",
+                )
+            )
+        return issues
+
+    @staticmethod
+    def _check_juniper_syslog(config: str) -> list[ValidationIssue]:
+        """Sem syslog externo no Juniper."""
+        issues: list[ValidationIssue] = []
+        has_syslog = bool(re.search(r"syslog\s+host\s+|set system syslog host", config))
+        if not has_syslog:
+            issues.append(
+                ValidationIssue(
+                    severity="info",
+                    category="reliability",
+                    description="No external syslog host configured.",
+                    recommendation="Configure 'set system syslog host <IP>' for central log collection.",
+                )
+            )
+        return issues
+
+    @staticmethod
+    def _check_juniper_ospf_auth(config: str) -> list[ValidationIssue]:
+        """OSPF sem autenticacao no Juniper."""
+        issues: list[ValidationIssue] = []
+        has_ospf = bool(re.search(r"protocols ospf|set protocols ospf", config))
+        has_auth = bool(re.search(r"ospf.*authentication|authentication-key", config, re.DOTALL))
+        if has_ospf and not has_auth:
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    category="reliability",
+                    description="OSPF is configured without authentication. Rogue routers could inject routes.",
+                    recommendation="Enable OSPF authentication with 'set protocols ospf area <area> interface <intf> authentication md5'.",
+                    line_reference="protocols ospf",
+                )
+            )
+        return issues
+
+    @staticmethod
+    def _check_juniper_bgp_auth(config: str) -> list[ValidationIssue]:
+        """BGP sem autenticacao no Juniper."""
+        issues: list[ValidationIssue] = []
+        bgp_neighbors = re.findall(r"neighbor\s+(\d+\.\d+\.\d+\.\d+)", config)
+        if bgp_neighbors:
+            has_auth = bool(re.search(r"authentication-key|authentication-algorithm", config))
+            if not has_auth:
+                issues.append(
+                    ValidationIssue(
+                        severity="warning",
+                        category="reliability",
+                        description=f"{len(bgp_neighbors)} BGP neighbor(s) configured without authentication.",
+                        recommendation="Add 'authentication-key' to BGP groups/neighbors for session security.",
+                        line_reference="protocols bgp",
+                    )
+                )
         return issues

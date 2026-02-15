@@ -1,7 +1,7 @@
 """
 ShowCommandParserService — Parse saida de show commands usando textfsm inline.
 
-Templates inline para os comandos mais comuns de Cisco IOS.
+Templates inline para Cisco IOS/Arista EOS e Juniper JunOS.
 Fallback com regex para comandos nao mapeados.
 """
 from __future__ import annotations
@@ -106,6 +106,60 @@ Start
 """
 
 
+# ─────────────────────────────────────────────────────────
+#  Juniper JunOS TextFSM Templates
+# ─────────────────────────────────────────────────────────
+
+_TEMPLATE_JUNIPER_SHOW_ROUTE = """\
+Value PROTOCOL (\\S+)
+Value PREFIX (\\S+)
+Value PREFERENCE (\\d+)
+Value NEXT_HOP (\\S+)
+Value INTERFACE (\\S+)
+
+Start
+  ^${PROTOCOL}\\s+\\*?${PREFIX}\\s+\\[${PREFERENCE}/\\d+\\]
+  ^\\s+>\\s+to\\s+${NEXT_HOP}\\s+via\\s+${INTERFACE} -> Record
+"""
+
+_TEMPLATE_JUNIPER_SHOW_OSPF_NEIGHBOR = """\
+Value NEIGHBOR_ADDRESS (\\d+\\.\\d+\\.\\d+\\.\\d+)
+Value INTERFACE (\\S+)
+Value STATE (\\S+)
+Value NEIGHBOR_ID (\\d+\\.\\d+\\.\\d+\\.\\d+)
+Value PRIORITY (\\d+)
+Value DEAD_TIME (\\S+)
+
+Start
+  ^${NEIGHBOR_ADDRESS}\\s+${INTERFACE}\\s+${STATE}\\s+${NEIGHBOR_ID}\\s+${PRIORITY}\\s+${DEAD_TIME} -> Record
+"""
+
+_TEMPLATE_JUNIPER_SHOW_BGP_SUMMARY = """\
+Value PEER (\\d+\\.\\d+\\.\\d+\\.\\d+)
+Value AS (\\d+)
+Value INPUT_MESSAGES (\\d+)
+Value OUTPUT_MESSAGES (\\d+)
+Value ROUTE_QUEUE (\\d+)
+Value FLAPS (\\d+)
+Value STATE (\\S+)
+
+Start
+  ^${PEER}\\s+${AS}\\s+${INPUT_MESSAGES}\\s+${OUTPUT_MESSAGES}\\s+${ROUTE_QUEUE}\\s+${FLAPS}\\s+.*\\s+${STATE}\\s*$$ -> Record
+"""
+
+_TEMPLATE_JUNIPER_SHOW_INTERFACES_TERSE = """\
+Value INTERFACE (\\S+)
+Value ADMIN (\\S+)
+Value LINK (\\S+)
+Value PROTO (\\S+)
+Value LOCAL (\\S+)
+Value REMOTE (\\S*)
+
+Start
+  ^${INTERFACE}\\s+${ADMIN}\\s+${LINK}\\s+${PROTO}\\s+${LOCAL}\\s*${REMOTE}\\s*$$ -> Record
+"""
+
+
 @dataclass
 class ParsedShowCommand:
     """Resultado do parsing de um show command."""
@@ -150,6 +204,22 @@ _COMMAND_TEMPLATES: list[tuple[str, str, str]] = [
         _TEMPLATE_SHOW_IP_ROUTE,
         "show ip route",
     ),
+    # Juniper JunOS
+    (
+        r"Interface\s+Admin\s+Link\s+Proto\s+Local\s+Remote",
+        _TEMPLATE_JUNIPER_SHOW_INTERFACES_TERSE,
+        "show interfaces terse",
+    ),
+    (
+        r"Address\s+Interface\s+State\s+ID\s+Pri\s+Dead",
+        _TEMPLATE_JUNIPER_SHOW_OSPF_NEIGHBOR,
+        "show ospf neighbor",
+    ),
+    (
+        r"Peer\s+AS\s+InPkt\s+OutPkt",
+        _TEMPLATE_JUNIPER_SHOW_BGP_SUMMARY,
+        "show bgp summary",
+    ),
 ]
 
 # Mapa de command hint → template
@@ -167,6 +237,12 @@ _HINT_TEMPLATES: dict[str, tuple[str, str]] = {
     "sh vlan br": (_TEMPLATE_SHOW_VLAN_BRIEF, "show vlan brief"),
     "show interfaces": (_TEMPLATE_SHOW_INTERFACES, "show interfaces"),
     "sh int": (_TEMPLATE_SHOW_INTERFACES, "show interfaces"),
+    # Juniper JunOS hints
+    "show route": (_TEMPLATE_JUNIPER_SHOW_ROUTE, "show route"),
+    "show ospf neighbor": (_TEMPLATE_JUNIPER_SHOW_OSPF_NEIGHBOR, "show ospf neighbor"),
+    "show bgp summary": (_TEMPLATE_JUNIPER_SHOW_BGP_SUMMARY, "show bgp summary"),
+    "show interfaces terse": (_TEMPLATE_JUNIPER_SHOW_INTERFACES_TERSE, "show interfaces terse"),
+    "sh int terse": (_TEMPLATE_JUNIPER_SHOW_INTERFACES_TERSE, "show interfaces terse"),
 }
 
 
@@ -357,6 +433,30 @@ class ShowCommandParserService:
                 notes.append(
                     f"\n**Note:** {len(err_intfs)} interface(s) with errors: "
                     f"{', '.join(names)}"
+                )
+
+        # Juniper
+        elif parsed.command == "show interfaces terse":
+            down_intfs = [
+                r for r in parsed.rows
+                if r.get("LINK", "").lower() != "up"
+                or r.get("ADMIN", "").lower() != "up"
+            ]
+            if down_intfs:
+                names = [r.get("INTERFACE", "?") for r in down_intfs[:5]]
+                notes.append(
+                    f"\n**Note:** {len(down_intfs)} interface(s) not fully up: "
+                    f"{', '.join(names)}"
+                )
+
+        elif parsed.command == "show ospf neighbor":
+            non_full = [
+                r for r in parsed.rows
+                if "Full" not in r.get("STATE", "")
+            ]
+            if non_full:
+                notes.append(
+                    f"\n**Note:** {len(non_full)} OSPF neighbor(s) not in Full state."
                 )
 
         return "\n".join(notes)

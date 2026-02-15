@@ -18,11 +18,11 @@ def create_parse_config_tool() -> StructuredTool:
 
     async def _parse_config(config_text: str) -> str:
         """
-        Parse and analyze a network device configuration (Cisco IOS/NX-OS or Juniper).
+        Parse and analyze a network device configuration (Cisco IOS/NX-OS, Arista EOS, or Juniper JunOS).
         Extracts interfaces, routing protocols, ACLs, VLANs, and general settings.
 
         Use this tool when the user pastes a device configuration or asks you to
-        analyze/explain a config. The tool auto-detects the vendor (Cisco or Juniper).
+        analyze/explain a config. The tool auto-detects the vendor (Cisco, Arista, or Juniper).
 
         Args:
             config_text: The full or partial network device configuration text.
@@ -38,10 +38,10 @@ def create_parse_config_tool() -> StructuredTool:
         coroutine=_parse_config,
         name="parse_config",
         description=(
-            "Parse and analyze a network device configuration (Cisco IOS/NX-OS, Juniper). "
+            "Parse and analyze a network device configuration (Cisco IOS/NX-OS, Arista EOS, Juniper JunOS). "
             "Extracts interfaces, routing protocols (OSPF, BGP, EIGRP), ACLs, VLANs, and general settings. "
             "Use when the user pastes a configuration or asks to analyze/explain a config. "
-            "Auto-detects vendor. Input: the configuration text."
+            "Auto-detects vendor (Cisco, Arista, Juniper). Input: the configuration text."
         ),
     )
 
@@ -75,7 +75,8 @@ def create_validate_config_tool() -> StructuredTool:
         name="validate_config",
         description=(
             "Validate a network configuration against security, reliability, and performance "
-            "best practices. Returns a report with issues grouped by severity. "
+            "best practices. Supports Cisco IOS, Arista EOS, and Juniper JunOS with vendor-specific rules. "
+            "Returns a report with issues grouped by severity. "
             "Checks for: telnet usage, weak passwords, SNMP security, OSPF/BGP authentication, "
             "NTP, logging, spanning-tree, and more. "
             "Use when the user asks to validate, review, audit, or check a config for issues."
