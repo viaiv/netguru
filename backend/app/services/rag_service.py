@@ -46,7 +46,7 @@ class RAGService:
             vector=vector,
             top_k=top_k,
             source="global",
-            user_filter=None,
+            workspace_filter=None,
         )
 
     async def search_local(
