@@ -18,14 +18,19 @@ def _is_r2_path(storage_path: str) -> bool:
     return storage_path.startswith("uploads/") and not Path(storage_path).is_absolute()
 
 
-@celery_app.task(name="app.workers.tasks.pcap_tasks.analyze_pcap")
-def analyze_pcap(storage_path: str, max_packets: int) -> dict:
+@celery_app.task(
+    name="app.workers.tasks.pcap_tasks.analyze_pcap",
+    bind=True,
+)
+def analyze_pcap(self, storage_path: str, max_packets: int, document_id: str | None = None) -> dict:
     """
     Analisa PCAP via scapy no worker.
 
     Args:
+        self: Celery task instance (bind=True).
         storage_path: Caminho local ou chave R2 do arquivo PCAP.
         max_packets: Maximo de pacotes a processar.
+        document_id: UUID do documento (para persistir resultado).
 
     Returns:
         Dict com 'formatted' (texto para LLM) e 'data' (dados estruturados).
@@ -35,6 +40,9 @@ def analyze_pcap(storage_path: str, max_packets: int) -> dict:
     temp_path = None
 
     try:
+        # Stage 1: download
+        self.update_state(state="PROGRESS", meta={"stage": "downloading", "pct": 5})
+
         if _is_r2_path(storage_path):
             from app.core.database_sync import get_sync_db
             from app.services.r2_storage_service import R2StorageService
@@ -48,13 +56,18 @@ def analyze_pcap(storage_path: str, max_packets: int) -> dict:
         else:
             file_path = storage_path
 
+        # Stage 2: analyzing
+        self.update_state(state="PROGRESS", meta={"stage": "analyzing", "pct": 20})
         logger.info("Iniciando analise PCAP: %s (max=%d)", file_path, max_packets)
 
         svc = object.__new__(PcapAnalyzerService)
         summary = svc._analyze_sync(file_path, max_packets)
+
+        # Stage 3: formatting
+        self.update_state(state="PROGRESS", meta={"stage": "formatting", "pct": 85})
         formatted = svc.format_summary(summary)
 
-        return {
+        result = {
             "formatted": formatted,
             "data": {
                 "total_packets": summary.total_packets,
@@ -103,6 +116,29 @@ def analyze_pcap(storage_path: str, max_packets: int) -> dict:
                 "wireless_devices": summary.wireless_devices,
             },
         }
+
+        # Persist result in Document.metadata for reuse
+        if document_id:
+            try:
+                from uuid import UUID
+
+                from sqlalchemy import update
+
+                from app.core.database_sync import get_sync_db
+                from app.models.document import Document
+
+                with get_sync_db() as db:
+                    db.execute(
+                        update(Document)
+                        .where(Document.id == UUID(document_id))
+                        .values(document_metadata={"pcap_analysis": result["data"]})
+                    )
+                    db.commit()
+                logger.info("Resultado PCAP persistido em Document.metadata: %s", document_id)
+            except Exception:
+                logger.warning("Falha ao persistir resultado PCAP no Document: %s", document_id, exc_info=True)
+
+        return result
     finally:
         if temp_path is not None:
             temp_path.unlink(missing_ok=True)

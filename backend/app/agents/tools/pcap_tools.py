@@ -21,6 +21,12 @@ from app.models.document import Document
 logger = logging.getLogger(__name__)
 
 
+def _lazy_pcap_service():
+    """Cria instancia do PcapAnalyzerService sem __init__ (para format_summary)."""
+    from app.services.pcap_analyzer_service import PcapAnalyzerService
+    return object.__new__(PcapAnalyzerService)
+
+
 def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
     """Cria tool de analise de PCAPs."""
 
@@ -117,26 +123,61 @@ def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
                     f"(type: {document.file_type})."
                 )
 
+            # Verifica se ja tem resultado em cache (Document.metadata)
+            cached = document.document_metadata
+            if isinstance(cached, dict) and "pcap_analysis" in cached:
+                try:
+                    logger.info("analyze_pcap: usando resultado em cache doc=%s", document.id)
+                    svc = _lazy_pcap_service()
+                    from app.services.pcap_analyzer_service import PcapSummary
+                    import dataclasses
+                    valid_fields = {f.name for f in dataclasses.fields(PcapSummary)}
+                    filtered = {k: v for k, v in cached["pcap_analysis"].items() if k in valid_fields}
+                    summary = PcapSummary(**filtered)
+                    formatted = svc.format_summary(summary)
+                    pcap_data = json.dumps(cached["pcap_analysis"], default=str, ensure_ascii=False)
+                    return f"{formatted}\n<!-- PCAP_DATA:{pcap_data} -->"
+                except Exception:
+                    logger.warning("analyze_pcap: cache invalido, re-analisando doc=%s", document.id)
+
             # Despacha para Celery worker (o worker baixa do R2 se necessario)
             from app.workers.tasks.pcap_tasks import analyze_pcap
 
             task_result = analyze_pcap.delay(
                 document.storage_path,
                 settings.PCAP_MAX_PACKETS,
+                str(document.id),
             )
 
-            # Aguarda resultado sem bloquear event loop
-            result_data = await asyncio.to_thread(
-                task_result.get, timeout=settings.PCAP_ANALYSIS_TIMEOUT
-            )
+            # Polling assincrono — verifica estado a cada 2s sem bloquear event loop
+            timeout = settings.PCAP_ANALYSIS_TIMEOUT
+            elapsed = 0.0
+            poll_interval = 2.0
 
-            formatted = result_data["formatted"]
-            pcap_data = json.dumps(
-                result_data.get("data", {}),
-                default=str,
-                ensure_ascii=False,
+            while elapsed < timeout:
+                state = await asyncio.to_thread(lambda: task_result.state)
+
+                if state == "SUCCESS":
+                    result_data = await asyncio.to_thread(lambda: task_result.result)
+                    formatted = result_data["formatted"]
+                    pcap_data = json.dumps(
+                        result_data.get("data", {}),
+                        default=str,
+                        ensure_ascii=False,
+                    )
+                    return f"{formatted}\n<!-- PCAP_DATA:{pcap_data} -->"
+
+                if state == "FAILURE":
+                    exc_info = await asyncio.to_thread(lambda: task_result.info)
+                    return f"PCAP analysis failed: {exc_info}"
+
+                await asyncio.sleep(poll_interval)
+                elapsed += poll_interval
+
+            return (
+                f"PCAP analysis timed out after {timeout}s. "
+                f"The file may be too large. Try with a smaller capture."
             )
-            return f"{formatted}\n<!-- PCAP_DATA:{pcap_data} -->"
         except Exception as e:
             logger.exception(
                 "analyze_pcap: unexpected error. document_id=%s user_id=%s",
