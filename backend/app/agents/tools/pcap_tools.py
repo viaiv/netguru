@@ -27,8 +27,14 @@ def _lazy_pcap_service():
     return object.__new__(PcapAnalyzerService)
 
 
-def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
+def create_analyze_pcap_tool(
+    db: AsyncSession, user_id: UUID, *, workspace_id: UUID | None = None,
+) -> StructuredTool:
     """Cria tool de analise de PCAPs."""
+
+    # Escopo de busca: workspace quando disponivel, senao user_id
+    _scope_workspace_id = workspace_id
+    _scope_user_id = user_id
 
     async def _analyze_pcap(document_id: str) -> str:
         """
@@ -51,27 +57,33 @@ def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
         try:
             document = None
             if doc_uuid is not None:
-                # Busca por UUID + user_id
-                result = await db.execute(
-                    select(Document).where(
-                        Document.id == doc_uuid,
-                        Document.user_id == user_id,
-                    )
-                )
-                document = result.scalar_one_or_none()
-
-                # Fallback: buscar sem user_id (doc pode ter user_id NULL ou mismatch)
-                if document is None:
+                # Busca por UUID escopada por workspace ou user_id
+                if _scope_workspace_id:
                     result = await db.execute(
-                        select(Document).where(Document.id == doc_uuid)
+                        select(Document).where(
+                            Document.id == doc_uuid,
+                            Document.workspace_id == _scope_workspace_id,
+                        )
                     )
-                    document = result.scalar_one_or_none()
+                else:
+                    result = await db.execute(
+                        select(Document).where(
+                            Document.id == doc_uuid,
+                            Document.user_id == _scope_user_id,
+                        )
+                    )
+                document = result.scalar_one_or_none()
             else:
-                # Fallback: busca por filename (LLM pode passar nome ao inves de UUID)
+                # Busca por filename escopada por workspace ou user_id
+                scope_filter = (
+                    Document.workspace_id == _scope_workspace_id
+                    if _scope_workspace_id
+                    else Document.user_id == _scope_user_id
+                )
                 result = await db.execute(
                     select(Document)
                     .where(
-                        Document.user_id == user_id,
+                        scope_filter,
                         Document.original_filename == document_id,
                         Document.file_type.in_(("pcap", "pcapng")),
                     )
@@ -79,19 +91,6 @@ def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
                     .limit(1)
                 )
                 document = result.scalar_one_or_none()
-
-                # Fallback: buscar sem user_id
-                if document is None:
-                    result = await db.execute(
-                        select(Document)
-                        .where(
-                            Document.original_filename == document_id,
-                            Document.file_type.in_(("pcap", "pcapng")),
-                        )
-                        .order_by(Document.created_at.desc())
-                        .limit(1)
-                    )
-                    document = result.scalar_one_or_none()
 
             if not document:
                 logger.warning(
@@ -189,10 +188,15 @@ def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
     async def _build_not_found_message(document_id: str) -> str:
         """Monta mensagem de 'not found' com lista de PCAPs disponiveis."""
         try:
+            scope_filter = (
+                Document.workspace_id == _scope_workspace_id
+                if _scope_workspace_id
+                else Document.user_id == _scope_user_id
+            )
             result = await db.execute(
                 select(Document)
                 .where(
-                    Document.user_id == user_id,
+                    scope_filter,
                     Document.file_type.in_(("pcap", "pcapng")),
                     Document.status == "uploaded",
                 )

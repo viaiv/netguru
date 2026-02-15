@@ -3,7 +3,9 @@ UrlIngestionService — download + extracao de texto de URLs para RAG Global.
 """
 from __future__ import annotations
 
+import ipaddress
 import logging
+import socket
 from pathlib import Path
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -18,6 +20,61 @@ logger = logging.getLogger(__name__)
 
 # Limite de download (10 MB)
 MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024
+
+# Hostnames bloqueados para prevencao de SSRF
+_BLOCKED_HOSTNAMES = frozenset({
+    "localhost",
+    "metadata.google.internal",
+    "169.254.169.254",
+})
+
+
+def _is_private_ip(ip_str: str) -> bool:
+    """Verifica se IP e privado, reservado, loopback, link-local ou multicast."""
+    try:
+        addr = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return True  # Nao parsavel → bloquear por seguranca
+    return (
+        addr.is_private
+        or addr.is_reserved
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_multicast
+    )
+
+
+def _validate_url_target(url: str) -> None:
+    """
+    Resolve DNS e bloqueia destinos internos/privados.
+
+    Raises:
+        UrlIngestionError: Se URL aponta para host bloqueado.
+    """
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    if not hostname:
+        raise UrlIngestionError("URL sem hostname valido.")
+
+    # Checar hostnames bloqueados diretamente
+    lower = hostname.lower()
+    if lower in _BLOCKED_HOSTNAMES or lower.endswith(".local"):
+        raise UrlIngestionError(
+            f"URL bloqueada: destino interno ({hostname})."
+        )
+
+    # Resolver DNS e checar IPs
+    try:
+        addr_infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise UrlIngestionError(f"Nao foi possivel resolver DNS: {hostname}") from exc
+
+    for info in addr_infos:
+        ip_str = info[4][0]
+        if _is_private_ip(ip_str):
+            raise UrlIngestionError(
+                f"URL bloqueada: {hostname} resolve para IP privado/reservado ({ip_str})."
+            )
 
 MIME_MAP = {
     "txt": "text/plain",
@@ -88,6 +145,9 @@ class UrlIngestionService:
         if parsed.scheme not in ("http", "https"):
             raise UrlIngestionError(f"Esquema de URL nao suportado: {parsed.scheme}")
 
+        # Validacao SSRF: bloquear destinos internos/privados
+        _validate_url_target(url)
+
         content_bytes, content_type = await self._download(url)
 
         # Determinar tipo e extensao
@@ -140,17 +200,34 @@ class UrlIngestionService:
     async def _download(self, url: str) -> tuple[bytes, str]:
         """
         Download da URL com limites de tamanho e timeout.
+        Segue redirects manualmente para revalidar destinos SSRF.
 
         Returns:
             Tupla (bytes do conteudo, content-type).
         """
+        max_redirects = 5
+        current_url = url
+
         try:
             async with httpx.AsyncClient(
-                follow_redirects=True,
+                follow_redirects=False,
                 timeout=httpx.Timeout(30.0),
             ) as client:
-                response = await client.get(url)
-                response.raise_for_status()
+                for _ in range(max_redirects + 1):
+                    response = await client.get(current_url)
+                    if response.is_redirect:
+                        redirect_url = str(response.next_request.url) if response.next_request else None
+                        if not redirect_url:
+                            raise UrlIngestionError("Redirect sem destino.")
+                        _validate_url_target(redirect_url)
+                        current_url = redirect_url
+                        continue
+                    response.raise_for_status()
+                    break
+                else:
+                    raise UrlIngestionError(f"Limite de redirects excedido ({max_redirects}).")
+        except UrlIngestionError:
+            raise
         except httpx.TimeoutException as exc:
             raise UrlIngestionError(f"Timeout ao acessar URL: {url}") from exc
         except httpx.HTTPStatusError as exc:

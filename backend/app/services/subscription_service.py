@@ -66,6 +66,14 @@ class SubscriptionService:
         """Seta stripe.api_key antes de cada operacao."""
         stripe.api_key = self._secret_key
 
+    def _require_webhook_secret(self) -> None:
+        """Raise if webhook_secret is empty — must be called before processing webhooks."""
+        if not self._webhook_secret:
+            raise StripeNotConfiguredError(
+                "Stripe webhook secret nao configurado. "
+                "Configure 'stripe_webhook_secret' nas configuracoes do sistema."
+            )
+
     # ------------------------------------------------------------------
     # Factory methods
     # ------------------------------------------------------------------
@@ -268,6 +276,7 @@ class SubscriptionService:
         Returns:
             Event type string for logging.
         """
+        self._require_webhook_secret()
         self._configure_stripe()
         try:
             event = stripe.Webhook.construct_event(

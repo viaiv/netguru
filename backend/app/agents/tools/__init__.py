@@ -59,7 +59,7 @@ def get_agent_tools(
         # Show Commands (Phase 5-6)
         create_parse_show_commands_tool(),
         # PCAP Analysis (Phase 5-6)
-        create_analyze_pcap_tool(db, user_id),
+        create_analyze_pcap_tool(db, user_id, workspace_id=effective_workspace_id),
         # Topology (Phase 5-6)
         create_generate_topology_tool(db, user_id),
     ]

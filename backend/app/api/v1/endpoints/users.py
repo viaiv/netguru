@@ -171,7 +171,7 @@ async def get_my_api_keys(
 
 @router.delete("/me/api-keys", status_code=204)
 async def delete_my_api_key(
-    current_user: User = Depends(require_permissions(Permission.API_KEYS_READ_SELF)),
+    current_user: User = Depends(require_permissions(Permission.API_KEYS_UPDATE_SELF)),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """

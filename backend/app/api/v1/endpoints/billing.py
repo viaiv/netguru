@@ -9,10 +9,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_current_workspace
+from app.core.rbac import (
+    WorkspacePermission,
+    has_workspace_permission,
+    normalize_workspace_role,
+)
 from app.models.plan import Plan
 from app.models.subscription import Subscription
 from app.models.user import User
-from app.models.workspace import Workspace
+from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.admin import (
     CheckoutSessionRequest,
     CheckoutSessionResponse,
@@ -37,6 +42,30 @@ from app.services.usage_tracking_service import UsageTrackingService
 router = APIRouter()
 
 
+async def _require_billing_permission(
+    workspace: Workspace, user: User, db: AsyncSession,
+) -> None:
+    """Raise 403 if user lacks WORKSPACE_BILLING_MANAGE."""
+    result = await db.execute(
+        select(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == workspace.id,
+            WorkspaceMember.user_id == user.id,
+        )
+    )
+    member = result.scalar_one_or_none()
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Voce nao e membro deste workspace.",
+        )
+    role = normalize_workspace_role(member.workspace_role)
+    if not has_workspace_permission(role, WorkspacePermission.WORKSPACE_BILLING_MANAGE):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permissao insuficiente: workspace:billing_manage",
+        )
+
+
 async def _get_subscription_service(db: AsyncSession) -> SubscriptionService:
     """Cria SubscriptionService por request via SystemSettings."""
     try:
@@ -56,6 +85,7 @@ async def create_checkout(
     db: AsyncSession = Depends(get_db),
 ) -> CheckoutSessionResponse:
     """Create a Stripe Checkout session for workspace plan subscription."""
+    await _require_billing_permission(workspace, current_user, db)
     svc = await _get_subscription_service(db)
     try:
         result = await svc.create_checkout_session(
@@ -82,6 +112,7 @@ async def create_portal(
     db: AsyncSession = Depends(get_db),
 ) -> CustomerPortalResponse:
     """Create a Stripe Customer Portal session."""
+    await _require_billing_permission(workspace, current_user, db)
     svc = await _get_subscription_service(db)
     referer = request.headers.get("referer", "/")
     try:
@@ -166,6 +197,7 @@ async def update_seats(
     db: AsyncSession = Depends(get_db),
 ) -> SeatInfoResponse:
     """Pre-purchase seats — owner/admin only. Updates Stripe quantity with proration."""
+    await _require_billing_permission(workspace, current_user, db)
     svc = await _get_subscription_service(db)
     try:
         await svc.update_seat_quantity(db, workspace, body.quantity)
