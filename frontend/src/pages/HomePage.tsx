@@ -73,7 +73,7 @@ function formatPrice(priceCents: number, billingPeriod: string, planName: string
   if (priceCents < 0) {
     return { price: 'Custom', period: billingPeriod === 'yearly' ? 'licença anual' : '' };
   }
-  const reais = (priceCents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const reais = (priceCents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const period = billingPeriod === 'yearly' ? '/ano' : '/mês';
   return { price: `R$${reais}`, period };
 }
