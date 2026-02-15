@@ -40,6 +40,7 @@ from app.services.file_storage import (
     persist_uploaded_file,
     resolve_storage_path,
     validate_magic_bytes,
+    validate_magic_bytes_buffer,
     validate_mime_type,
 )
 from app.services.plan_limit_service import PlanLimitError, PlanLimitService
@@ -290,8 +291,52 @@ async def confirm_upload(
             detail=f"Arquivo nao encontrado no R2: {exc}",
         ) from exc
 
-    # Atualiza tamanho real do arquivo se diferente
-    actual_size = metadata.get("content_length", document.file_size_bytes)
+    # ------------------------------------------------------------------
+    # Revalidar objeto real contra limites (previne bypass via presign)
+    # ------------------------------------------------------------------
+    actual_size = metadata.get("content_length", 0)
+    actual_content_type = metadata.get("content_type", "")
+    extension = Path(document.original_filename).suffix.lower().lstrip(".")
+
+    def _reject_and_cleanup(detail: str, status_code: int = status.HTTP_422_UNPROCESSABLE_ENTITY) -> None:
+        """Rejeita confirm e agenda cleanup do objeto R2."""
+        try:
+            r2.delete_object(document.storage_path)
+        except Exception:
+            logger.warning("Falha ao deletar objeto R2 rejeitado: %s", document.storage_path)
+        raise HTTPException(status_code=status_code, detail=detail)
+
+    # 1. Tamanho global
+    max_size_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
+    if actual_size > max_size_bytes:
+        _reject_and_cleanup(
+            f"Arquivo excede limite de {settings.MAX_FILE_SIZE_MB} MB",
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        )
+
+    # 2. Tamanho do plano
+    try:
+        file_size_mb = actual_size / (1024 * 1024)
+        await PlanLimitService.check_file_size(db, workspace, file_size_mb)
+    except PlanLimitError as exc:
+        _reject_and_cleanup(exc.detail, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    # 3. MIME type real vs extensao
+    try:
+        validate_mime_type(extension, actual_content_type)
+    except FileContentMismatchError as exc:
+        _reject_and_cleanup(str(exc))
+
+    # 4. Magic bytes (download parcial dos primeiros 8KB)
+    try:
+        head_bytes = r2.download_partial(document.storage_path, byte_count=8192)
+        validate_magic_bytes_buffer(head_bytes, extension)
+    except FileContentMismatchError as exc:
+        _reject_and_cleanup(str(exc))
+    except R2OperationError:
+        logger.warning("Falha ao baixar bytes parciais para validacao: %s", document.storage_path)
+        # Nao bloquear confirm se download parcial falhar — HEAD ja confirmou existencia
+
     document.file_size_bytes = actual_size
     document.status = "uploaded"
     await db.commit()

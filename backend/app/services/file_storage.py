@@ -138,6 +138,46 @@ def validate_magic_bytes(file_path: Path, extension: str) -> None:
     )
 
 
+def validate_magic_bytes_buffer(data: bytes, extension: str) -> None:
+    """
+    Validate file content from a bytes buffer against expected magic bytes.
+
+    Same logic as validate_magic_bytes but operates on an in-memory buffer
+    instead of a file path. Used for R2 presigned upload confirmation.
+
+    Raises FileContentMismatchError if validation fails.
+    """
+    if extension in _TEXT_EXTENSIONS:
+        sample = data[:8192]
+        if b"\x00" in sample:
+            logger.warning(
+                "upload_rejected: magic_bytes reason=binary_in_text ext=%s",
+                extension,
+            )
+            raise FileContentMismatchError(
+                f"Arquivo .{extension} contem conteudo binario — esperado texto."
+            )
+        return
+
+    signatures = _MAGIC_SIGNATURES.get(extension)
+    if not signatures:
+        return
+
+    header = data[:8]
+    for sig in signatures:
+        if header[: len(sig)] == sig:
+            return
+
+    logger.warning(
+        "upload_rejected: magic_bytes reason=signature_mismatch ext=%s header=%s",
+        extension, header[:8].hex(),
+    )
+    raise FileContentMismatchError(
+        f"Conteudo do arquivo nao corresponde a extensao .{extension}. "
+        f"Verifique se o arquivo esta correto."
+    )
+
+
 def validate_mime_type(extension: str, content_type: str | None) -> None:
     """
     Validate Content-Type against MIME policy for the extension.

@@ -246,6 +246,30 @@ class R2StorageService:
         except BotoCoreError as e:
             raise R2OperationError(f"Erro ao verificar objeto: {e}") from e
 
+    def download_partial(self, object_key: str, byte_count: int = 8192) -> bytes:
+        """
+        Baixa os primeiros N bytes de um objeto no R2 (Range request).
+
+        Args:
+            object_key: Chave do objeto no bucket.
+            byte_count: Numero de bytes a baixar (padrao 8KB).
+
+        Returns:
+            Bytes lidos do inicio do objeto.
+
+        Raises:
+            R2OperationError: Se falhar ao baixar.
+        """
+        try:
+            response = self._client.get_object(
+                Bucket=self._bucket,
+                Key=object_key,
+                Range=f"bytes=0-{byte_count - 1}",
+            )
+            return response["Body"].read()
+        except (BotoCoreError, ClientError) as e:
+            raise R2OperationError(f"Falha ao baixar bytes parciais: {e}") from e
+
     def download_to_tempfile(self, object_key: str, suffix: str) -> Path:
         """
         Baixa objeto do R2 para arquivo temporario.
