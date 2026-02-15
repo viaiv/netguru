@@ -15,6 +15,7 @@ function AdminSidebar({ isOpen, onNavigate }: AdminSidebarProps) {
     { to: '/admin/plans', label: 'Planos' },
     { to: '/admin/audit-log', label: 'Audit Log' },
     { to: '/admin/health', label: 'System Health' },
+    { to: '/admin/celery-tasks', label: 'Celery Tasks' },
     { to: '/admin/email-logs', label: 'Email Logs' },
     { to: '/admin/email-templates', label: 'Email Templates' },
     { to: '/admin/stripe-events', label: 'Stripe Events' },

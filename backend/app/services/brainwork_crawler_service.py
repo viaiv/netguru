@@ -171,7 +171,7 @@ class BrainworkCrawlerService:
             meta["ingestion_method"] = "crawler"
             document.document_metadata = meta
 
-            await self._db.flush()
+            await self._db.commit()
 
             # Disparar processamento (chunking + embedding)
             from app.workers.tasks.document_tasks import process_document

@@ -767,6 +767,12 @@ export interface ICeleryTaskEvent {
   worker: string | null;
 }
 
+export interface ICeleryTaskTriggerResponse {
+  task_id: string;
+  task_name: string;
+  message: string;
+}
+
 export async function fetchCeleryTasks(params: {
   page?: number;
   limit?: number;
@@ -774,5 +780,12 @@ export async function fetchCeleryTasks(params: {
   task_name?: string;
 }): Promise<{ items: ICeleryTaskEvent[]; pagination: IPaginationMeta }> {
   const r = await api.get('/admin/celery-tasks', { params });
+  return r.data;
+}
+
+export async function triggerCeleryTask(taskName: string): Promise<ICeleryTaskTriggerResponse> {
+  const r = await api.post<ICeleryTaskTriggerResponse>('/admin/celery-tasks/trigger', {
+    task_name: taskName,
+  });
   return r.data;
 }

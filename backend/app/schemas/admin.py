@@ -461,6 +461,16 @@ class BrainworkCrawlResponse(BaseModel):
 # Celery Task Events
 # ---------------------------------------------------------------------------
 
+class CeleryTaskTriggerRequest(BaseModel):
+    task_name: str = Field(..., max_length=200)
+
+
+class CeleryTaskTriggerResponse(BaseModel):
+    task_id: str
+    task_name: str
+    message: str
+
+
 class CeleryTaskEventResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

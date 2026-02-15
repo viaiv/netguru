@@ -19,6 +19,7 @@ import AdminStripeEventsPage from '../../pages/admin/AdminStripeEventsPage';
 import AdminSettingsPage from '../../pages/admin/AdminSettingsPage';
 import AdminSystemMemoriesPage from '../../pages/admin/AdminSystemMemoriesPage';
 import AdminRagPage from '../../pages/admin/AdminRagPage';
+import AdminCeleryTasksPage from '../../pages/admin/AdminCeleryTasksPage';
 
 function AdminLayout() {
   const isMobile = useMobile();
@@ -57,6 +58,7 @@ function AdminLayout() {
             <Route path="plans" element={<AdminPlansPage />} />
             <Route path="audit-log" element={<AdminAuditLogPage />} />
             <Route path="health" element={<AdminHealthPage />} />
+            <Route path="celery-tasks" element={<AdminCeleryTasksPage />} />
             <Route path="email-logs" element={<AdminEmailLogsPage />} />
             <Route path="email-templates" element={<AdminEmailTemplatesPage />} />
             <Route path="stripe-events" element={<AdminStripeEventsPage />} />

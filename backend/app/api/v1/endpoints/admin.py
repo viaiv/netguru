@@ -38,6 +38,8 @@ from app.schemas.admin import (
     BrainworkCrawlResponse,
     CeleryTaskEventListResponse,
     CeleryTaskEventResponse,
+    CeleryTaskTriggerRequest,
+    CeleryTaskTriggerResponse,
     DashboardStats,
     EntitlementToolStatus,
     LlmModelCreate,
@@ -971,6 +973,58 @@ async def list_celery_tasks(
     return CeleryTaskEventListResponse(
         items=[CeleryTaskEventResponse.model_validate(e) for e in events],
         pagination=PaginationMeta(total=total, page=page, pages=pages, limit=limit),
+    )
+
+
+# Whitelist de tasks que podem ser disparadas manualmente via admin UI.
+TRIGGERABLE_TASKS: dict[str, str] = {
+    "cleanup_orphan_uploads": "app.workers.tasks.maintenance_tasks.cleanup_orphan_uploads",
+    "cleanup_expired_tokens": "app.workers.tasks.maintenance_tasks.cleanup_expired_tokens",
+    "service_health_check": "app.workers.tasks.maintenance_tasks.service_health_check",
+    "recalculate_stale_embeddings": "app.workers.tasks.maintenance_tasks.recalculate_stale_embeddings",
+    "mark_stale_tasks_timeout": "app.workers.tasks.maintenance_tasks.mark_stale_tasks_timeout",
+    "downgrade_expired_trials": "app.workers.tasks.maintenance_tasks.downgrade_expired_trials",
+    "reconcile_seat_quantities": "app.workers.tasks.billing_tasks.reconcile_seat_quantities",
+    "check_byollm_discount_eligibility": "app.workers.tasks.billing_tasks.check_byollm_discount_eligibility",
+    "crawl_brainwork_blog": "app.workers.tasks.brainwork_tasks.crawl_brainwork_blog",
+}
+
+
+@router.post("/celery-tasks/trigger", response_model=CeleryTaskTriggerResponse)
+async def trigger_celery_task(
+    body: CeleryTaskTriggerRequest,
+    request: Request,
+    current_user: User = Depends(require_permissions(Permission.ADMIN_SYSTEM_HEALTH)),
+    db: AsyncSession = Depends(get_db),
+) -> CeleryTaskTriggerResponse:
+    """Dispara uma task Celery agendada manualmente."""
+    full_name = TRIGGERABLE_TASKS.get(body.task_name)
+    if not full_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Task '{body.task_name}' nao esta na whitelist de tasks disparaveis",
+        )
+
+    from app.workers.celery_app import celery_app
+
+    result = celery_app.send_task(full_name)
+
+    await AuditLogService.record(
+        db,
+        actor_id=current_user.id,
+        action="celery_task.triggered",
+        target_type="celery_task",
+        target_id=body.task_name,
+        changes={"task_name": body.task_name, "celery_task_id": result.id},
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.flush()
+
+    return CeleryTaskTriggerResponse(
+        task_id=result.id,
+        task_name=body.task_name,
+        message="Task disparada com sucesso",
     )
 
 
