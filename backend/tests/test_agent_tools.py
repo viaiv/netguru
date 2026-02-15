@@ -161,16 +161,20 @@ async def test_parse_show_commands_tool_returns_formatted_output(
 
 
 @pytest.mark.asyncio
-async def test_analyze_pcap_tool_rejects_invalid_uuid() -> None:
-    """analyze_pcap tool should validate document_id format."""
+async def test_analyze_pcap_tool_rejects_unknown_identifier() -> None:
+    """analyze_pcap tool should reject unknown filename/UUID gracefully."""
+
+    class FakeResult:
+        def scalar_one_or_none(self):  # noqa: ANN201
+            return None
 
     class FakeDbSession:
         async def execute(self, _stmt):  # noqa: ANN001
-            raise AssertionError("DB should not be queried for invalid UUID")
+            return FakeResult()
 
     tool = pcap_tools.create_analyze_pcap_tool(FakeDbSession(), uuid4())
     result = await tool.ainvoke({"document_id": "not-a-uuid"})
-    assert "Invalid document ID" in result
+    assert "not found" in result.lower() or "not belong" in result.lower()
 
 
 @pytest.mark.asyncio

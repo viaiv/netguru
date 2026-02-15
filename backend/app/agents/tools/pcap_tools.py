@@ -37,17 +37,31 @@ def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
         try:
             doc_uuid = UUID(document_id)
         except ValueError:
-            return f"Invalid document ID: '{document_id}'. Expected a UUID."
+            doc_uuid = None
 
         try:
-            # Valida documento pertence ao usuario
-            result = await db.execute(
-                select(Document).where(
-                    Document.id == doc_uuid,
-                    Document.user_id == user_id,
+            if doc_uuid is not None:
+                # Busca por UUID
+                result = await db.execute(
+                    select(Document).where(
+                        Document.id == doc_uuid,
+                        Document.user_id == user_id,
+                    )
                 )
-            )
-            document = result.scalar_one_or_none()
+                document = result.scalar_one_or_none()
+            else:
+                # Fallback: busca por filename (LLM pode passar nome ao inves de UUID)
+                result = await db.execute(
+                    select(Document)
+                    .where(
+                        Document.user_id == user_id,
+                        Document.original_filename == document_id,
+                        Document.file_type.in_(("pcap", "pcapng")),
+                    )
+                    .order_by(Document.created_at.desc())
+                    .limit(1)
+                )
+                document = result.scalar_one_or_none()
 
             if not document:
                 return (

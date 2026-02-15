@@ -151,7 +151,11 @@ def _build_graph(chat_model, tools: list[BaseTool] | None = None) -> StateGraph:
     """
 
     if tools:
-        chat_model = chat_model.bind_tools(tools)
+        try:
+            chat_model = chat_model.bind_tools(tools, parallel_tool_calls=False)
+        except TypeError:
+            # Providers que nao suportam parallel_tool_calls (ex.: Google, Anthropic)
+            chat_model = chat_model.bind_tools(tools)
 
     async def agent_node(state: AgentState) -> dict:
         response = await chat_model.ainvoke(state["messages"])

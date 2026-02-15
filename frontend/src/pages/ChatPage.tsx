@@ -339,7 +339,8 @@ function ChatPage() {
 
   // ---- Render helpers ----
 
-  function renderMessage(msg: IMessage) {
+  function renderMessage(msg: IMessage, msgIndex: number) {
+    const isLastMessage = msgIndex === messages.length - 1;
     const isUser = msg.role === 'user';
     const metadata =
       msg.metadata && typeof msg.metadata === 'object' && !Array.isArray(msg.metadata)
@@ -350,7 +351,7 @@ function ChatPage() {
       input?: string;
       result_preview?: string;
       duration_ms?: number;
-      status?: 'queued' | 'running' | 'progress' | 'completed' | 'failed';
+      status?: 'queued' | 'running' | 'progress' | 'completed' | 'failed' | 'awaiting_confirmation';
       progress_pct?: number;
       elapsed_ms?: number;
       eta_ms?: number | null;
@@ -378,23 +379,32 @@ function ChatPage() {
     return (
       <div key={msg.id} className={`message-row ${isUser ? 'message-row--user' : 'message-row--assistant'}`}>
         {/* Tool calls from historical messages */}
-        {!isUser && metaToolCalls && metaToolCalls.length > 0 && (
-          <ToolCallDisplay
-            toolCalls={metaToolCalls.map((tc, i) => ({
-              id: `hist-${msg.id}-${i}`,
-              toolName: tc.tool,
-              toolInput: tc.input ?? '',
-              resultPreview: tc.result_preview,
-              durationMs: tc.duration_ms,
-              status: tc.status ?? ('completed' as const),
-              progressPct: tc.progress_pct,
-              elapsedMs: tc.elapsed_ms,
-              etaMs: tc.eta_ms,
-              detail: tc.detail,
-            }))}
-            messageId={hasPcapTool ? msg.id : undefined}
-          />
-        )}
+        {!isUser && metaToolCalls && metaToolCalls.length > 0 && (() => {
+          const hasAwaitingConfirmation = metaToolCalls.some(
+            (tc) => tc.status === 'awaiting_confirmation',
+          );
+          return (
+            <ToolCallDisplay
+              toolCalls={metaToolCalls.map((tc, i) => ({
+                id: `hist-${msg.id}-${i}`,
+                toolName: tc.tool,
+                toolInput: tc.input ?? '',
+                resultPreview: tc.result_preview,
+                durationMs: tc.duration_ms,
+                status: tc.status ?? ('completed' as const),
+                progressPct: tc.progress_pct,
+                elapsedMs: tc.elapsed_ms,
+                etaMs: tc.eta_ms,
+                detail: tc.detail,
+              }))}
+              messageId={hasPcapTool ? msg.id : undefined}
+              onConfirm={isLastMessage && hasAwaitingConfirmation ? () => {
+                addUserMessage('confirmo');
+                sendMessage('confirmo');
+              } : undefined}
+            />
+          );
+        })()}
         <div className={`message-bubble ${isUser ? 'message-bubble--user' : 'message-bubble--assistant'}`}>
           <p className="message-role">{isUser ? 'Voce' : 'NetGuru'}</p>
           {isUser ? (
@@ -532,11 +542,18 @@ function ChatPage() {
 
             {/* Messages */}
             <div className="chat-window" ref={chatWindowRef}>
-              {messages.map(renderMessage)}
+              {messages.map((msg, idx) => renderMessage(msg, idx))}
 
               {/* Tool calls display */}
               {isStreaming && activeToolCalls.length > 0 && (
-                <ToolCallDisplay toolCalls={activeToolCalls} messageId={streamingMessageId ?? undefined} />
+                <ToolCallDisplay
+                  toolCalls={activeToolCalls}
+                  messageId={streamingMessageId ?? undefined}
+                  onConfirm={() => {
+                    addUserMessage('confirmo');
+                    sendMessage('confirmo');
+                  }}
+                />
               )}
 
               {/* Streaming bubble */}

@@ -18,9 +18,10 @@ const TOOL_LABELS: Record<string, string> = {
 interface ToolCallCardProps {
   toolCall: IToolCall;
   messageId?: string;
+  onConfirm?: () => void;
 }
 
-function ToolCallCard({ toolCall, messageId }: ToolCallCardProps) {
+function ToolCallCard({ toolCall, messageId, onConfirm }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false);
   const isCompleted = toolCall.status === 'completed';
   const isFailed = toolCall.status === 'failed';
@@ -100,8 +101,24 @@ function ToolCallCard({ toolCall, messageId }: ToolCallCardProps) {
         </div>
       )}
 
-      {isAwaitingConfirmation && toolCall.detail && (
-        <p className="tool-call-preview">{toolCall.detail}</p>
+      {isAwaitingConfirmation && (
+        <>
+          {toolCall.detail && (
+            <p className="tool-call-preview">{toolCall.detail}</p>
+          )}
+          {onConfirm && (
+            <button
+              type="button"
+              className="tool-call-confirm-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onConfirm();
+              }}
+            >
+              Confirmar execução
+            </button>
+          )}
+        </>
       )}
       {!isAwaitingConfirmation && !expanded && (isCompleted || isFailed) && toolCall.resultPreview && (
         <p className="tool-call-preview">{toolCall.resultPreview}</p>
