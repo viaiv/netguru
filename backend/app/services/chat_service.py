@@ -690,6 +690,7 @@ class ChatService:
         assistant_metadata["llm_execution"] = {
             "selected_provider": selected_llm_attempt.get("provider_name"),
             "selected_model": selected_llm_attempt.get("model"),
+            "using_free_llm": using_free_llm,
             "fallback_triggered": len(llm_attempt_audit) > 1,
             "attempt_count": len(llm_attempt_audit),
             "attempts": llm_attempt_audit,

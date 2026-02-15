@@ -335,6 +335,7 @@ function ChatPage() {
       typeof llmExecution?.selected_model === 'string'
         ? llmExecution.selected_model
         : null;
+    const msgUsingFreeLlm = llmExecution?.using_free_llm === true;
     const fallbackTriggered = llmExecution?.fallback_triggered === true;
     const hasPcapTool = metaToolCalls?.some((tc) => tc.tool === 'analyze_pcap');
 
@@ -391,7 +392,7 @@ function ChatPage() {
                   {resolvedAttachment.file_type ? ` (${resolvedAttachment.file_type})` : ''}
                 </p>
               )}
-              {selectedProvider && (
+              {selectedProvider && !msgUsingFreeLlm && (
                 <p className="message-llm-meta">
                   Modelo ativo: {selectedProvider}
                   {selectedModel ? ` / ${selectedModel}` : ''}
@@ -446,9 +447,9 @@ function ChatPage() {
               <p className="message-role">
                 <svg className="message-role-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                 NetGuru
-                {usingFreeLlm
-                  ? <span className="chip chip-free-llm">Modelo incluso</span>
-                  : llmProvider && <span className="chip chip-byo-llm">{llmProvider}</span>}
+                {!usingFreeLlm && llmProvider && (
+                  <span className="chip chip-byo-llm">{llmProvider}</span>
+                )}
               </p>
               <MarkdownContent content={streamingContent} isStreaming />
               <span className="typing-cursor" />
@@ -461,9 +462,9 @@ function ChatPage() {
               <p className="message-role">
                 <svg className="message-role-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                 NetGuru
-                {usingFreeLlm
-                  ? <span className="chip chip-free-llm">Modelo incluso</span>
-                  : llmProvider && <span className="chip chip-byo-llm">{llmProvider}</span>}
+                {!usingFreeLlm && llmProvider && (
+                  <span className="chip chip-byo-llm">{llmProvider}</span>
+                )}
               </p>
               <div className="message-content">
                 <span className="typing-cursor" />
