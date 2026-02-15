@@ -7,16 +7,6 @@
 
 > **⚠️ Manutenção**: Se qualquer procedimento documentado aqui estiver desatualizado, sugira correções e atualize este arquivo.
 
-> **📝 CHECKPOINT TEMPORÁRIO (REMOVER NA PRÓXIMA SESSÃO):**
-> Sprint 13 — Brainwork Crawler para RAG Global:
-> - **BrainworkCrawlerService**: crawlea sitemap XML do brainwork.com.br, filtra posts, dedup via `document_metadata.source_url`
-> - **Reutiliza UrlIngestionService**: SSRF check, download, BS4 extraction, Document creation
-> - **Metadata enriquecida**: `source=brainwork`, `category=community`, `ingestion_method=crawler`
-> - **Task Celery**: `crawl_brainwork_blog` com beat schedule (24h), autoretry
-> - **Endpoint admin**: `POST /admin/rag/crawl-brainwork` com audit log
-> - **Frontend**: botao "Executar Crawler" na aba RAG Global do AdminRagPage
-> - **Config**: `BRAINWORK_CRAWL_HOURS=24`, `BRAINWORK_CRAWL_MAX_PAGES=50`, `BRAINWORK_CRAWL_DELAY_SECONDS=1.0`
-
 ---
 
 ## ⚙️ Configurações Globais
@@ -288,7 +278,9 @@ Response JSON:
 │   │   │       └── topology_tools.py
 │   │   │
 │   │   ├── api/v1/endpoints/
+│   │   │   ├── admin.py             # Admin CRUD + RAG + Celery tasks
 │   │   │   ├── auth.py
+│   │   │   ├── billing.py           # Stripe checkout/portal/webhook/seats
 │   │   │   ├── chat.py              # Agent invocation
 │   │   │   ├── files.py
 │   │   │   └── users.py
@@ -625,6 +617,8 @@ POST /api/v1/admin/llm-models     # ➕ Criar modelo no catalogo
 PATCH /api/v1/admin/llm-models/:id # ✏️ Editar modelo
 DELETE /api/v1/admin/llm-models/:id # 🗑️ Remover modelo
 POST /api/v1/admin/rag/crawl-brainwork # 🕷️ Crawler Brainwork (trigger manual)
+POST /api/v1/admin/celery-tasks/trigger # ⚡ Disparar task Celery (whitelist)
+GET  /api/v1/admin/celery-tasks    # 📋 Historico de execucoes Celery
 ```
 
 ### Troubleshooting Comum
@@ -827,6 +821,24 @@ POST /api/v1/admin/rag/crawl-brainwork # 🕷️ Crawler Brainwork (trigger manu
 - [x] Frontend: exibicao de resultado (URLs, novas, ingeridas, falhas, erros)
 - [ ] Testes unitarios para BrainworkCrawlerService
 - [ ] Teste de dedup (rodar crawler 2x sem duplicar)
+
+### Sprint 14 (Admin Celery Tasks + Security Round 2 + Bugfixes) - ✅ Completo
+- [x] Admin Celery Tasks: pagina com grid de 9 tasks agendadas + botao trigger
+- [x] Backend: `POST /admin/celery-tasks/trigger` com whitelist de tasks + `ADMIN_SYSTEM_HEALTH`
+- [x] Frontend: `AdminCeleryTasksPage.tsx` com historico paginado, filtros, auto-refresh 10s
+- [x] Navegacao: link no AdminSidebar + rota no AdminLayout
+- [x] Fix crawler race condition: `flush()` → `commit()` antes de `process_document.delay()`
+- [x] Fix RAG: argumento `user_filter` → `workspace_filter` em `search_global` (migração workspace)
+- [x] Fix Celery: `broker_connection_retry_on_startup=True` para Celery 6.0
+- [x] **P0 #49**: R2 presigned upload bypass — revalidacao no confirm (size, MIME, magic bytes via Range)
+  - `R2StorageService.download_partial()` + `validate_magic_bytes_buffer()` + delete on failure
+- [x] **P1 #50**: Stripe open redirect — `_validate_return_url()` contra allowlist CORS_ORIGINS
+  - Valida success_url, cancel_url (checkout) e Referer (portal)
+- [x] **P1 #51**: Prompt injection via `role=system` — regex `^(user|assistant)$` + filtro em `_load_history`
+- [x] **P1 #52**: Race condition bootstrap owner — `pg_advisory_xact_lock(737001)` na criacao
+- [x] **P2 #53**: Upload RAG admin em chunks de 1 MB com corte antecipado (evita DoS de memoria)
+- [ ] Testes unitarios para security fixes
+- [ ] Testes de concorrencia para advisory lock
 
 ---
 
