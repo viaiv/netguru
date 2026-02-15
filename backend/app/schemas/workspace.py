@@ -76,3 +76,4 @@ class WorkspaceDetailResponse(WorkspaceResponse):
 
     members: list[WorkspaceMemberResponse] = []
     member_count: int = 0
+    seat_info: Optional[dict] = None

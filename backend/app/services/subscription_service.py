@@ -12,7 +12,7 @@ from typing import Any, Optional
 from uuid import UUID
 
 import stripe
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -21,7 +21,7 @@ from app.models.plan import Plan
 from app.models.stripe_event import StripeEvent
 from app.models.subscription import Subscription
 from app.models.user import User
-from app.models.workspace import Workspace
+from app.models.workspace import Workspace, WorkspaceMember
 from app.services.system_settings_service import SystemSettingsService
 
 logger = logging.getLogger(__name__)
@@ -190,9 +190,18 @@ class SubscriptionService:
                 checkout_kwargs["discounts"] = [{"coupon": plan.stripe_promo_coupon_id}]
                 promo_applied = True
 
+        # Calculate initial seat quantity: max(plan.max_members, current_members)
+        member_count_stmt = (
+            select(func.count())
+            .select_from(WorkspaceMember)
+            .where(WorkspaceMember.workspace_id == workspace.id)
+        )
+        member_count = (await db.execute(member_count_stmt)).scalar_one()
+        initial_quantity = max(plan.max_members, member_count)
+
         session = stripe.checkout.Session.create(
             mode="subscription",
-            line_items=[{"price": plan.stripe_price_id, "quantity": 1}],
+            line_items=[{"price": plan.stripe_price_id, "quantity": initial_quantity}],
             success_url=success_url,
             cancel_url=cancel_url,
             metadata={
@@ -333,6 +342,10 @@ class SubscriptionService:
         # Fetch Stripe subscription details
         stripe_sub = stripe.Subscription.retrieve(stripe_sub_id)
 
+        # Extract seat quantity from Stripe
+        stripe_items = stripe_sub.get("items", {}).get("data", [])
+        seat_quantity = stripe_items[0]["quantity"] if stripe_items else 1
+
         promo_flag = data.get("metadata", {}).get("promo_applied") == "1"
 
         subscription = Subscription(
@@ -341,6 +354,7 @@ class SubscriptionService:
             stripe_customer_id=stripe_customer_id,
             stripe_subscription_id=stripe_sub_id,
             status="active",
+            seat_quantity=seat_quantity,
             promo_applied=promo_flag,
             current_period_start=datetime.fromtimestamp(stripe_sub.current_period_start),
             current_period_end=datetime.fromtimestamp(stripe_sub.current_period_end),
@@ -360,7 +374,7 @@ class SubscriptionService:
     async def _handle_subscription_updated(
         self, db: AsyncSession, data: dict[str, Any],
     ) -> None:
-        """customer.subscription.updated — update status/period."""
+        """customer.subscription.updated — update status/period/seat_quantity."""
         sub = await self._find_subscription_by_stripe_id(db, data["id"])
         if not sub:
             return
@@ -373,6 +387,11 @@ class SubscriptionService:
             sub.current_period_end = datetime.fromtimestamp(data["current_period_end"])
         if data.get("canceled_at"):
             sub.canceled_at = datetime.fromtimestamp(data["canceled_at"])
+
+        # Sync seat_quantity from Stripe items
+        stripe_items = data.get("items", {}).get("data", [])
+        if stripe_items:
+            sub.seat_quantity = stripe_items[0].get("quantity", sub.seat_quantity)
 
         await db.flush()
 
@@ -408,6 +427,97 @@ class SubscriptionService:
         if sub:
             sub.status = "past_due"
             await db.flush()
+
+    # ------------------------------------------------------------------
+    # Seat quantity management
+    # ------------------------------------------------------------------
+
+    async def update_seat_quantity(
+        self,
+        db: AsyncSession,
+        workspace: Workspace,
+        new_quantity: int,
+    ) -> int:
+        """
+        Update Stripe subscription quantity for seat billing.
+
+        Validates that new_quantity >= plan.max_members and >= current member_count.
+        Returns the new quantity.
+        """
+        self._configure_stripe()
+        plan = await self._get_plan_by_tier(db, workspace.plan_tier)
+
+        if new_quantity < plan.max_members:
+            raise SubscriptionServiceError(
+                f"Quantidade minima de assentos e {plan.max_members} (base do plano).",
+                code="quantity_below_plan_base",
+            )
+
+        member_count_stmt = (
+            select(func.count())
+            .select_from(WorkspaceMember)
+            .where(WorkspaceMember.workspace_id == workspace.id)
+        )
+        member_count = (await db.execute(member_count_stmt)).scalar_one()
+
+        if new_quantity < member_count:
+            raise SubscriptionServiceError(
+                f"Nao e possivel reduzir abaixo do numero de membros atuais ({member_count}).",
+                code="quantity_below_member_count",
+            )
+
+        sub = await self._get_active_subscription(db, workspace.id)
+        if not sub or not sub.stripe_subscription_id:
+            raise SubscriptionServiceError(
+                "Nenhuma assinatura ativa encontrada.",
+                code="no_active_subscription",
+            )
+
+        if new_quantity == sub.seat_quantity:
+            return new_quantity
+
+        # Update Stripe with proration
+        stripe_sub = stripe.Subscription.retrieve(sub.stripe_subscription_id)
+        items = stripe_sub.get("items", {}).get("data", [])
+        if not items:
+            raise SubscriptionServiceError(
+                "Nenhum item encontrado na subscription Stripe.",
+                code="no_stripe_items",
+            )
+
+        stripe.Subscription.modify(
+            sub.stripe_subscription_id,
+            items=[{
+                "id": items[0]["id"],
+                "quantity": new_quantity,
+            }],
+            proration_behavior="create_prorations",
+        )
+
+        sub.seat_quantity = new_quantity
+        await db.flush()
+
+        logger.info(
+            "seat_quantity_updated: workspace=%s quantity=%d",
+            workspace.id, new_quantity,
+        )
+        return new_quantity
+
+    async def _get_plan_by_tier(self, db: AsyncSession, tier: str) -> Plan:
+        """Resolve Plan by tier name."""
+        stmt = select(Plan).where(Plan.name == (tier or "free"))
+        result = await db.execute(stmt)
+        plan = result.scalar_one_or_none()
+        if not plan:
+            stmt = select(Plan).where(Plan.name == "free")
+            result = await db.execute(stmt)
+            plan = result.scalar_one_or_none()
+        if not plan:
+            raise SubscriptionServiceError(
+                "Plano nao encontrado.",
+                code="plan_not_found",
+            )
+        return plan
 
     # ------------------------------------------------------------------
     # Event logging

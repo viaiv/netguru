@@ -149,6 +149,9 @@ function PricingPage() {
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: '1rem 0', flex: 1 }}>
                     <li style={{ marginBottom: '0.5rem' }}>
+                      {plan.max_members <= 1 ? '1 usuario' : `${plan.max_members} assentos inclusos`}
+                    </li>
+                    <li style={{ marginBottom: '0.5rem' }}>
                       {formatLimit(plan.upload_limit_daily)} uploads/dia
                     </li>
                     <li style={{ marginBottom: '0.5rem' }}>
@@ -244,6 +247,19 @@ function PricingPage() {
                 </tr>
               </thead>
               <tbody>
+                <tr>
+                  <td>Assentos inclusos</td>
+                  {plans.map((p) => (
+                    <td key={p.id}>
+                      {p.max_members <= 1 ? '1' : p.max_members}
+                      {p.price_per_extra_seat_cents > 0 && (
+                        <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                          {' '}(+R$ {(p.price_per_extra_seat_cents / 100).toFixed(2).replace('.', ',')}/extra)
+                        </span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
                 <tr>
                   <td>Uploads diarios</td>
                   {plans.map((p) => (

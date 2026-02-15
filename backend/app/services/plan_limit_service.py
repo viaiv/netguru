@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.plan import Plan
 from app.models.workspace import Workspace
+from app.services.seat_service import SeatLimitError, SeatService
 from app.services.usage_tracking_service import UsageTrackingService
 
 logger = logging.getLogger(__name__)
@@ -157,3 +158,18 @@ class PlanLimitService:
                 current_value=current,
                 max_value=limit_value,
             )
+
+    @staticmethod
+    async def check_seat_limit(db: AsyncSession, workspace: Workspace) -> None:
+        """Raise PlanLimitError if workspace cannot add more members."""
+        svc = SeatService(db)
+        try:
+            await svc.check_seat_limit(workspace)
+        except SeatLimitError as exc:
+            raise PlanLimitError(
+                detail=exc.detail,
+                code="seat_limit_exceeded",
+                limit_name="max_members",
+                current_value=exc.current_members,
+                max_value=exc.max_allowed,
+            ) from exc

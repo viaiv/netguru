@@ -26,6 +26,11 @@ from app.schemas.workspace import (
     WorkspaceResponse,
     WorkspaceUpdate,
 )
+from app.services.seat_service import SeatLimitError, SeatService
+from app.services.subscription_service import (
+    StripeNotConfiguredError,
+    SubscriptionService,
+)
 from app.services.workspace_service import WorkspaceService
 
 router = APIRouter()
@@ -115,6 +120,10 @@ async def get_workspace_detail(
     members_data = await svc.get_workspace_members_with_users(workspace_id)
     members = [WorkspaceMemberResponse(**m) for m in members_data]
 
+    # Build seat info for Team/Enterprise
+    seat_svc = SeatService(db)
+    seat_info = await seat_svc.get_seat_info(workspace)
+
     return WorkspaceDetailResponse(
         id=workspace.id,
         name=workspace.name,
@@ -125,6 +134,7 @@ async def get_workspace_detail(
         updated_at=workspace.updated_at,
         members=members,
         member_count=len(members),
+        seat_info=seat_info,
     )
 
 
@@ -185,6 +195,16 @@ async def invite_member(
         workspace, current_user, WorkspacePermission.WORKSPACE_MEMBERS_MANAGE, db,
     )
 
+    # Check seat limit before inviting
+    seat_svc = SeatService(db)
+    try:
+        await seat_svc.check_seat_limit(workspace)
+    except SeatLimitError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=exc.detail,
+        ) from exc
+
     try:
         member = await svc.invite_member(
             workspace_id=workspace_id,
@@ -199,6 +219,14 @@ async def invite_member(
         ) from exc
 
     await db.commit()
+
+    # Sync Stripe seat quantity after adding member
+    try:
+        sub_svc = await SubscriptionService.from_settings(db)
+        await seat_svc.sync_stripe_quantity(workspace, sub_svc._secret_key)
+        await db.commit()
+    except (StripeNotConfiguredError, Exception):
+        pass  # Non-blocking: Stripe sync is best-effort
 
     # Recarregar dados completos do membro
     members_data = await svc.get_workspace_members_with_users(workspace_id)
@@ -249,6 +277,15 @@ async def remove_member(
         ) from exc
 
     await db.commit()
+
+    # Sync Stripe seat quantity after removing member
+    try:
+        seat_svc = SeatService(db)
+        sub_svc = await SubscriptionService.from_settings(db)
+        await seat_svc.sync_stripe_quantity(workspace, sub_svc._secret_key)
+        await db.commit()
+    except (StripeNotConfiguredError, Exception):
+        pass  # Non-blocking: Stripe sync is best-effort
 
 
 @router.patch(

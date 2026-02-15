@@ -38,6 +38,7 @@ celery_app.conf.include = [
     "app.workers.tasks.maintenance_tasks",
     "app.workers.tasks.pcap_tasks",
     "app.workers.tasks.email_tasks",
+    "app.workers.tasks.billing_tasks",
 ]
 
 # Registrar signal handlers para logging de task events
@@ -68,5 +69,9 @@ celery_app.conf.beat_schedule = {
     "downgrade-expired-trials": {
         "task": "app.workers.tasks.maintenance_tasks.downgrade_expired_trials",
         "schedule": settings.DOWNGRADE_EXPIRED_TRIALS_HOURS * 3600,
+    },
+    "reconcile-seat-quantities": {
+        "task": "app.workers.tasks.billing_tasks.reconcile_seat_quantities",
+        "schedule": settings.SEAT_RECONCILIATION_HOURS * 3600,
     },
 }

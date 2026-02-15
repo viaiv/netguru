@@ -30,6 +30,8 @@ class PlanCreate(BaseModel):
     stripe_price_id: Optional[str] = None
     price_cents: int = Field(default=0, ge=0)
     billing_period: str = Field(default="monthly", pattern="^(monthly|yearly)$")
+    max_members: int = Field(default=1, ge=1)
+    price_per_extra_seat_cents: int = Field(default=0, ge=0)
     upload_limit_daily: int = Field(default=10, ge=0)
     max_file_size_mb: int = Field(default=100, ge=1)
     max_conversations_daily: int = Field(default=50, ge=0)
@@ -45,6 +47,8 @@ class PlanUpdate(BaseModel):
     stripe_price_id: Optional[str] = None
     price_cents: Optional[int] = Field(None, ge=0)
     billing_period: Optional[str] = Field(None, pattern="^(monthly|yearly)$")
+    max_members: Optional[int] = Field(None, ge=1)
+    price_per_extra_seat_cents: Optional[int] = Field(None, ge=0)
     upload_limit_daily: Optional[int] = Field(None, ge=0)
     max_file_size_mb: Optional[int] = Field(None, ge=1)
     max_conversations_daily: Optional[int] = Field(None, ge=0)
@@ -64,6 +68,8 @@ class PlanResponse(BaseModel):
     stripe_price_id: Optional[str]
     price_cents: int
     billing_period: str
+    max_members: int
+    price_per_extra_seat_cents: int
     upload_limit_daily: int
     max_file_size_mb: int
     max_conversations_daily: int
@@ -88,6 +94,7 @@ class SubscriptionResponse(BaseModel):
     stripe_customer_id: Optional[str]
     stripe_subscription_id: Optional[str]
     status: str
+    seat_quantity: int = 1
     current_period_start: Optional[datetime]
     current_period_end: Optional[datetime]
     cancel_at_period_end: bool

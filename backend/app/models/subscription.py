@@ -4,7 +4,7 @@ Subscription model — workspace-plan relationship with Stripe billing.
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID as SQLAlchemyUUID
 from sqlalchemy.orm import relationship
 
@@ -35,6 +35,11 @@ class Subscription(Base):
     # Stripe IDs
     stripe_customer_id = Column(String(255), nullable=True, index=True)
     stripe_subscription_id = Column(String(255), nullable=True, unique=True, index=True)
+
+    # Seat billing
+    seat_quantity = Column(
+        Integer, nullable=False, default=1, comment="Quantity billed on Stripe"
+    )
 
     # Status
     status = Column(

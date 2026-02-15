@@ -19,11 +19,14 @@ from app.schemas.admin import (
     CustomerPortalResponse,
 )
 from app.schemas.billing import (
+    SeatInfoResponse,
     SubscriptionDetail,
+    UpdateSeatsRequest,
     UsageTodayResponse,
     UserSubscriptionPlan,
     UserSubscriptionResponse,
 )
+from app.services.seat_service import SeatService
 from app.services.subscription_service import (
     StripeNotConfiguredError,
     SubscriptionService,
@@ -138,12 +141,49 @@ async def get_my_subscription(
         tokens_today=ws_usage["tokens_total"],
     )
 
+    # Build seat info for plans with max_members > 1
+    seat_info_data = None
+    if plan.max_members > 1:
+        seat_svc = SeatService(db)
+        raw = await seat_svc.get_seat_info(workspace)
+        if raw:
+            seat_info_data = SeatInfoResponse(**raw)
+
     return UserSubscriptionResponse(
         has_subscription=subscription is not None,
         plan=plan_data,
         subscription=sub_data,
         usage_today=usage_data,
+        seat_info=seat_info_data,
     )
+
+
+@router.post("/seats", response_model=SeatInfoResponse)
+async def update_seats(
+    body: UpdateSeatsRequest,
+    current_user: User = Depends(get_current_user),
+    workspace: Workspace = Depends(get_current_workspace),
+    db: AsyncSession = Depends(get_db),
+) -> SeatInfoResponse:
+    """Pre-purchase seats — owner/admin only. Updates Stripe quantity with proration."""
+    svc = await _get_subscription_service(db)
+    try:
+        await svc.update_seat_quantity(db, workspace, body.quantity)
+        await db.commit()
+    except SubscriptionServiceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.detail,
+        ) from exc
+
+    seat_svc = SeatService(db)
+    raw = await seat_svc.get_seat_info(workspace)
+    if raw is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Seu plano nao suporta gerenciamento de assentos.",
+        )
+    return SeatInfoResponse(**raw)
 
 
 @router.post("/webhook", status_code=status.HTTP_200_OK)

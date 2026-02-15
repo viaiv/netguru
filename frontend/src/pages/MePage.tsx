@@ -10,6 +10,7 @@ import { dispatchAuthLogout } from '../services/authEvents';
 import {
   createPortalSession,
   fetchMySubscription,
+  type ISeatInfo,
   type IUserSubscription,
 } from '../services/billingApi';
 
@@ -323,6 +324,38 @@ function MePage() {
                   );
                 })}
               </div>
+
+              {/* Seat info for Team/Enterprise */}
+              {subscription.seat_info && (
+                <>
+                  <div className="view-head" style={{ marginTop: '1.5rem' }}>
+                    <p className="eyebrow">Assentos</p>
+                    <h2 className="view-title">Gerenciamento de assentos</h2>
+                  </div>
+                  <div className="kv-grid">
+                    <article className="kv-card">
+                      <p className="kv-label">Inclusos no plano</p>
+                      <p className="kv-value">{subscription.seat_info.max_members_included}</p>
+                    </article>
+                    <article className="kv-card">
+                      <p className="kv-label">Membros ativos</p>
+                      <p className="kv-value">{subscription.seat_info.current_members}</p>
+                    </article>
+                    <article className="kv-card">
+                      <p className="kv-label">Assentos cobrados</p>
+                      <p className="kv-value">{subscription.seat_info.seats_billed}</p>
+                    </article>
+                    <article className="kv-card">
+                      <p className="kv-label">Extras</p>
+                      <p className="kv-value">
+                        {subscription.seat_info.extra_seats > 0
+                          ? `${subscription.seat_info.extra_seats} (R$ ${(subscription.seat_info.extra_seat_price_cents / 100).toFixed(2).replace('.', ',')}/cada)`
+                          : 'Nenhum'}
+                      </p>
+                    </article>
+                  </div>
+                </>
+              )}
 
               <div className="button-row" style={{ marginTop: '1rem' }}>
                 <button

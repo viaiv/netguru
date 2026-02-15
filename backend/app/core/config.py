@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     HEALTH_CHECK_MINUTES: int = 5
     STALE_EMBEDDINGS_HOURS: int = 12
     DOWNGRADE_EXPIRED_TRIALS_HOURS: int = 1
+    SEAT_RECONCILIATION_HOURS: int = 6
     ORPHAN_UPLOAD_AGE_HOURS: int = 72
     
     # File Upload

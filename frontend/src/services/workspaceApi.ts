@@ -24,9 +24,19 @@ export interface IWorkspaceMember {
   joined_at: string;
 }
 
+export interface IWorkspaceSeatInfo {
+  max_members_included: number;
+  current_members: number;
+  seats_billed: number;
+  extra_seats: number;
+  extra_seat_price_cents: number;
+  can_invite: boolean;
+}
+
 export interface IWorkspaceDetail extends IWorkspaceResponse {
   members: IWorkspaceMember[];
   member_count: number;
+  seat_info: IWorkspaceSeatInfo | null;
 }
 
 /* ------------------------------------------------------------------ */
