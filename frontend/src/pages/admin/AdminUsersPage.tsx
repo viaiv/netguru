@@ -91,6 +91,7 @@ function AdminUsersPage() {
           <span className="admin-filter-bar__label">Plano</span>
           <select value={tierFilter} onChange={(e) => setTierFilter(e.target.value)}>
             <option value="">Todos</option>
+            <option value="free">Free</option>
             <option value="solo">Solo</option>
             <option value="team">Team</option>
             <option value="enterprise">Enterprise</option>

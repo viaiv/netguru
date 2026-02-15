@@ -2824,6 +2824,12 @@ textarea:focus {
   color: var(--ink-soft);
 }
 
+.chip--tier-free {
+  background: rgba(var(--ink-rgb), 0.08);
+  border-color: rgba(var(--ink-rgb), 0.2);
+  color: var(--ink-soft);
+}
+
 .chip--tier-solo {
   background: rgba(var(--accent-rgb), 0.15);
   border-color: rgba(var(--accent-rgb), 0.4);

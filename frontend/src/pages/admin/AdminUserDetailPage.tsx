@@ -158,6 +158,7 @@ function AdminUserDetailPage() {
             <div className="admin-actions__group">
               <label>Alterar Plano</label>
               <select value={user.plan_tier} onChange={(e) => handleTierChange(e.target.value)}>
+                <option value="free">Free</option>
                 <option value="solo">Solo</option>
                 <option value="team">Team</option>
                 <option value="enterprise">Enterprise</option>

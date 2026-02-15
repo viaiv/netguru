@@ -251,7 +251,7 @@ class AdminUserDetailResponse(AdminUserListItem):
 class AdminUserUpdate(BaseModel):
     role: Optional[str] = Field(None, pattern="^(owner|admin|member|viewer)$")
     is_active: Optional[bool] = None
-    plan_tier: Optional[str] = Field(None, pattern="^(solo|team|enterprise)$")
+    plan_tier: Optional[str] = Field(None, pattern="^(free|solo|team|enterprise)$")
 
 
 # ---------------------------------------------------------------------------
