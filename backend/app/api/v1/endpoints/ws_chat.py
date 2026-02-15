@@ -148,6 +148,10 @@ async def websocket_chat(
                     await websocket.send_json({"type": "pong"})
                     continue
 
+                if msg_type == "cancel":
+                    # Cancel fora de streaming ativo — ignorar silenciosamente
+                    continue
+
                 if msg_type == "message":
                     content = data.get("content", "").strip()
                     if not content:
