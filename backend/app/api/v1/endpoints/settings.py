@@ -28,6 +28,7 @@ from app.schemas.admin import (
     SystemSettingResponse,
     SystemSettingUpdate,
 )
+from app.services.llm_model_resolver_service import LLMModelResolverService
 from app.services.email_template_service import EmailTemplateService
 from app.services.system_settings_service import SystemSettingsService
 
@@ -185,7 +186,11 @@ async def test_free_llm(
         )
 
     provider_name = (await SystemSettingsService.get(db, "free_llm_provider")) or "google"
-    model = (await SystemSettingsService.get(db, "free_llm_model")) or "gemini-2.0-flash"
+    model = await LLMModelResolverService.resolve_model(
+        db,
+        provider_name,
+        legacy_keys=("free_llm_model",),
+    )
 
     try:
         provider = create_llm_provider(provider_name, api_key)

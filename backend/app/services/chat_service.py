@@ -23,6 +23,7 @@ from app.services.attachment_context_service import (
     AttachmentContextService,
     ResolvedAttachment,
 )
+from app.services.llm_model_resolver_service import LLMModelResolverService
 from app.services.llm_client import LLMProviderError
 from app.services.memory_service import MemoryContextResolution, MemoryService
 from app.services.system_settings_service import SystemSettingsService
@@ -255,10 +256,12 @@ class ChatService:
         # 7. Build tools + fallback plan
         try:
             model_override = conversation.model_used
-            if using_free_llm and not model_override:
-                model_override = (
-                    await SystemSettingsService.get(self._db, "free_llm_model")
-                ) or settings.DEFAULT_LLM_MODEL_GOOGLE
+            if not model_override:
+                model_override = await LLMModelResolverService.resolve_model(
+                    self._db,
+                    provider_name,
+                    legacy_keys=("free_llm_model",) if using_free_llm else (),
+                )
             tools = get_agent_tools(
                 db=self._db,
                 user_id=user.id,
@@ -1004,7 +1007,11 @@ class ChatService:
         normalized_primary_provider = primary_provider.lower().strip()
         resolved_primary_model = (
             primary_model
-            or self._default_model_for_provider(normalized_primary_provider)
+            or await LLMModelResolverService.resolve_model(
+                self._db,
+                normalized_primary_provider,
+                legacy_keys=("free_llm_model",) if using_free_llm else (),
+            )
         )
         _add_attempt(
             provider_name=normalized_primary_provider,
@@ -1013,7 +1020,11 @@ class ChatService:
             source="primary",
         )
 
-        default_primary_model = self._default_model_for_provider(normalized_primary_provider)
+        default_primary_model = await LLMModelResolverService.resolve_model(
+            self._db,
+            normalized_primary_provider,
+            legacy_keys=("free_llm_model",) if using_free_llm else (),
+        )
         if (
             resolved_primary_model
             and default_primary_model
@@ -1035,9 +1046,11 @@ class ChatService:
             free_primary_provider = (
                 await _safe_get_setting("free_llm_provider")
             ) or "google"
-            free_primary_model = (
-                await _safe_get_setting("free_llm_model")
-            ) or self._default_model_for_provider(free_primary_provider)
+            free_primary_model = await LLMModelResolverService.resolve_model(
+                self._db,
+                free_primary_provider,
+                legacy_keys=("free_llm_model",),
+            )
 
         if not using_free_llm and free_primary_key and free_primary_provider:
             _add_attempt(
@@ -1057,10 +1070,19 @@ class ChatService:
                 or (primary_api_key if using_free_llm else None)
             )
             if resolved_secondary_key:
+                resolved_secondary_model = (
+                    secondary_model.strip()
+                    if secondary_model and secondary_model.strip()
+                    else await LLMModelResolverService.resolve_model(
+                        self._db,
+                        secondary_provider,
+                        legacy_keys=("free_llm_fallback_model",),
+                    )
+                )
                 _add_attempt(
                     provider_name=secondary_provider,
                     api_key=resolved_secondary_key,
-                    model=secondary_model,
+                    model=resolved_secondary_model,
                     source="fallback_secondary",
                 )
 
@@ -1075,16 +1097,7 @@ class ChatService:
 
     @staticmethod
     def _default_model_for_provider(provider_name: str) -> str:
-        mapping = {
-            "openai": settings.DEFAULT_LLM_MODEL_OPENAI,
-            "anthropic": settings.DEFAULT_LLM_MODEL_ANTHROPIC,
-            "azure": settings.DEFAULT_LLM_MODEL_AZURE,
-            "google": settings.DEFAULT_LLM_MODEL_GOOGLE,
-            "groq": settings.DEFAULT_LLM_MODEL_GROQ,
-            "deepseek": settings.DEFAULT_LLM_MODEL_DEEPSEEK,
-            "openrouter": settings.DEFAULT_LLM_MODEL_OPENROUTER,
-        }
-        return mapping.get(provider_name.lower().strip(), settings.DEFAULT_LLM_MODEL_GOOGLE)
+        return LLMModelResolverService.default_model_for_provider(provider_name)
 
     @staticmethod
     def _build_llm_attempt_audit_entry(

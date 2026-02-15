@@ -110,6 +110,16 @@ const STRIPE_SETTINGS_KEYS: SettingDef[] = [
   },
 ];
 
+const LLM_PROVIDER_OPTIONS = [
+  { value: 'google', label: 'Google (Gemini)' },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'anthropic', label: 'Anthropic (Claude)' },
+  { value: 'azure', label: 'Azure OpenAI' },
+  { value: 'groq', label: 'Groq' },
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'openrouter', label: 'OpenRouter' },
+] as const;
+
 const FREE_LLM_SETTINGS_KEYS: SettingDef[] = [
   {
     key: 'free_llm_enabled',
@@ -122,15 +132,7 @@ const FREE_LLM_SETTINGS_KEYS: SettingDef[] = [
     label: 'Provider',
     description: 'Provedor LLM usado no fallback gratuito',
     type: 'select',
-    options: [
-      { value: 'google', label: 'Google (Gemini)' },
-      { value: 'openai', label: 'OpenAI' },
-      { value: 'anthropic', label: 'Anthropic (Claude)' },
-      { value: 'azure', label: 'Azure OpenAI' },
-      { value: 'groq', label: 'Groq' },
-      { value: 'deepseek', label: 'DeepSeek' },
-      { value: 'openrouter', label: 'OpenRouter' },
-    ],
+    options: [...LLM_PROVIDER_OPTIONS],
   },
   {
     key: 'free_llm_api_key',
@@ -138,10 +140,58 @@ const FREE_LLM_SETTINGS_KEYS: SettingDef[] = [
     description: 'Chave de API do provedor gratuito (criptografada)',
     type: 'password',
   },
+];
+
+const LLM_PROVIDER_MODEL_SETTINGS_KEYS: SettingDef[] = [
+  {
+    key: 'llm_default_model_openai',
+    label: 'Modelo default OpenAI',
+    description: 'Modelo padrao para OpenAI (fallback e BYO quando nao houver override)',
+    type: 'text',
+  },
+  {
+    key: 'llm_default_model_anthropic',
+    label: 'Modelo default Anthropic',
+    description: 'Modelo padrao para Anthropic (fallback e BYO quando nao houver override)',
+    type: 'text',
+  },
+  {
+    key: 'llm_default_model_azure',
+    label: 'Modelo default Azure OpenAI',
+    description: 'Modelo padrao para Azure (fallback e BYO quando nao houver override)',
+    type: 'text',
+  },
+  {
+    key: 'llm_default_model_google',
+    label: 'Modelo default Google',
+    description: 'Modelo padrao para Google (fallback e BYO quando nao houver override)',
+    type: 'text',
+  },
+  {
+    key: 'llm_default_model_groq',
+    label: 'Modelo default Groq',
+    description: 'Modelo padrao para Groq (fallback e BYO quando nao houver override)',
+    type: 'text',
+  },
+  {
+    key: 'llm_default_model_deepseek',
+    label: 'Modelo default DeepSeek',
+    description: 'Modelo padrao para DeepSeek (fallback e BYO quando nao houver override)',
+    type: 'text',
+  },
+  {
+    key: 'llm_default_model_openrouter',
+    label: 'Modelo default OpenRouter',
+    description: 'Modelo padrao para OpenRouter (fallback e BYO quando nao houver override)',
+    type: 'text',
+  },
+];
+
+const LEGACY_FREE_LLM_SETTINGS_KEYS: SettingDef[] = [
   {
     key: 'free_llm_model',
-    label: 'Modelo',
-    description: 'Nome do modelo (ex: gemini-2.0-flash)',
+    label: 'Modelo fallback legado',
+    description: 'Compatibilidade com configuracao antiga (usado se o modelo por provider nao existir)',
     type: 'text',
   },
 ];
@@ -199,7 +249,13 @@ function AdminSettingsPage() {
   function currentKeys(): SettingDef[] {
     if (activeTab === 'email') return EMAIL_SETTINGS_KEYS;
     if (activeTab === 'stripe') return STRIPE_SETTINGS_KEYS;
-    if (activeTab === 'llm') return FREE_LLM_SETTINGS_KEYS;
+    if (activeTab === 'llm') {
+      return [
+        ...FREE_LLM_SETTINGS_KEYS,
+        ...LLM_PROVIDER_MODEL_SETTINGS_KEYS,
+        ...LEGACY_FREE_LLM_SETTINGS_KEYS,
+      ];
+    }
     return R2_SETTINGS_KEYS;
   }
 
@@ -440,8 +496,13 @@ function AdminSettingsPage() {
         {/* LLM Gratuito tab */}
         {activeTab === 'llm' && (
           <div className="admin-card">
-            <h3 className="admin-card__title">LLM Gratuito (Fallback)</h3>
+            <h3 className="admin-card__title">LLM Gratuito (Fallback + Defaults por Provider)</h3>
+            <p className="text-muted" style={{ marginBottom: 12 }}>
+              Os modelos abaixo valem para fallback gratuito e para BYO-LLM quando nao houver override explicito na conversa.
+            </p>
             {FREE_LLM_SETTINGS_KEYS.map(renderField)}
+            {LLM_PROVIDER_MODEL_SETTINGS_KEYS.map(renderField)}
+            {LEGACY_FREE_LLM_SETTINGS_KEYS.map(renderField)}
             <div className="button-row" style={{ gap: 12 }}>
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving ? 'Salvando...' : 'Salvar'}

@@ -84,6 +84,9 @@ def patch_chat_primitives(
     async def _fake_increment_messages(_db, _user_id, _count=1):  # noqa: ANN001, ANN202
         return None
 
+    async def _fake_check_message_limit(_db, _user):  # noqa: ANN001, ANN202
+        return None
+
     monkeypatch.setattr(ChatService, "_get_owned_conversation", _fake_get_owned_conversation)
     monkeypatch.setattr(ChatService, "_load_history", _fake_load_history)
     monkeypatch.setattr(ChatService, "_resolve_attachment_context", _fake_resolve_attachment_context)
@@ -91,6 +94,10 @@ def patch_chat_primitives(
     monkeypatch.setattr(
         "app.services.chat_service.UsageTrackingService.increment_messages",
         _fake_increment_messages,
+    )
+    monkeypatch.setattr(
+        "app.services.chat_service.PlanLimitService.check_message_limit",
+        _fake_check_message_limit,
     )
     monkeypatch.setattr("app.services.chat_service.decrypt_api_key", lambda _value: "plain-key")
     monkeypatch.setattr("app.services.chat_service.get_agent_tools", lambda **_kwargs: [])
@@ -158,6 +165,7 @@ async def test_chat_service_fallbacks_to_secondary_attempt_on_transient_llm_fail
             api_key: str,  # noqa: ARG002
             model: str | None = None,
             tools=None,  # noqa: ANN001, ARG002
+            plan_tier: str | None = None,  # noqa: ARG002
         ) -> None:
             attempted.append((provider_name, model))
             self._provider_name = provider_name
@@ -254,6 +262,7 @@ async def test_chat_service_does_not_fallback_on_non_eligible_llm_error(
             api_key: str,  # noqa: ARG002
             model: str | None = None,
             tools=None,  # noqa: ANN001, ARG002
+            plan_tier: str | None = None,  # noqa: ARG002
         ) -> None:
             attempted.append((provider_name, model))
 
