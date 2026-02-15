@@ -21,6 +21,7 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     # Reliability
+    broker_connection_retry_on_startup=True,
     task_acks_late=True,
     worker_prefetch_multiplier=1,
     # Limites
