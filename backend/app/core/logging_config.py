@@ -1,11 +1,10 @@
 """
 Logging configuration — file + console output for development.
 
-In dev (DEBUG=True): logs go to console AND backend/logs/netguru.log
+In dev (DEBUG=True): logs go to console AND backend/logs/netguru.log (if writable)
 In production: console only (container orchestrators capture stdout).
 """
 import logging
-import os
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -40,16 +39,26 @@ def setup_logging() -> None:
 
     # File handler (dev only)
     if settings.DEBUG:
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
-        file_handler = RotatingFileHandler(
-            LOG_FILE,
-            maxBytes=MAX_BYTES,
-            backupCount=BACKUP_COUNT,
-            encoding="utf-8",
-        )
-        file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(logging.Formatter(FILE_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"))
-        root.addHandler(file_handler)
+        try:
+            LOG_DIR.mkdir(parents=True, exist_ok=True)
+            file_handler = RotatingFileHandler(
+                LOG_FILE,
+                maxBytes=MAX_BYTES,
+                backupCount=BACKUP_COUNT,
+                encoding="utf-8",
+            )
+            file_handler.setLevel(logging.DEBUG)
+            file_handler.setFormatter(
+                logging.Formatter(FILE_FORMAT, datefmt="%Y-%m-%d %H:%M:%S")
+            )
+            root.addHandler(file_handler)
+        except OSError as exc:
+            # Keep app startup healthy in read-only/non-writable containers.
+            root.warning(
+                "File logging disabled: cannot write to %s (%s)",
+                LOG_FILE,
+                exc,
+            )
 
     # Silence noisy third-party loggers
     for noisy in ("httpcore", "httpx", "hpack", "urllib3", "asyncio"):
