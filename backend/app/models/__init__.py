@@ -19,10 +19,12 @@ from app.models.network_memory import NetworkMemory
 from app.models.system_memory import SystemMemory
 from app.models.rag_gap_event import RagGapEvent
 from app.models.llm_model import LlmModel
+from app.models.topology import Topology
 from app.models.workspace import Workspace, WorkspaceMember
 
 __all__ = [
     "LlmModel",
+    "Topology",
     "User",
     "Workspace",
     "WorkspaceMember",

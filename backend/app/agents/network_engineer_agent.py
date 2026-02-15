@@ -7,12 +7,15 @@ antes de responder, seguindo o padrao ReAct (Reason → Act → Observe).
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from contextlib import suppress
 from typing import AsyncGenerator
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
+logger = logging.getLogger(__name__)
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
@@ -307,6 +310,8 @@ class NetworkEngineerAgent:
         tool_ids_by_name: dict[str, list[str]] = {}
         total_input_tokens = 0
         total_output_tokens = 0
+        text_chunks_emitted = 0
+        event_count = 0
         events_iter = self._compiled.astream_events(
             {"messages": lc_messages},
             version="v2",
@@ -355,12 +360,35 @@ class NetworkEngineerAgent:
                 next_event_task = asyncio.create_task(events_iter.__anext__())
 
                 kind = event.get("event")
+                event_count += 1
 
                 if kind == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
                     if chunk and isinstance(chunk, AIMessage):
-                        if chunk.content and isinstance(chunk.content, str):
-                            yield {"type": "text", "content": chunk.content}
+                        content = chunk.content
+                        if content and isinstance(content, str):
+                            text_chunks_emitted += 1
+                            yield {"type": "text", "content": content}
+                        elif isinstance(content, list):
+                            # Anthropic pode retornar content como lista de blocos
+                            for block in content:
+                                if isinstance(block, dict) and block.get("type") == "text":
+                                    text = block.get("text", "")
+                                    if text:
+                                        text_chunks_emitted += 1
+                                        yield {"type": "text", "content": text}
+                                elif isinstance(block, str) and block:
+                                    text_chunks_emitted += 1
+                                    yield {"type": "text", "content": block}
+                            if not any(
+                                (isinstance(b, dict) and b.get("type") == "text")
+                                or isinstance(b, str)
+                                for b in content
+                            ):
+                                logger.debug(
+                                    "on_chat_model_stream list content without text blocks: %s",
+                                    [b.get("type") if isinstance(b, dict) else type(b).__name__ for b in content],
+                                )
 
                 elif kind == "on_tool_start":
                     tool_name = event.get("name", "unknown")
@@ -419,6 +447,13 @@ class NetworkEngineerAgent:
                 next_event_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await next_event_task
+
+        logger.info(
+            "agent_stream_done events=%d text_chunks=%d tool_states=%d tokens_in=%d tokens_out=%d",
+            event_count, text_chunks_emitted, len(tool_state), total_input_tokens, total_output_tokens,
+        )
+        if text_chunks_emitted == 0:
+            logger.warning("agent_stream_done ZERO text chunks emitted — response will be empty")
 
         total_tokens = total_input_tokens + total_output_tokens
         if total_tokens > 0:

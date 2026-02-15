@@ -353,12 +353,21 @@ class ChatService:
         total_tokens_used: int = 0
 
         total_attempts = len(llm_attempts)
+        logger.info(
+            "chat_stream user=%s conv=%s attempts=%d providers=%s",
+            user.id, conversation_id, total_attempts,
+            [(a.get("provider_name"), a.get("model"), a.get("source")) for a in llm_attempts],
+        )
         for attempt_index, llm_attempt in enumerate(llm_attempts):
             attempt_started_at = time.monotonic()
             output_emitted = False
             attempt_provider = str(llm_attempt.get("provider_name", "unknown"))
             attempt_model = llm_attempt.get("model")
             attempt_source = str(llm_attempt.get("source", "unknown"))
+            logger.debug(
+                "chat_stream attempt=%d/%d provider=%s model=%s source=%s",
+                attempt_index + 1, total_attempts, attempt_provider, attempt_model, attempt_source,
+            )
 
             try:
                 agent = NetworkEngineerAgent(
@@ -562,6 +571,20 @@ class ChatService:
                         total_tokens_used += int(event.get("total_tokens", 0) or 0)
 
                 attempt_duration_ms = int((time.monotonic() - attempt_started_at) * 1000)
+                if not accumulated:
+                    logger.warning(
+                        "chat_stream EMPTY_RESPONSE user=%s conv=%s provider=%s model=%s "
+                        "tool_calls=%d tokens=%d duration_ms=%d",
+                        user.id, conversation_id, attempt_provider, attempt_model,
+                        len(tool_calls_log), total_tokens_used, attempt_duration_ms,
+                    )
+                else:
+                    logger.info(
+                        "chat_stream ok user=%s conv=%s provider=%s model=%s "
+                        "chars=%d tool_calls=%d tokens=%d duration_ms=%d",
+                        user.id, conversation_id, attempt_provider, attempt_model,
+                        len(accumulated), len(tool_calls_log), total_tokens_used, attempt_duration_ms,
+                    )
                 llm_attempt_audit.append(
                     self._build_llm_attempt_audit_entry(
                         provider_name=attempt_provider,

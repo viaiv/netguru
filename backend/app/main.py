@@ -2,14 +2,20 @@
 NetGuru - AI-Powered Agentic Network Operations Platform
 FastAPI Application Entry Point
 """
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.core.config import settings
+from app.core.logging_config import setup_logging
 from app.core.redis import close_redis_client
 from app.api.v1 import api_router
+
+# Configure logging before anything else
+setup_logging()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -19,15 +25,13 @@ async def lifespan(app: FastAPI):
     Handles startup and shutdown logic.
     """
     # Startup
-    print(f"🚀 {settings.APP_NAME} v{settings.APP_VERSION} starting...")
-    print(f"📝 Environment: {settings.ENVIRONMENT}")
-    print(f"🔒 Debug Mode: {settings.DEBUG}")
+    logger.info("%s v%s starting — env=%s debug=%s", settings.APP_NAME, settings.APP_VERSION, settings.ENVIRONMENT, settings.DEBUG)
     
     yield
-    
+
     # Shutdown
     await close_redis_client()
-    print(f"👋 {settings.APP_NAME} shutting down...")
+    logger.info("%s shutting down...", settings.APP_NAME)
 
 
 # Initialize FastAPI app

@@ -41,6 +41,10 @@ celery_app.conf.include = [
     "app.workers.tasks.billing_tasks",
 ]
 
+# Garantir que todos os models SQLAlchemy sao importados antes de qualquer task
+# rodar, evitando falha de mapper initialization (ex: Topology nao encontrado).
+import app.models  # noqa: F401, E402
+
 # Registrar signal handlers para logging de task events
 import app.workers.signals  # noqa: F401, E402
 
