@@ -42,12 +42,15 @@ class Conversation(Base):
         nullable=False,
     )
 
+    __mapper_args__ = {"confirm_deleted_rows": False}
+
     user = relationship("User", back_populates="conversations")
     workspace = relationship("Workspace", back_populates="conversations")
     messages = relationship(
         "Message",
         back_populates="conversation",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     def __repr__(self) -> str:

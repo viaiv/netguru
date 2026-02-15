@@ -65,6 +65,7 @@ class Workspace(Base):
     conversations = relationship(
         "Conversation",
         back_populates="workspace",
+        passive_deletes=True,
     )
     usage_metrics = relationship(
         "UsageMetric",
