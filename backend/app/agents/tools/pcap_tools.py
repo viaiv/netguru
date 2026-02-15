@@ -40,8 +40,9 @@ def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
             doc_uuid = None
 
         try:
+            document = None
             if doc_uuid is not None:
-                # Busca por UUID
+                # Busca por UUID + user_id
                 result = await db.execute(
                     select(Document).where(
                         Document.id == doc_uuid,
@@ -49,6 +50,13 @@ def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
                     )
                 )
                 document = result.scalar_one_or_none()
+
+                # Fallback: buscar sem user_id (doc pode ter user_id NULL ou mismatch)
+                if document is None:
+                    result = await db.execute(
+                        select(Document).where(Document.id == doc_uuid)
+                    )
+                    document = result.scalar_one_or_none()
             else:
                 # Fallback: busca por filename (LLM pode passar nome ao inves de UUID)
                 result = await db.execute(
@@ -63,9 +71,22 @@ def create_analyze_pcap_tool(db: AsyncSession, user_id: UUID) -> StructuredTool:
                 )
                 document = result.scalar_one_or_none()
 
+                # Fallback: buscar sem user_id
+                if document is None:
+                    result = await db.execute(
+                        select(Document)
+                        .where(
+                            Document.original_filename == document_id,
+                            Document.file_type.in_(("pcap", "pcapng")),
+                        )
+                        .order_by(Document.created_at.desc())
+                        .limit(1)
+                    )
+                    document = result.scalar_one_or_none()
+
             if not document:
                 return (
-                    f"Document '{document_id}' not found or does not belong to you."
+                    f"Document '{document_id}' not found."
                 )
 
             if document.file_type not in ("pcap", "pcapng"):

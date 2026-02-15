@@ -121,6 +121,9 @@ class ToolGuardrailService:
                 if len(kwargs) == 1 and not getattr(tool, "args_schema", None):
                     payload = next(iter(kwargs.values()))
                 result = await tool.ainvoke(payload)
+                # ainvoke pode retornar ToolMessage; extrair .content nesse caso
+                if hasattr(result, "content"):
+                    return str(result.content)
                 return str(result)
             except Exception as exc:  # pragma: no cover - defensive fallback
                 return f"Error executing tool '{tool.name}': {exc}"
