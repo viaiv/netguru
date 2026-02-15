@@ -8,18 +8,14 @@
 > **⚠️ Manutenção**: Se qualquer procedimento documentado aqui estiver desatualizado, sugira correções e atualize este arquivo.
 
 > **📝 CHECKPOINT TEMPORÁRIO (REMOVER NA PRÓXIMA SESSÃO):**
-> Hardening de seguranca — todas as issues SEC fechadas:
-> - **RBAC billing**: checkout/portal/seats exigem `workspace:billing_manage` (owner/admin)
-> - **Webhook Stripe**: fail-fast se `stripe_webhook_secret` vazio
-> - **IDOR PCAP**: `analyze_pcap` escopado por `workspace_id`, fallbacks sem escopo removidos
-> - **SSRF URL ingestion**: validacao DNS + bloqueio IP privado/reservado + revalidacao em redirects
-> - **DELETE api-keys**: permissao corrigida para `API_KEYS_UPDATE_SELF`
-> - **model_used**: validado contra catalogo `llm_models` ativo (criacao + runtime)
-> - **WS ticket efemero**: `POST /auth/ws-ticket` (30s, one-time use) — WS aceita `?ticket=` ou `?token=`
-> - **Rate limiting**: Redis-backed em login (10/min), refresh (20/min), forgot-password (5/min)
-> - **Erros sanitizados**: cliente recebe mensagem generica, `str(exc)` fica nos logs
-> - **CORS R2**: usa `cors_origins_list` do settings em vez de wildcard
-> - **Modelo oculto no chat**: provider/modelo nao exibido quando usa LLM do sistema
+> Sprint 13 — Brainwork Crawler para RAG Global:
+> - **BrainworkCrawlerService**: crawlea sitemap XML do brainwork.com.br, filtra posts, dedup via `document_metadata.source_url`
+> - **Reutiliza UrlIngestionService**: SSRF check, download, BS4 extraction, Document creation
+> - **Metadata enriquecida**: `source=brainwork`, `category=community`, `ingestion_method=crawler`
+> - **Task Celery**: `crawl_brainwork_blog` com beat schedule (24h), autoretry
+> - **Endpoint admin**: `POST /admin/rag/crawl-brainwork` com audit log
+> - **Frontend**: botao "Executar Crawler" na aba RAG Global do AdminRagPage
+> - **Config**: `BRAINWORK_CRAWL_HOURS=24`, `BRAINWORK_CRAWL_MAX_PAGES=50`, `BRAINWORK_CRAWL_DELAY_SECONDS=1.0`
 
 ---
 
@@ -628,6 +624,7 @@ GET  /api/v1/admin/llm-models     # 📋 Catalogo de modelos LLM
 POST /api/v1/admin/llm-models     # ➕ Criar modelo no catalogo
 PATCH /api/v1/admin/llm-models/:id # ✏️ Editar modelo
 DELETE /api/v1/admin/llm-models/:id # 🗑️ Remover modelo
+POST /api/v1/admin/rag/crawl-brainwork # 🕷️ Crawler Brainwork (trigger manual)
 ```
 
 ### Troubleshooting Comum
@@ -814,6 +811,22 @@ DELETE /api/v1/admin/llm-models/:id # 🗑️ Remover modelo
 - [x] **P2 #48**: CORS R2 usa `cors_origins_list` do settings, warning se wildcard
 - [ ] Testes unitarios para rate limiter e RBAC billing
 - [ ] Testes de integracao para WS ticket efemero
+
+### Sprint 13 (Brainwork Crawler) - ✅ Completo
+- [x] BrainworkCrawlerService: sitemap XML parsing + filtro de posts (`YYYY/MM/DD/slug`)
+- [x] Dedup via query `document_metadata.source_url LIKE '%brainwork.com.br%'`
+- [x] Reuso de UrlIngestionService (SSRF check, download, BS4 extraction)
+- [x] Metadata enriquecida: `source=brainwork`, `category=community`, `ingestion_method=crawler`
+- [x] Disparo automatico de `process_document.delay()` para chunking + embedding
+- [x] Rate limiting entre requests (`asyncio.sleep` configuravel)
+- [x] Task Celery `crawl_brainwork_blog` com beat schedule (a cada 24h)
+- [x] Config: `BRAINWORK_CRAWL_HOURS`, `BRAINWORK_CRAWL_MAX_PAGES`, `BRAINWORK_CRAWL_DELAY_SECONDS`
+- [x] Endpoint `POST /admin/rag/crawl-brainwork` com `ADMIN_RAG_MANAGE` + audit log
+- [x] Schemas: `BrainworkCrawlRequest`, `BrainworkCrawlResponse`
+- [x] Frontend: botao "Executar Crawler" na aba RAG Global do AdminRagPage
+- [x] Frontend: exibicao de resultado (URLs, novas, ingeridas, falhas, erros)
+- [ ] Testes unitarios para BrainworkCrawlerService
+- [ ] Teste de dedup (rodar crawler 2x sem duplicar)
 
 ---
 
