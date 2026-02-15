@@ -55,6 +55,10 @@ cipher suites, handshakes), VoIP/SIP detection (SIP methods/responses, RTP strea
 For 802.11 Wi-Fi: frame types, deauth/disassoc events with reason codes, retry rate, \
 signal strength (dBm), channels, SSIDs, bandwidth stats, wireless anomaly detection. \
 Use when the user asks about a packet capture they uploaded.
+- generate_topology: Generate a visual network topology diagram from device configurations. \
+Parses Cisco IOS or Juniper configs, extracts devices, interfaces, and neighbor relationships \
+(BGP/OSPF), and builds a graph visualization. Use when the user asks to visualize a network \
+topology, create a network diagram, or map device interconnections from configs.
 
 Guidelines:
 - CRITICAL: For ANY technical networking question (configuration, troubleshooting, protocols, \

@@ -14,6 +14,7 @@ from app.api.v1.endpoints import (
     memories,
     plans,
     settings,
+    topology,
     users,
     ws_chat,
 )
@@ -39,6 +40,7 @@ api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
 api_router.include_router(admin_usage.router, prefix="/admin", tags=["Admin Usage"])
 api_router.include_router(settings.router, prefix="/admin", tags=["Admin Settings"])
 api_router.include_router(billing.router, prefix="/billing", tags=["Billing"])
+api_router.include_router(topology.router, prefix="/topology", tags=["Topology"])
 
 # Future endpoints
 # api_router.include_router(analysis.router, prefix="/analysis", tags=["Analysis"])

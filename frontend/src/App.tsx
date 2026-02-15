@@ -9,6 +9,7 @@ import LoginPage from './pages/LoginPage';
 import MePage from './pages/MePage';
 import MemoriesPage from './pages/MemoriesPage';
 import PcapDashboardPage from './pages/PcapDashboardPage';
+import TopologyPage from './pages/TopologyPage';
 import PricingPage from './pages/PricingPage';
 import RegisterPage from './pages/RegisterPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
@@ -338,6 +339,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <MemoriesPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/topology/:topologyId"
+              element={
+                <ProtectedRoute>
+                  <TopologyPage />
                 </ProtectedRoute>
               }
             />

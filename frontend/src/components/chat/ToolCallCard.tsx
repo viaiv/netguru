@@ -13,6 +13,7 @@ const TOOL_LABELS: Record<string, string> = {
   pre_change_review: 'Executando pre-change review',
   parse_show_commands: 'Analisando saida de comando',
   analyze_pcap: 'Analisando captura de pacotes',
+  generate_topology: 'Gerando topologia de rede',
 };
 
 interface ToolCallCardProps {

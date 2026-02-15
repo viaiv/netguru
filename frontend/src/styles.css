@@ -4719,3 +4719,60 @@ html:has(.pcap-dashboard) #root {
     grid-template-columns: 1fr;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/*  Topology View                                                       */
+/* ------------------------------------------------------------------ */
+
+.topology-view {
+  display: flex;
+  flex-direction: column;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.topology-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(var(--ink-rgb), 0.08);
+  flex-shrink: 0;
+}
+
+.topology-header .view-title {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.topology-header .view-subtitle {
+  font-size: 0.82rem;
+  margin: 4px 0 0;
+}
+
+.topology-stats {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.topology-canvas {
+  flex: 1;
+  min-height: 0;
+}
+
+.topology-canvas .react-flow__node {
+  background: var(--surface);
+  border: 1px solid rgba(var(--ink-rgb), 0.15);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  color: var(--ink);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.topology-canvas .react-flow__edge-text {
+  font-size: 0.7rem;
+  fill: var(--ink-soft);
+}

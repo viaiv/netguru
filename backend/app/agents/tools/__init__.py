@@ -20,6 +20,7 @@ from app.agents.tools.config_tools import (
 )
 from app.agents.tools.show_command_tools import create_parse_show_commands_tool
 from app.agents.tools.pcap_tools import create_analyze_pcap_tool
+from app.agents.tools.topology_tools import create_generate_topology_tool
 from app.services.tool_guardrail_service import ToolGuardrailService
 
 
@@ -54,6 +55,8 @@ def get_agent_tools(
         create_parse_show_commands_tool(),
         # PCAP Analysis (Phase 5-6)
         create_analyze_pcap_tool(db, user_id),
+        # Topology (Phase 5-6)
+        create_generate_topology_tool(db, user_id),
     ]
     guardrails = ToolGuardrailService(
         db=db,
