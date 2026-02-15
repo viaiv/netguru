@@ -63,7 +63,10 @@ const STEPS = [
   },
 ];
 
-function formatPrice(priceCents: number, billingPeriod: string): { price: string; period: string } {
+function formatPrice(priceCents: number, billingPeriod: string, planName: string): { price: string; period: string } {
+  if (priceCents === 0 && planName === 'enterprise') {
+    return { price: 'Sob consulta', period: '' };
+  }
   if (priceCents === 0) {
     return { price: 'Grátis', period: '' };
   }
@@ -172,7 +175,7 @@ function HomePage() {
           <p className="landing-section-subtitle">Escolha o plano ideal para sua operação.</p>
           <div className="landing-pricing">
             {plans.map((p, i) => {
-              const { price, period } = formatPrice(p.price_cents, p.billing_period);
+              const { price, period } = formatPrice(p.price_cents, p.billing_period, p.name);
               const highlighted = i === highlightedIndex;
               const feats = featureFlags(p.features);
               return (
