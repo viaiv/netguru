@@ -99,11 +99,15 @@ class ChatService:
             ) from exc
 
         # 3. Resolve LLM provider (BYO-LLM ou free fallback via DB)
+        #    Consulta Plan.features.allow_system_fallback para determinar se
+        #    o plano do usuario permite uso do LLM gratuito do sistema.
+        plan_allows_fallback = await self._plan_allows_fallback(user)
+
         if user.llm_provider and user.encrypted_api_key:
             provider_name = user.llm_provider
             api_key = decrypt_api_key(user.encrypted_api_key)
             using_free_llm = False
-        else:
+        elif plan_allows_fallback:
             free_enabled = await SystemSettingsService.get(self._db, "free_llm_enabled")
             if free_enabled == "true":
                 free_key = await SystemSettingsService.get(self._db, "free_llm_api_key")
@@ -123,6 +127,12 @@ class ChatService:
                     "Configure seu provedor LLM e API key no perfil antes de usar o chat.",
                     code="llm_not_configured",
                 )
+        else:
+            raise ChatServiceError(
+                "Seu plano requer uma API key propria (BYO-LLM). "
+                "Configure seu provedor e API key em Perfil > BYO-LLM.",
+                code="byo_required",
+            )
 
         # 4. Resolve attachment context for this turn (best-effort).
         attachment_resolution = await self._resolve_attachment_context(
@@ -275,6 +285,7 @@ class ChatService:
                 primary_api_key=api_key,
                 primary_model=model_override,
                 using_free_llm=using_free_llm,
+                plan_allows_fallback=plan_allows_fallback,
             )
         except Exception as exc:
             await self._db.rollback()
@@ -295,6 +306,7 @@ class ChatService:
         stream_start_event: dict = {
             "type": "stream_start",
             "message_id": str(assistant_msg.id),
+            "llm_provider": provider_name,
         }
         if using_free_llm:
             stream_start_event["using_free_llm"] = True
@@ -979,9 +991,13 @@ class ChatService:
         primary_api_key: str,
         primary_model: str | None,
         using_free_llm: bool,
+        plan_allows_fallback: bool = True,
     ) -> list[dict]:
         """
         Build ordered LLM attempts (provider/model) for automatic fallback.
+
+        Se plan_allows_fallback=False e o primario eh BYO, nao inclui tentativas
+        de fallback via LLM gratuito do sistema.
         """
         attempts: list[dict] = []
         seen: set[tuple[str, str, str]] = set()
@@ -1064,7 +1080,8 @@ class ChatService:
                 legacy_keys=("free_llm_model",),
             )
 
-        if not using_free_llm and free_primary_key and free_primary_provider:
+        # Fallback via LLM gratuito — somente se o plano permite
+        if plan_allows_fallback and not using_free_llm and free_primary_key and free_primary_provider:
             _add_attempt(
                 provider_name=free_primary_provider,
                 api_key=free_primary_key,
@@ -1075,7 +1092,7 @@ class ChatService:
         secondary_provider = await _safe_get_setting("free_llm_fallback_provider")
         secondary_model = await _safe_get_setting("free_llm_fallback_model")
         secondary_key = await _safe_get_setting("free_llm_fallback_api_key")
-        if secondary_provider:
+        if plan_allows_fallback and secondary_provider:
             resolved_secondary_key = (
                 secondary_key
                 or free_primary_key
@@ -1106,6 +1123,20 @@ class ChatService:
                 source="primary",
             )
         return attempts
+
+    async def _plan_allows_fallback(self, user: User) -> bool:
+        """Verifica se o plano do usuario permite fallback para LLM gratuito."""
+        try:
+            plan = await PlanLimitService.get_user_plan(self._db, user)
+            features = plan.features if plan.features else {}
+            # Default conservador: se nao definido, permite fallback
+            return bool(features.get("allow_system_fallback", True))
+        except Exception:
+            logger.warning(
+                "Falha ao resolver allow_system_fallback user=%s, default=True",
+                user.id,
+            )
+            return True
 
     @staticmethod
     def _default_model_for_provider(provider_name: str) -> str:

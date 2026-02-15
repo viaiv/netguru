@@ -35,6 +35,7 @@ export interface IWebSocketEvent {
   title?: string;
   reason?: string;
   using_free_llm?: boolean;
+  llm_provider?: string;
 }
 
 export interface IOutgoingAttachmentRef {

@@ -260,6 +260,15 @@ code {
   vertical-align: middle;
 }
 
+.chip-byo-llm {
+  background: rgba(var(--accent-rgb), 0.10);
+  border-color: rgba(var(--accent-rgb), 0.3);
+  color: var(--accent);
+  margin-left: 8px;
+  vertical-align: middle;
+  text-transform: capitalize;
+}
+
 .chip-refresh-idle {
   background: rgba(var(--ink-rgb), 0.08);
 }

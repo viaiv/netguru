@@ -94,6 +94,7 @@ interface IChatState {
   streamingContent: string;
   streamingMessageId: string | null;
   usingFreeLlm: boolean;
+  llmProvider: string | null;
 
   // Tool calls
   activeToolCalls: IToolCall[];
@@ -118,7 +119,7 @@ interface IChatState {
 
   // WS actions
   addUserMessage: (content: string) => void;
-  handleStreamStart: (messageId: string, usingFreeLlm?: boolean) => void;
+  handleStreamStart: (messageId: string, usingFreeLlm?: boolean, llmProvider?: string) => void;
   handleStreamChunk: (content: string) => void;
   handleStreamEnd: (
     messageId: string,
@@ -158,6 +159,7 @@ export const useChatStore = create<IChatState>((set, get) => ({
     };
   })(),
   usingFreeLlm: false,
+  llmProvider: null,
   conversations: [],
   currentConversationId: null,
   messages: [],
@@ -294,12 +296,13 @@ export const useChatStore = create<IChatState>((set, get) => ({
     }));
   },
 
-  handleStreamStart: (messageId: string, usingFreeLlm?: boolean) => {
+  handleStreamStart: (messageId: string, usingFreeLlm?: boolean, llmProvider?: string) => {
     set({
       isStreaming: true,
       streamingContent: '',
       streamingMessageId: messageId,
       usingFreeLlm: usingFreeLlm ?? false,
+      llmProvider: llmProvider ?? null,
       activeToolCalls: [],
     });
     writeStreamingSnapshot({
@@ -344,6 +347,7 @@ export const useChatStore = create<IChatState>((set, get) => ({
       streamingContent: '',
       streamingMessageId: null,
       usingFreeLlm: false,
+      llmProvider: null,
       activeToolCalls: [],
     }));
     writeStreamingSnapshot({
@@ -360,6 +364,7 @@ export const useChatStore = create<IChatState>((set, get) => ({
       streamingContent: '',
       streamingMessageId: null,
       usingFreeLlm: false,
+      llmProvider: null,
       activeToolCalls: [],
     });
     writeStreamingSnapshot({
@@ -514,6 +519,8 @@ export const useChatStore = create<IChatState>((set, get) => ({
       isStreaming: false,
       streamingContent: '',
       streamingMessageId: null,
+      usingFreeLlm: false,
+      llmProvider: null,
       activeToolCalls: [],
     });
     writeStreamingSnapshot({

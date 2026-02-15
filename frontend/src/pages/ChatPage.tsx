@@ -43,6 +43,7 @@ function ChatPage() {
     streamingMessageId,
     activeToolCalls,
     usingFreeLlm,
+    llmProvider,
     error,
     errorCode,
     fetchConversations,
@@ -79,7 +80,7 @@ function ChatPage() {
     (event: IWebSocketEvent) => {
       switch (event.type) {
         case 'stream_start':
-          handleStreamStart(event.message_id!, event.using_free_llm);
+          handleStreamStart(event.message_id!, event.using_free_llm, event.llm_provider);
           break;
         case 'stream_chunk':
           handleStreamChunk(event.content!);
@@ -445,7 +446,9 @@ function ChatPage() {
               <p className="message-role">
                 <svg className="message-role-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                 NetGuru
-                {usingFreeLlm && <span className="chip chip-free-llm">Modelo gratuito</span>}
+                {usingFreeLlm
+                  ? <span className="chip chip-free-llm">Modelo gratuito</span>
+                  : llmProvider && <span className="chip chip-byo-llm">{llmProvider}</span>}
               </p>
               <MarkdownContent content={streamingContent} isStreaming />
               <span className="typing-cursor" />
@@ -458,7 +461,9 @@ function ChatPage() {
               <p className="message-role">
                 <svg className="message-role-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                 NetGuru
-                {usingFreeLlm && <span className="chip chip-free-llm">Modelo gratuito</span>}
+                {usingFreeLlm
+                  ? <span className="chip chip-free-llm">Modelo gratuito</span>
+                  : llmProvider && <span className="chip chip-byo-llm">{llmProvider}</span>}
               </p>
               <div className="message-content">
                 <span className="typing-cursor" />
@@ -468,12 +473,17 @@ function ChatPage() {
 
           {/* Error banner */}
           {error && (
-            <div className={`error-banner chat-error${errorCode?.endsWith('_limit_exceeded') ? ' chat-error--limit' : ''}`}>
+            <div className={`error-banner chat-error${errorCode?.endsWith('_limit_exceeded') || errorCode === 'byo_required' ? ' chat-error--limit' : ''}`}>
               <span>{error}</span>
               <span className="chat-error-actions">
                 {errorCode?.endsWith('_limit_exceeded') && (
                   <a href="/me" className="ghost-btn chat-upgrade-cta">
                     Fazer upgrade
+                  </a>
+                )}
+                {(errorCode === 'byo_required' || errorCode === 'llm_not_configured') && (
+                  <a href="/me" className="ghost-btn chat-upgrade-cta">
+                    Configurar LLM
                   </a>
                 )}
                 <button type="button" className="ghost-btn chat-dismiss" onClick={clearError}>
