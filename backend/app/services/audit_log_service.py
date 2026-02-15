@@ -14,6 +14,17 @@ from app.models.audit_log import AuditLog
 from app.models.user import User
 
 
+def _json_safe(obj: Any) -> Any:
+    """Recursively convert non-JSON-serializable types (UUID, etc.) to strings."""
+    if isinstance(obj, UUID):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(item) for item in obj]
+    return obj
+
+
 class AuditLogService:
     """
     Provides helpers to record and query audit entries.
@@ -53,7 +64,7 @@ class AuditLogService:
             action=action,
             target_type=target_type,
             target_id=target_id,
-            changes=changes,
+            changes=_json_safe(changes) if changes else changes,
             ip_address=ip_address,
             user_agent=user_agent,
         )
