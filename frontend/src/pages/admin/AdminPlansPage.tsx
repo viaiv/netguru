@@ -27,7 +27,7 @@ const FEATURE_LABELS: Record<keyof IFeaturesForm, string> = {
   pcap_analysis: 'Analise de PCAP',
   topology_generation: 'Geracao de topologia',
   custom_tools: 'Tools customizadas',
-  allow_system_fallback: 'Fallback LLM gratuito (sem BYO)',
+  allow_system_fallback: 'LLM incluso no plano (sem BYO)',
 };
 
 const DEFAULT_FEATURES: IFeaturesForm = {

@@ -169,7 +169,7 @@ function PricingPage() {
                     </li>
                     <li style={{ marginBottom: '0.5rem', fontSize: '0.82rem', color: 'var(--ink-soft)' }}>
                       {plan.features?.allow_system_fallback
-                        ? 'LLM gratuito incluso como fallback'
+                        ? 'LLM incluso no plano'
                         : 'BYO-LLM obrigatorio'}
                     </li>
                   </ul>
@@ -307,7 +307,7 @@ function PricingPage() {
                   ))}
                 </tr>
                 <tr>
-                  <td>LLM gratuito (fallback)</td>
+                  <td>LLM incluso no plano</td>
                   {plans.map((p) => (
                     <td key={p.id}>{p.features?.allow_system_fallback ? '✓' : '—'}</td>
                   ))}
@@ -351,12 +351,12 @@ function PricingPage() {
             </details>
 
             <details className="faq-item">
-              <summary>O que e o LLM gratuito (fallback)?</summary>
+              <summary>O que e o LLM incluso no plano?</summary>
               <p>
-                Nos planos Free e Solo, o sistema oferece um LLM gratuito como backup caso
-                voce nao tenha uma API key configurada ou seu provedor esteja indisponivel.
-                Nos planos Team e Enterprise, o BYO-LLM e obrigatorio para garantir
-                privacidade e controle total dos dados.
+                Nos planos Free e Solo, a plataforma disponibiliza um modelo de IA incluso
+                para que voce possa usar o chat sem precisar de API key propria. Nos planos
+                Team e Enterprise, o BYO-LLM e obrigatorio para garantir privacidade e
+                controle total dos dados.
               </p>
             </details>
 

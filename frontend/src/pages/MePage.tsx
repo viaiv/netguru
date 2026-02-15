@@ -245,7 +245,7 @@ function MePage() {
                   ? `BYO (${user.llm_provider || 'sem provedor'})`
                   : ['team', 'enterprise'].includes(user.active_workspace?.plan_tier ?? user.plan_tier)
                     ? 'BYO obrigatorio — configure sua API key'
-                    : 'Fallback gratuito'}
+                    : 'Modelo incluso no plano'}
               </p>
             </article>
             <article className="kv-card">

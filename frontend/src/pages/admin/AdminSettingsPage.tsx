@@ -34,7 +34,7 @@ const TABS = [
   { id: 'email', label: 'Email' },
   { id: 'cloudflare', label: 'Cloudflare R2' },
   { id: 'stripe', label: 'Stripe' },
-  { id: 'llm', label: 'LLM Gratuito' },
+  { id: 'llm', label: 'LLM Incluso' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -133,21 +133,21 @@ const LLM_PROVIDER_OPTIONS = [
 const FREE_LLM_SETTINGS_KEYS: SettingDef[] = [
   {
     key: 'free_llm_enabled',
-    label: 'LLM gratuito habilitado',
-    description: 'Ativar fallback gratuito para usuarios sem API key propria',
+    label: 'LLM incluso habilitado',
+    description: 'Ativar modelo incluso para usuarios sem API key propria',
     type: 'toggle',
   },
   {
     key: 'free_llm_provider',
     label: 'Provider',
-    description: 'Provedor LLM usado no fallback gratuito',
+    description: 'Provedor LLM usado no modelo incluso',
     type: 'select',
     options: [...LLM_PROVIDER_OPTIONS],
   },
   {
     key: 'free_llm_api_key',
     label: 'API Key',
-    description: 'Chave de API do provedor gratuito (criptografada)',
+    description: 'Chave de API do provedor incluso (criptografada)',
     type: 'password',
   },
 ];
@@ -737,7 +737,7 @@ function AdminSettingsPage() {
             <div className="admin-card">
               <h3 className="admin-card__title">Fallback Global</h3>
               <p className="text-muted" style={{ marginBottom: 12 }}>
-                Configuracao global do LLM gratuito (usado quando o plano nao define um modelo default ou a chave por provider nao existe).
+                Configuracao global do LLM incluso (usado quando o plano nao define um modelo default ou a chave por provider nao existe).
               </p>
               {FREE_LLM_SETTINGS_KEYS.map(renderField)}
 
