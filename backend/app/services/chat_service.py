@@ -104,31 +104,54 @@ class ChatService:
         #    Consulta Plan.features.allow_system_fallback para determinar se
         #    o plano do workspace permite uso do LLM gratuito do sistema.
         plan_allows_fallback = await self._plan_allows_fallback(workspace)
+        _plan_model: tuple[str, str] | None = None
+        _used_plan_provider = False  # True when plan-specific provider path succeeded
+        using_free_llm = False
 
         if user.llm_provider and user.encrypted_api_key:
             provider_name = user.llm_provider
             api_key = decrypt_api_key(user.encrypted_api_key)
             using_free_llm = False
+            # Resolve plan model for BYO-LLM provider match
+            _plan = await PlanLimitService.get_workspace_plan(self._db, workspace)
+            _plan_model = await LLMModelResolverService.resolve_plan_model(self._db, _plan)
         elif plan_allows_fallback:
-            free_enabled = await SystemSettingsService.get(self._db, "free_llm_enabled")
-            if free_enabled == "true":
-                free_key = await SystemSettingsService.get(self._db, "free_llm_api_key")
-                if free_key:
-                    provider_name = (
-                        await SystemSettingsService.get(self._db, "free_llm_provider")
-                    ) or "google"
-                    api_key = free_key
+            # Try plan-specific provider/model first, then global fallback
+            _plan = await PlanLimitService.get_workspace_plan(self._db, workspace)
+            _plan_model = await LLMModelResolverService.resolve_plan_model(self._db, _plan)
+
+            if _plan_model:
+                _plan_provider, _plan_model_id = _plan_model
+                _plan_key = await SystemSettingsService.get(
+                    self._db, f"free_llm_api_key_{_plan_provider}"
+                )
+                if _plan_key:
+                    provider_name = _plan_provider
+                    api_key = _plan_key
                     using_free_llm = True
+                    _used_plan_provider = True
+
+            if not using_free_llm:
+                # Global fallback (current behavior)
+                free_enabled = await SystemSettingsService.get(self._db, "free_llm_enabled")
+                if free_enabled == "true":
+                    free_key = await SystemSettingsService.get(self._db, "free_llm_api_key")
+                    if free_key:
+                        provider_name = (
+                            await SystemSettingsService.get(self._db, "free_llm_provider")
+                        ) or "google"
+                        api_key = free_key
+                        using_free_llm = True
+                    else:
+                        raise ChatServiceError(
+                            "Configure seu provedor LLM e API key no perfil antes de usar o chat.",
+                            code="llm_not_configured",
+                        )
                 else:
                     raise ChatServiceError(
                         "Configure seu provedor LLM e API key no perfil antes de usar o chat.",
                         code="llm_not_configured",
                     )
-            else:
-                raise ChatServiceError(
-                    "Configure seu provedor LLM e API key no perfil antes de usar o chat.",
-                    code="llm_not_configured",
-                )
         else:
             raise ChatServiceError(
                 "Seu plano requer uma API key propria (BYO-LLM). "
@@ -270,11 +293,15 @@ class ChatService:
         try:
             model_override = conversation.model_used
             if not model_override:
-                model_override = await LLMModelResolverService.resolve_model(
-                    self._db,
-                    provider_name,
-                    legacy_keys=("free_llm_model",) if using_free_llm else (),
-                )
+                # Try plan default if plan-specific provider was used or BYO provider matches
+                if _plan_model and (_used_plan_provider or _plan_model[0] == provider_name):
+                    model_override = _plan_model[1]
+                else:
+                    model_override = await LLMModelResolverService.resolve_model(
+                        self._db,
+                        provider_name,
+                        legacy_keys=("free_llm_model",) if using_free_llm else (),
+                    )
             tools = get_agent_tools(
                 db=self._db,
                 user_id=user.id,

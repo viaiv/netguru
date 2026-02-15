@@ -3,10 +3,15 @@ LLMModelResolverService — resolve default model names per provider from system
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.services.system_settings_service import SystemSettingsService
+
+if TYPE_CHECKING:
+    from app.models.plan import Plan
 
 
 class LLMModelResolverService:
@@ -73,6 +78,31 @@ class LLMModelResolverService:
                 return value.strip()
 
         return LLMModelResolverService.default_model_for_provider(provider)
+
+    @staticmethod
+    async def resolve_plan_model(
+        db: AsyncSession,
+        plan: Plan,
+    ) -> tuple[str, str] | None:
+        """
+        Resolve provider + model_id from the plan's default LLM model.
+
+        Args:
+            db: Async database session.
+            plan: The Plan instance (may have default_llm_model_id set).
+
+        Returns:
+            (provider, model_id) or None if not configured / inactive.
+        """
+        if not plan.default_llm_model_id:
+            return None
+
+        from app.models.llm_model import LlmModel
+
+        model = await db.get(LlmModel, plan.default_llm_model_id)
+        if model and model.is_active:
+            return (model.provider, model.model_id)
+        return None
 
     @staticmethod
     async def _safe_get_setting(db: AsyncSession, key: str) -> str | None:

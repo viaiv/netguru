@@ -4,7 +4,7 @@ Plan model — subscription tiers with Stripe integration.
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSON, UUID as SQLAlchemyUUID
 from sqlalchemy.orm import relationship
 
@@ -62,6 +62,15 @@ class Plan(Base):
 
     # Feature flags (JSON)
     features = Column(JSON, nullable=True, comment="Feature flags per plan")
+
+    # Default LLM model (from catalog)
+    default_llm_model_id = Column(
+        SQLAlchemyUUID(as_uuid=True),
+        ForeignKey("llm_models.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Default LLM model for this plan (from catalog)",
+    )
+    default_llm_model = relationship("LlmModel")
 
     # Status / ordering
     is_active = Column(Boolean, default=True, nullable=False)

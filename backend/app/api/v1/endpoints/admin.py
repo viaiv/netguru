@@ -26,6 +26,7 @@ from app.schemas.memory import (
     SystemMemoryResponse,
     SystemMemoryUpdate,
 )
+from app.models.llm_model import LlmModel
 from app.schemas.admin import (
     AdminUserDetailResponse,
     AdminUserListItem,
@@ -37,6 +38,9 @@ from app.schemas.admin import (
     CeleryTaskEventResponse,
     DashboardStats,
     EntitlementToolStatus,
+    LlmModelCreate,
+    LlmModelResponse,
+    LlmModelUpdate,
     PaginationMeta,
     PlanCreate,
     PlanResponse,
@@ -561,6 +565,131 @@ async def delete_system_memory(
         ip_address=_client_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
+    await db.flush()
+
+
+# ---------------------------------------------------------------------------
+# LLM Model Catalog
+# ---------------------------------------------------------------------------
+
+@router.get("/llm-models", response_model=list[LlmModelResponse])
+async def list_llm_models(
+    _current_user: User = Depends(require_permissions(Permission.ADMIN_PLANS_READ)),
+    db: AsyncSession = Depends(get_db),
+) -> list[LlmModelResponse]:
+    """List all LLM models in the catalog."""
+    stmt = select(LlmModel).order_by(LlmModel.sort_order, LlmModel.provider)
+    models = (await db.execute(stmt)).scalars().all()
+    return [LlmModelResponse.model_validate(m) for m in models]
+
+
+@router.post("/llm-models", response_model=LlmModelResponse, status_code=status.HTTP_201_CREATED)
+async def create_llm_model(
+    body: LlmModelCreate,
+    request: Request,
+    current_user: User = Depends(require_permissions(Permission.ADMIN_PLANS_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> LlmModelResponse:
+    """Add a new LLM model to the catalog."""
+    existing = (
+        await db.execute(
+            select(LlmModel).where(
+                LlmModel.provider == body.provider,
+                LlmModel.model_id == body.model_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Model '{body.provider}/{body.model_id}' already exists",
+        )
+
+    model = LlmModel(**body.model_dump())
+    db.add(model)
+
+    await AuditLogService.record(
+        db,
+        actor_id=current_user.id,
+        action="llm_model.created",
+        target_type="llm_model",
+        target_id=str(model.id),
+        changes=body.model_dump(),
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    await db.flush()
+    await db.refresh(model)
+    return LlmModelResponse.model_validate(model)
+
+
+@router.patch("/llm-models/{model_id}", response_model=LlmModelResponse)
+async def update_llm_model(
+    model_id: UUID,
+    body: LlmModelUpdate,
+    request: Request,
+    current_user: User = Depends(require_permissions(Permission.ADMIN_PLANS_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> LlmModelResponse:
+    """Update an LLM model in the catalog."""
+    stmt = select(LlmModel).where(LlmModel.id == model_id)
+    model = (await db.execute(stmt)).scalar_one_or_none()
+    if not model:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="LLM model not found")
+
+    changes = {}
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        old = getattr(model, field)
+        if old != value:
+            changes[field] = {"from": old, "to": value}
+            setattr(model, field, value)
+
+    if changes:
+        from datetime import datetime as _dt
+        model.updated_at = _dt.utcnow()
+        await AuditLogService.record(
+            db,
+            actor_id=current_user.id,
+            action="llm_model.updated",
+            target_type="llm_model",
+            target_id=str(model.id),
+            changes=changes,
+            ip_address=_client_ip(request),
+            user_agent=request.headers.get("user-agent"),
+        )
+
+    await db.flush()
+    await db.refresh(model)
+    return LlmModelResponse.model_validate(model)
+
+
+@router.delete("/llm-models/{model_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_llm_model(
+    model_id: UUID,
+    request: Request,
+    current_user: User = Depends(require_permissions(Permission.ADMIN_PLANS_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Delete an LLM model from the catalog."""
+    stmt = select(LlmModel).where(LlmModel.id == model_id)
+    model = (await db.execute(stmt)).scalar_one_or_none()
+    if not model:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="LLM model not found")
+
+    await AuditLogService.record(
+        db,
+        actor_id=current_user.id,
+        action="llm_model.deleted",
+        target_type="llm_model",
+        target_id=str(model.id),
+        changes={"provider": model.provider, "model_id": model.model_id},
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    await db.delete(model)
     await db.flush()
 
 

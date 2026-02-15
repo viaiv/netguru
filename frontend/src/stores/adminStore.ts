@@ -10,6 +10,7 @@ import type {
   IDashboardStats,
   IEmailLog,
   IEmailTemplate,
+  ILlmModel,
   IPaginationMeta,
   IPlan,
   IStripeEvent,
@@ -23,6 +24,7 @@ import {
   fetchDashboardStats,
   fetchEmailLogs,
   fetchEmailTemplates,
+  fetchLlmModels,
   fetchPlans,
   fetchSettings,
   fetchStripeEvents,
@@ -51,6 +53,10 @@ interface IAdminState {
   // Plans
   plans: IPlan[];
   plansLoading: boolean;
+
+  // LLM Models
+  llmModels: ILlmModel[];
+  llmModelsLoading: boolean;
 
   // Settings
   settings: ISystemSetting[];
@@ -90,6 +96,7 @@ interface IAdminState {
     target_type?: string;
   }) => Promise<void>;
   loadPlans: () => Promise<void>;
+  loadLlmModels: () => Promise<void>;
   loadSettings: () => Promise<void>;
   loadEmailLogs: (params?: {
     page?: number;
@@ -122,6 +129,8 @@ export const useAdminStore = create<IAdminState>((set) => ({
   auditLoading: false,
   plans: [],
   plansLoading: false,
+  llmModels: [],
+  llmModelsLoading: false,
   settings: [],
   settingsLoading: false,
   emailLogs: [],
@@ -190,6 +199,16 @@ export const useAdminStore = create<IAdminState>((set) => ({
       set({ plans });
     } finally {
       set({ plansLoading: false });
+    }
+  },
+
+  loadLlmModels: async () => {
+    set({ llmModelsLoading: true });
+    try {
+      const llmModels = await fetchLlmModels();
+      set({ llmModels });
+    } finally {
+      set({ llmModelsLoading: false });
     }
   },
 

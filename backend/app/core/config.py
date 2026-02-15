@@ -112,13 +112,13 @@ class Settings(BaseSettings):
         "openrouter",
     )
 
-    DEFAULT_LLM_MODEL_OPENAI: str = "gpt-4o"
-    DEFAULT_LLM_MODEL_ANTHROPIC: str = "claude-sonnet-4-20250514"
-    DEFAULT_LLM_MODEL_AZURE: str = "gpt-4o"
-    DEFAULT_LLM_MODEL_GOOGLE: str = "gemini-2.0-flash"
+    DEFAULT_LLM_MODEL_OPENAI: str = "gpt-4.1"
+    DEFAULT_LLM_MODEL_ANTHROPIC: str = "claude-sonnet-4-5-20250929"
+    DEFAULT_LLM_MODEL_AZURE: str = "gpt-4.1"
+    DEFAULT_LLM_MODEL_GOOGLE: str = "gemini-2.5-flash"
     DEFAULT_LLM_MODEL_GROQ: str = "llama-3.3-70b-versatile"
     DEFAULT_LLM_MODEL_DEEPSEEK: str = "deepseek-chat"
-    DEFAULT_LLM_MODEL_OPENROUTER: str = "google/gemini-2.0-flash-001"
+    DEFAULT_LLM_MODEL_OPENROUTER: str = "google/gemini-2.5-flash"
     LLM_MAX_TOKENS: int = 4096
     LLM_TEMPERATURE: float = 0.7
 

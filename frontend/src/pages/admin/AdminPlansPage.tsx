@@ -21,6 +21,7 @@ interface IPlanFormData {
   max_file_size_mb: number;
   max_conversations_daily: number;
   max_tokens_daily: number;
+  default_llm_model_id: string;
   features_json: string;
   is_active: boolean;
   sort_order: number;
@@ -37,6 +38,7 @@ const EMPTY_FORM: IPlanFormData = {
   max_file_size_mb: 100,
   max_conversations_daily: 50,
   max_tokens_daily: 100000,
+  default_llm_model_id: '',
   features_json: '{}',
   is_active: true,
   sort_order: 0,
@@ -54,6 +56,7 @@ function planToForm(plan: IPlan): IPlanFormData {
     max_file_size_mb: plan.max_file_size_mb,
     max_conversations_daily: plan.max_conversations_daily,
     max_tokens_daily: plan.max_tokens_daily,
+    default_llm_model_id: plan.default_llm_model_id || '',
     features_json: plan.features ? JSON.stringify(plan.features, null, 2) : '{}',
     is_active: plan.is_active,
     sort_order: plan.sort_order,
@@ -82,6 +85,7 @@ function formToPayload(form: IPlanFormData): IPlanCreate {
     max_file_size_mb: form.max_file_size_mb,
     max_conversations_daily: form.max_conversations_daily,
     max_tokens_daily: form.max_tokens_daily,
+    default_llm_model_id: form.default_llm_model_id || null,
     features,
     is_active: form.is_active,
     sort_order: form.sort_order,
@@ -96,6 +100,8 @@ function AdminPlansPage() {
   const plans = useAdminStore((s) => s.plans);
   const loading = useAdminStore((s) => s.plansLoading);
   const loadPlans = useAdminStore((s) => s.loadPlans);
+  const llmModels = useAdminStore((s) => s.llmModels);
+  const loadLlmModels = useAdminStore((s) => s.loadLlmModels);
   const userRole = useAuthStore((s) => s.user?.role);
   const isOwner = userRole === 'owner';
 
@@ -108,7 +114,16 @@ function AdminPlansPage() {
 
   useEffect(() => {
     loadPlans();
-  }, [loadPlans]);
+    loadLlmModels();
+  }, [loadPlans, loadLlmModels]);
+
+  // Group models by provider for the dropdown
+  const modelsByProvider = llmModels
+    .filter((m) => m.is_active)
+    .reduce<Record<string, typeof llmModels>>((acc, m) => {
+      (acc[m.provider] ??= []).push(m);
+      return acc;
+    }, {});
 
   function openCreate() {
     setEditingPlan(null);
@@ -216,6 +231,15 @@ function AdminPlansPage() {
               </div>
 
               <dl className="kv-list kv-list--compact">
+                {plan.default_llm_model_id && (() => {
+                  const m = llmModels.find((x) => x.id === plan.default_llm_model_id);
+                  return m ? (
+                    <>
+                      <dt>LLM default</dt>
+                      <dd style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{m.display_name}</dd>
+                    </>
+                  ) : null;
+                })()}
                 <dt>Uploads/dia</dt>
                 <dd>{plan.upload_limit_daily.toLocaleString()}</dd>
                 <dt>Tamanho max.</dt>
@@ -416,6 +440,32 @@ function AdminPlansPage() {
                     onChange={(e) => set('max_tokens_daily', Number(e.target.value))}
                     min={0}
                   />
+                </div>
+              </fieldset>
+
+              {/* LLM */}
+              <fieldset className="plan-form__fieldset">
+                <legend>LLM</legend>
+                <div className="plan-form__row">
+                  <label>Modelo LLM padrao</label>
+                  <select
+                    value={formData.default_llm_model_id}
+                    onChange={(e) => set('default_llm_model_id', e.target.value)}
+                  >
+                    <option value="">Usar padrao global</option>
+                    {Object.entries(modelsByProvider).map(([provider, models]) => (
+                      <optgroup key={provider} label={provider.charAt(0).toUpperCase() + provider.slice(1)}>
+                        {models.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.display_name} ({m.model_id})
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                    Vazio = modelo resolvido pelo fallback global
+                  </span>
                 </div>
               </fieldset>
 

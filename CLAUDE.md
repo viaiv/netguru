@@ -8,20 +8,19 @@
 > **⚠️ Manutenção**: Se qualquer procedimento documentado aqui estiver desatualizado, sugira correções e atualize este arquivo.
 
 > **📝 CHECKPOINT TEMPORÁRIO (REMOVER NA PRÓXIMA SESSÃO):**
-> Desconto BYO-LLM com revogacao via grace period implementado:
-> - **Plan**: `byollm_discount_cents` (solo=R$15, team=R$45), `stripe_byollm_coupon_id`
-> - **Subscription**: `byollm_discount_applied`, `byollm_grace_notified_at`
-> - **Checkout**: aplica Stripe coupon "forever" quando owner tem API key
-> - **Webhook**: sincroniza `byollm_discount_applied` via discount.coupon.id
-> - **Grace period**: task periodica (6h) verifica elegibilidade:
->   - Owner sem API key + grace nao iniciado → email warning + seta `byollm_grace_notified_at`
->   - Grace expirado (7 dias) → `stripe.Subscription.delete_discount()` + limpa flags
->   - Owner reconfigura key → limpa grace, desconto mantido
-> - **DELETE /users/me/api-keys**: remove API key e provider LLM
-> - **EmailService**: `send_byollm_discount_warning()` + task Celery com retry
-> - **Config**: `BYOLLM_GRACE_PERIOD_DAYS=7`, `BYOLLM_CHECK_HOURS=6`
-> - **Frontend**: botao "Remover API Key" no MePage, desconto BYO-LLM em HomePage/PricingPage
-> - Migrations: `a6b7c8d9e0f1` (colunas discount) → `b7c8d9e0f1a2` (grace + email template)
+> Catalogo de modelos LLM + modelo default por plano implementado:
+> - **LlmModel**: tabela `llm_models` (provider, model_id, display_name, is_active, sort_order)
+> - **Plan**: `default_llm_model_id` FK para `llm_models` (modelo padrao por plano)
+> - **Catalogo**: 27 modelos seeded (OpenAI 11, Anthropic 4, Google 5, Groq 2, DeepSeek 2, OpenRouter 3)
+> - **CRUD admin**: GET/POST/PATCH/DELETE `/admin/llm-models` com audit log
+> - **API keys por provider**: 7 chaves Fernet (`free_llm_api_key_{provider}`) no ENCRYPTED_KEYS
+> - **Resolucao de modelo**: `LLMModelResolverService.resolve_plan_model()` — cadeia:
+>   - `conversation.model_used` → `Plan.default_llm_model` → system setting → code default
+>   - Free fallback: plan provider+key especifica → global fallback
+>   - BYO-LLM: usa modelo do plan se provider bater
+> - **Frontend**: catalogo CRUD inline em AdminSettingsPage, dropdown por provider em AdminPlansPage
+> - **Config defaults**: `gpt-4.1` (OpenAI), `claude-sonnet-4-5-20250929` (Anthropic), `gemini-2.5-flash` (Google)
+> - Migrations: `c8d9e0f1a2b3` (tabela + seed + FK) → `d9e0f1a2b3c4` (catalogo atualizado) → `e3f4a5b6c7d8` (GPT-5 family + o3-pro)
 
 ---
 
@@ -625,6 +624,10 @@ GET  /api/v1/agent/tools
 POST /api/v1/billing/seats        # 💺 Pre-compra de assentos
 GET  /api/v1/billing/subscription # 📊 Plano + uso + seat_info
 DELETE /api/v1/users/me/api-keys  # 🔑 Remover API key (inicia grace BYO-LLM)
+GET  /api/v1/admin/llm-models     # 📋 Catalogo de modelos LLM
+POST /api/v1/admin/llm-models     # ➕ Criar modelo no catalogo
+PATCH /api/v1/admin/llm-models/:id # ✏️ Editar modelo
+DELETE /api/v1/admin/llm-models/:id # 🗑️ Remover modelo
 ```
 
 ### Troubleshooting Comum
@@ -734,6 +737,30 @@ DELETE /api/v1/users/me/api-keys  # 🔑 Remover API key (inicia grace BYO-LLM)
 - [x] Frontend: exibicao do desconto BYO-LLM em HomePage, PricingPage e MePage
 - [ ] Testes unitarios para check_byollm_discount_eligibility
 - [ ] Testes de integracao para DELETE /users/me/api-keys
+
+### Sprint 10 (Catalogo LLM + modelo default por plano) - ✅ Completo
+- [x] Modelo `LlmModel` (provider, model_id, display_name, is_active, sort_order) com UUID PK
+- [x] Plan.default_llm_model_id FK para llm_models (SET NULL on delete)
+- [x] Migration seed com 27 modelos atualizados (7 providers):
+  - OpenAI: GPT-5 family (5.2, 5.1, 5, mini, nano), GPT-4.1 family, o3, o3-pro, o4-mini
+  - Anthropic: Opus 4.6, Sonnet 4.5, Haiku 4.5, Opus 4.5
+  - Google: Gemini 2.5 Pro/Flash/Flash-Lite, Gemini 3 Pro/Flash (Preview)
+  - Groq: Llama 3.3 70B, Llama 3.1 8B Instant
+  - DeepSeek: V3 Chat, R1 Reasoner
+  - OpenRouter: Claude Sonnet 4.5, Gemini 2.5 Flash, DeepSeek V3
+- [x] Schemas admin: LlmModelCreate, LlmModelUpdate, LlmModelResponse
+- [x] CRUD endpoints GET/POST/PATCH/DELETE `/admin/llm-models` com audit log
+- [x] API keys por provider: 7 chaves Fernet em ENCRYPTED_KEYS (`free_llm_api_key_{provider}`)
+- [x] `LLMModelResolverService.resolve_plan_model()` — resolucao por plano
+- [x] ChatService: resolucao de modelo por plano (free fallback + BYO-LLM)
+  - Cadeia: conversation.model_used → plan default → system setting → code default
+  - Flag `_used_plan_provider` para diferenciar plan-specific vs global fallback
+- [x] Frontend: catalogo CRUD inline em AdminSettingsPage (tabela + form inline)
+- [x] Frontend: campos API key por provider em AdminSettingsPage
+- [x] Frontend: dropdown "Modelo LLM padrao" agrupado por provider em AdminPlansPage
+- [x] Config defaults atualizados: gpt-4.1, claude-sonnet-4-5, gemini-2.5-flash
+- [ ] Testes unitarios para resolve_plan_model e CRUD llm-models
+- [ ] Testes de integracao para resolucao de modelo no chat
 
 ---
 

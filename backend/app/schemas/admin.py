@@ -20,6 +20,37 @@ class PaginationMeta(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# LLM Model Catalog
+# ---------------------------------------------------------------------------
+
+class LlmModelCreate(BaseModel):
+    provider: str = Field(..., max_length=50)
+    model_id: str = Field(..., max_length=150)
+    display_name: str = Field(..., max_length=200)
+    is_active: bool = True
+    sort_order: int = 0
+
+
+class LlmModelUpdate(BaseModel):
+    display_name: Optional[str] = Field(None, max_length=200)
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class LlmModelResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    provider: str
+    model_id: str
+    display_name: str
+    is_active: bool
+    sort_order: int
+    created_at: datetime
+    updated_at: datetime
+
+
+# ---------------------------------------------------------------------------
 # Plan
 # ---------------------------------------------------------------------------
 
@@ -38,6 +69,7 @@ class PlanCreate(BaseModel):
     max_file_size_mb: int = Field(default=100, ge=1)
     max_conversations_daily: int = Field(default=50, ge=0)
     max_tokens_daily: int = Field(default=100000, ge=0)
+    default_llm_model_id: Optional[UUID] = None
     features: Optional[dict[str, Any]] = None
     is_active: bool = True
     sort_order: int = 0
@@ -57,6 +89,7 @@ class PlanUpdate(BaseModel):
     max_file_size_mb: Optional[int] = Field(None, ge=1)
     max_conversations_daily: Optional[int] = Field(None, ge=0)
     max_tokens_daily: Optional[int] = Field(None, ge=0)
+    default_llm_model_id: Optional[UUID] = None
     features: Optional[dict[str, Any]] = None
     is_active: Optional[bool] = None
     sort_order: Optional[int] = None
@@ -80,6 +113,7 @@ class PlanResponse(BaseModel):
     max_file_size_mb: int
     max_conversations_daily: int
     max_tokens_daily: int
+    default_llm_model_id: Optional[UUID] = None
     features: Optional[dict[str, Any]]
     is_active: bool
     sort_order: int

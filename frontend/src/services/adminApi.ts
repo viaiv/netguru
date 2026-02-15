@@ -161,6 +161,31 @@ export interface IAuditLogEntry {
   created_at: string;
 }
 
+export interface ILlmModel {
+  id: string;
+  provider: string;
+  model_id: string;
+  display_name: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ILlmModelCreate {
+  provider: string;
+  model_id: string;
+  display_name: string;
+  is_active?: boolean;
+  sort_order?: number;
+}
+
+export interface ILlmModelUpdate {
+  display_name?: string;
+  is_active?: boolean;
+  sort_order?: number;
+}
+
 export interface IPlan {
   id: string;
   name: string;
@@ -173,6 +198,7 @@ export interface IPlan {
   max_file_size_mb: number;
   max_conversations_daily: number;
   max_tokens_daily: number;
+  default_llm_model_id: string | null;
   features: Record<string, boolean> | null;
   is_active: boolean;
   sort_order: number;
@@ -191,6 +217,7 @@ export interface IPlanCreate {
   max_file_size_mb: number;
   max_conversations_daily: number;
   max_tokens_daily: number;
+  default_llm_model_id?: string | null;
   features?: Record<string, boolean>;
   is_active?: boolean;
   sort_order?: number;
@@ -206,6 +233,7 @@ export interface IPlanUpdate {
   max_file_size_mb?: number;
   max_conversations_daily?: number;
   max_tokens_daily?: number;
+  default_llm_model_id?: string | null;
   features?: Record<string, boolean>;
   is_active?: boolean;
   sort_order?: number;
@@ -368,6 +396,29 @@ export async function deletePlan(planId: string): Promise<IPlan> {
 export async function stripeSyncPlan(planId: string): Promise<IPlan> {
   const r = await api.post<IPlan>(`/admin/plans/${planId}/stripe-sync`);
   return r.data;
+}
+
+// ---------------------------------------------------------------------------
+// LLM Model Catalog
+// ---------------------------------------------------------------------------
+
+export async function fetchLlmModels(): Promise<ILlmModel[]> {
+  const r = await api.get<ILlmModel[]>('/admin/llm-models');
+  return r.data;
+}
+
+export async function createLlmModel(data: ILlmModelCreate): Promise<ILlmModel> {
+  const r = await api.post<ILlmModel>('/admin/llm-models', data);
+  return r.data;
+}
+
+export async function updateLlmModel(id: string, data: ILlmModelUpdate): Promise<ILlmModel> {
+  const r = await api.patch<ILlmModel>(`/admin/llm-models/${id}`, data);
+  return r.data;
+}
+
+export async function deleteLlmModel(id: string): Promise<void> {
+  await api.delete(`/admin/llm-models/${id}`);
 }
 
 // ---------------------------------------------------------------------------
